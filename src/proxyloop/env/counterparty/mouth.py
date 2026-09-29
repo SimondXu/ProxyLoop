@@ -2,13 +2,16 @@
 
 The model rephrases the intent's template line. Number fidelity: every number
 of the intent's values, as digits (identifiers such as a confirmation number
-verbatim), and no other number. At most 2
+verbatim), and no other number. Code-word fidelity (S1-SYS-88): each word of a
+``fee:``/``feature:``/``applied_change:`` code is said as a whole word, as Slow's
+``record_offer`` needs it to name the term. At most 2
 regenerations, then the template itself, flagged ``fidelity_fallback``
 (``rep.mouth.fidelity_ok = false``).
 """
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from proxyloop.contract.llm import ChatMessage, LLMClient, TextRequest
@@ -49,6 +52,12 @@ your customer. Rephrase the given line as one short, natural spoken line (at mos
 two sentences) with the same meaning and every value. Write every number in \
 digits exactly as given, and say no other number. Output only the line."""
 
+CODED = frozenset({"fee", "feature", "applied_change"})  # kinds Slow names by code
+# A whole word, as slow/offer_slots.py ``_TOKEN`` reads the cited line (not
+# imported: env never imports slow): "activation-fee" says "activation",
+# "reactivation" and "activations" do not.
+_WORD = re.compile(r"[a-z0-9]+(?:[.,][0-9]+)*")
+
 
 def _label(key: str) -> str:
     return key.replace(":", " ").replace("_", " ").replace(".", " ")
@@ -74,7 +83,8 @@ def template(intent: PublicIntent, company: str) -> str:
 
 
 def fidelity_ok(text: str, intent: PublicIntent) -> bool:
-    """Every value's number (identifiers verbatim, as text) and no other number."""
+    """Every value's number (identifiers verbatim, as text), no other number,
+    and every word of each coded term's code as a whole word."""
 
     required: set[Decimal] = set()
     allowed: set[Decimal] = set()  # digits inside key names ("account.last4")
@@ -85,6 +95,11 @@ def fidelity_ok(text: str, intent: PublicIntent) -> bool:
         allowed |= world.numbers(key)
     for key in intent.ask:
         allowed |= world.numbers(key)
+    words = set(_WORD.findall(text.lower()))
+    for key, _ in intent.say:
+        kind, colon, code = key.partition(":")
+        if colon and kind in CODED and not set(code.lower().split("_")) <= words:
+            return False
     return required <= world.numbers(text) <= required | allowed
 
 
@@ -132,7 +147,7 @@ class Mouth:
 
         def check(text: str) -> str:
             if not text or not fidelity_ok(text, intent):
-                raise world.Invalid("number fidelity")
+                raise world.Invalid("fidelity")
             return text
 
         text, attempts, ok = await world.bounded(
