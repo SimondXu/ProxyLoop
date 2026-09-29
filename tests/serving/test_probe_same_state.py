@@ -365,3 +365,67 @@ def test_max_views_is_at_least_one(
     with pytest.raises(SystemExit) as exit_:
         pss.main(args)
     assert exit_.value.code == 2 and "must be at least 1" in capsys.readouterr().err
+
+
+def test_max_tokens_override_changes_only_max_tokens(
+    evidence: tuple[Path, Sent],
+) -> None:
+    v, tok = next(v for v in views(evidence[0]) if v.lane == "cp"), FakeTokenizer()
+    for ref in (QWEN, SONNET):
+        default = pss.build_request(v, ref, tok)
+        assert default == pss.build_request(v, ref, tok, None)
+        assert default.max_tokens == v.sampling.max_tokens == 160
+        over = pss.build_request(v, ref, tok, 2048)
+        assert over.max_tokens == 2048
+        assert over.model_dump() | {"max_tokens": 160} == default.model_dump()
+
+
+def test_the_override_is_sent_and_shown_in_the_report(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found, sent = views(evidence[0]), Sent()
+    set_env(monkeypatch, "relay")
+    seams = {"relay": recording(sent, "relay", ["Okay."])}
+    models = {"relay:claude-sonnet-5": SONNET}
+    report = asyncio.run(pss.probe(found, models, None, {}, seams, 2048))
+    assert report["max_tokens_override"] == 2048
+    assert {json.loads(b)["max_tokens"] for b in sent["relay"]} == {2048}
+    mine = [r for r in report["rows"] if r["model"] != pss.REFERENCE]
+    assert len(mine) == len(found)
+    over = [json.loads(b)["max_tokens"] for b in sent["relay"]]
+    assert [r["max_tokens_sent"] for r in mine] == over == [2048] * len(found)
+    refs = [r for r in report["rows"] if r["model"] == pss.REFERENCE]
+    assert {r["max_tokens_sent"] for r in refs} == {160}
+    # The record's sampling_sent (contract SamplingKey) does not carry max_tokens:
+    # the report-level override and the wire body above are what show it.
+    assert all("max_tokens" not in r["record"]["sampling_sent"] for r in mine)
+    sent.clear()
+    plain = asyncio.run(pss.probe(found, models, None, {}, seams))
+    assert plain["max_tokens_override"] is None
+    assert {json.loads(b)["max_tokens"] for b in sent["relay"]} == {160}
+    rows = [r for r in plain["rows"] if r["model"] != pss.REFERENCE]
+    wire = [json.loads(b)["max_tokens"] for b in sent["relay"]]
+    assert [r["max_tokens_sent"] for r in rows] == wire  # in call order
+
+
+def test_plan_shows_the_override(
+    evidence: tuple[Path, Sent],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "2", *MODELS]
+    assert pss.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["max_tokens_override"] is None
+    assert pss.main([*args, "--max-tokens", "2048"]) == 0
+    assert json.loads(capsys.readouterr().out)["max_tokens_override"] == 2048
+
+
+@pytest.mark.parametrize("n", ["0", "-1"])
+def test_max_tokens_is_at_least_one(
+    evidence: tuple[Path, Sent], capsys: pytest.CaptureFixture[str], n: str
+) -> None:
+    args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "1", *MODELS]
+    with pytest.raises(SystemExit) as exit_:
+        pss.main([*args, "--max-tokens", n])
+    assert exit_.value.code == 2 and "must be at least 1" in capsys.readouterr().err
