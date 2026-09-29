@@ -43,7 +43,8 @@ _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
 _YEARS = re.compile(r"[0-9]{1,2}")
 _TENURE = (  # #153 rounds 3-4: first person, in context, one space;
     # S1-SYS-20: "I" starts the message or a sentence ("She said I've..." never);
-    # S1-SYS-94 (R6): "with" you, them or the case's company (exact name, any case)
+    # S1-SYS-94 (R6): "with" you, them or the case's company (its name or a
+    # leading whole-word prefix, any case)
     r"(?:^|(?<=[.!?])\s+)I(?:'ve|\u2019ve| have) been (?:with (?:you|them{})|a "
     r"customer) (?:for )?([0-9]{{1,2}}) [Yy]ears?(?![\w'\u2019-])"
 )
@@ -501,15 +502,18 @@ def _name(value: str, message: str, *_: object) -> str | None:
 def _years(value: str, message: str, _: object, company: str = "") -> str | None:
     """1-2 ASCII digits in an allow-listed first-person tenure context ("I've
     been with you for 6 years", "I have been a customer 12 years"; "with
-    them" or "with <company>", the case's exact company name in any case,
-    R6), in a message with no age word and no negation."""
+    them" or "with <company>", the case's company name or a leading
+    whole-word prefix of it, in any case, R6), in a message with no age word
+    and no negation."""
     if not _YEARS.fullmatch(value) or _AGE.search(message):
         return None
     if _NEGATION.search(message):  # "I haven't been with you for 6 years"
         return None
     if _NOT_ASCII.search(message):  # no confusable hides an age word
         return None
-    who = f"|(?i:{re.escape(company)})" if company else ""
+    words = company.split()  # the full name or a leading whole-word prefix
+    names = [" ".join(words[:n]) for n in range(len(words), 0, -1)]
+    who = "".join(f"|(?i:{re.escape(n)})" for n in names)
     said = {m.group(1) for m in re.finditer(_TENURE.format(who), message)}
     return value if value in said else None
 

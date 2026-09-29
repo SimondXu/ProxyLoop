@@ -662,8 +662,9 @@ def test_a_hold_for_decision_renders_as_checking_with_the_customer() -> None:
 
 
 # S1-SYS-94 R6 (root decision, I4 review): the object of the first-person
-# tenure widens to "them" and the case's exact company name (any case); the
-# number stays bound to the user's own first-person statement
+# tenure widens to "them" and the case's company name or a leading
+# whole-word prefix of it (any case); the number stays bound to the user's
+# own first-person statement
 COMPANY_TENURE = [
     ("I've been with them for 6 years", "", "6", "6"),
     ("I've been with Northwind for 6 years", "Northwind", "6", "6"),
@@ -671,7 +672,16 @@ COMPANY_TENURE = [
     ("I've been with Northwind Mobile for 6 years.", "Northwind Mobile", "6", "6"),
     ("Hi. I've been with northwind mobile for 6 years", "Northwind Mobile", "6", "6"),
     ("I've been with Brightwave for 6 years", "Northwind Mobile", "6", None),
-    ("I've been with Northwind for 6 years", "Northwind Mobile", "6", None),  # exact
+    # the full name or a leading whole-word prefix of it (root, R6)
+    ("I've been with Northwind for 6 years", "Northwind Mobile", "6", "6"),
+    ("I've been with Crestline for 8 years", "Crestline Wireless", "8", "8"),
+    ("I've been with Lumen for 4 years", "Lumen Home Internet", "4", "4"),
+    ("I've been with Lumen Home for 4 years", "Lumen Home Internet", "4", "4"),
+    ("I've been with Mobile for 6 years", "Northwind Mobile", "6", None),
+    ("I've been with Wireless for 8 years", "Crestline Wireless", "8", None),
+    ("I've been with Home Internet for 4 years", "Lumen Home Internet", "4", None),
+    ("I've been with Crestlinex for 8 years", "Crestline Wireless", "8", None),
+    ("I've been with Crest for 8 years", "Crestline Wireless", "8", None),
     ("I've been with Crestline for 8 years", "", "8", None),  # no company
     ("I've been with Northwindx for 6 years", "Northwind", "6", None),
     ("I haven't been with them for 6 years", "", "6", None),  # negation
