@@ -234,13 +234,19 @@ world-select-gold:
 	uv run python -m scripts.mod.world_select gold $(WSG_ARGS)
 
 # S1-MOD-10 (a revised Fast profile, re-tested): offline, no keys, no model call. PC_ARGS,
-# select-b: --evidence runs --seed N --out <manifest json> [--family-include <task_ref>];
-# build-c: --evidence runs --b-manifest <json> --seed N --out <views json> --manifest-out
-# <json>; check: --evidence runs --report <set>=<probe json>... [--views-file <views json>]
-# [--manifest <set>=<json>] --out <json> --md <md>. The probe calls are probe-same-state's
-# (PSS_ARGS: --profile, --any-fingerprint, --family-*, --seed-missing, --views-file).
+# select-a: --evidence runs --out <manifest json>; select-b: --evidence runs --seed N --out
+# <manifest json>; build-c: --evidence runs --b-manifest <json> --seed N --out <views json>
+# --manifest-out <json>; check: --evidence runs --report <set>=<probe json>...
+# [--views-file <views json>] [--manifest <set>=<json>] [--t3-labels <jsonl>] --out <json>
+# --md <md>; export-t3: --check <check json> --out <md> (the blind T3 batch of the set C
+# tripwire candidates). The probe calls are probe-same-state's (PSS_ARGS: --profile,
+# --views-manifest, --views-file, --any-fingerprint, --family-*, --seed-missing).
 PC_ARGS ?=
-.PHONY: profile-check-select-b profile-check-build-c profile-check
+.PHONY: profile-check-select-a profile-check-select-b profile-check-build-c profile-check \
+	profile-check-export-t3
+
+profile-check-select-a:
+	uv run python -m scripts.mod.profile_check select-a $(PC_ARGS)
 
 profile-check-select-b:
 	uv run python -m scripts.mod.profile_check select-b $(PC_ARGS)
@@ -250,3 +256,6 @@ profile-check-build-c:
 
 profile-check:
 	uv run python -m scripts.mod.profile_check check $(PC_ARGS)
+
+profile-check-export-t3:
+	uv run python -m scripts.mod.profile_check export-t3 $(PC_ARGS)

@@ -19,7 +19,8 @@ of that lane with that profile (``View.rendered``; rows record ``profile_rendere
 the reference's being the recorded one); ``--any-fingerprint`` (only with an override
 for every lane present) also takes stale-fingerprint bundles; ``--family-include`` /
 ``--family-exclude`` filter on ``manifest.task_ref``; ``--seed-missing`` seeds a turn
-that recorded none (rows record ``seed_source``); ``--views-file`` probes the views
+that recorded none (rows record ``seed_source``); ``--views-manifest`` takes exactly
+a ``profile_check select-b`` manifest's views; ``--views-file`` probes the views
 ``profile_check build-c`` wrote, which have no recorded answer: no reference rows.
 """
 
@@ -178,6 +179,21 @@ def read_views(path: Path) -> list[View]:
         args += (int(x["seed"]), Rec.model_validate(x["source_call"]), "")
         out.append(View(*args, seed_source=x["seed_source"], counterfactual=True))
     return out
+
+
+def manifest_views(bundles: Sequence[Bundle], manifest: Json) -> list[View]:
+    """A ``profile_check select-b`` manifest's views, in its order, collected with its
+    selection (any fingerprint, its seed for a seedless turn); all found, or refused."""
+    s = manifest["selection"]
+    views, _ = collect(
+        bundles, pt.current_fingerprints(), HUGE, any_fingerprint=True,
+        include=s["include"], exclude=s["exclude"], seed_missing=s["seed_missing"],
+    )  # fmt: skip
+    at = {(v.run_id, v.turn): v for v in views}
+    want = [(str(r["run_id"]), str(r["turn"])) for r in manifest["views"]]
+    if lost := [k for k in want if k not in at]:
+        raise SystemExit(f"{len(lost)} manifest views not found (bundles changed?)")
+    return [at[k] for k in want]
 
 
 def overrides(specs: Sequence[str]) -> dict[str, str]:
@@ -428,30 +444,42 @@ def at_least_1(text: str) -> int:
     return n
 
 
+def file_sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def select(a: argparse.Namespace) -> tuple[list[View], Json, Json]:
-    """The views (from bundles or ``--views-file``) with any ``--profile`` override,
+    """The views (bundles, a manifest's, or a views file's) with any override,
     the funnel, and the selection the report records."""
-    over, path = overrides(a.profile), a.views_file
+    over, path, listed = overrides(a.profile), a.views_file, a.views_manifest
     sel: Json = {"profile_override": over or None}
     picks = (a.any_fingerprint, a.family_include, a.family_exclude)
-    if path and (any(picks) or a.seed_missing is not None):
-        raise SystemExit("--views-file takes no bundle selection option")
+    if (path or listed) and (any(picks) or a.seed_missing is not None):
+        raise SystemExit("--views-file/-manifest take no bundle selection option")
+    if listed and not a.evidence:
+        raise SystemExit("--views-manifest selects from --evidence")
     if path:
         views = read_views(path)[: a.max_views]
         funnel: Json = {"views_file": str(path), "selected": len(views)}
-        sel["views_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        sel["views_file_sha256"] = file_sha(path)
     else:
         bundles, fps = pt.load_bundles(a.evidence), pt.current_fingerprints()
-        views, funnel = collect(
-            bundles, fps, a.max_views, any_fingerprint=a.any_fingerprint,
-            include=a.family_include, exclude=a.family_exclude,
-            seed_missing=a.seed_missing,
-        )  # fmt: skip
+        if listed:
+            doc = json.loads(listed.read_text("utf-8"))
+            views = manifest_views(bundles, doc)[: a.max_views]
+            funnel = {"views_manifest": str(listed), "selected": len(views)}
+            sel["views_manifest_sha256"] = file_sha(listed)
+        else:
+            views, funnel = collect(
+                bundles, fps, a.max_views, any_fingerprint=a.any_fingerprint,
+                include=a.family_include, exclude=a.family_exclude,
+                seed_missing=a.seed_missing,
+            )  # fmt: skip
         refs = {b.manifest.run_id: b.manifest.task_ref for b in bundles}
         sel["families"] = dict(Counter(refs[v.run_id] for v in views))
     missing = sorted({v.lane for v in views} - over.keys())
-    if a.any_fingerprint and (missing or not over):
-        raise SystemExit(f"--any-fingerprint needs a --profile for each lane {missing}")
+    if (a.any_fingerprint or listed) and (missing or not over):
+        raise SystemExit(f"stale views need a --profile for each lane {missing}")
     views = [dataclasses.replace(v, render_as=over.get(v.lane)) for v in views]
     return views, funnel, sel
 
@@ -461,6 +489,9 @@ def main(argv: list[str] | None = None) -> int:
     src = parser.add_mutually_exclusive_group(required=True)
     src.add_argument("--evidence", type=Path, help="a dir of train bundles")
     src.add_argument("--views-file", type=Path, help="profile_check build-c's views")
+    parser.add_argument(
+        "--views-manifest", type=Path, help="select-b's, from --evidence"
+    )
     parser.add_argument(
         "--model", action="append", required=True, help=parse_model.__doc__
     )

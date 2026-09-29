@@ -12,7 +12,6 @@ import shutil
 from collections.abc import Collection
 from datetime import timedelta
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any, cast
 
 import httpx
@@ -40,7 +39,6 @@ from proxyloop.contract.llm import (
     LLMUnavailable,
     ModelRef,
 )
-from proxyloop.contract.profiles import pl_cp_v3
 from proxyloop.contract.protocol import render_messages, render_prompt
 from proxyloop.kernel.session import run_session
 from proxyloop.llm.factory import make_client
@@ -457,27 +455,15 @@ def seedless(b: Bundle, run_id: str) -> Bundle:
     return Bundle(old.manifest, events, old.prompts)
 
 
-NEW_CP = "pl_cp_test"  # a candidate profile: pl_cp_v3 with another system text
-
-
-@pytest.fixture
-def candidate(monkeypatch: pytest.MonkeyPatch) -> str:
-    """A registered candidate cp profile (the revised profiles do not exist yet)."""
-    spec = dataclasses.replace(
-        pl_cp_v3.PROFILE, name=NEW_CP, system="You are a test voice.", p2_ids_sha256=""
-    )
-    monkeypatch.setattr(fp, "PROFILES", MappingProxyType({**fp.PROFILES, NEW_CP: spec}))
-    return NEW_CP
+NEW = {"cp": "pl_cp_v4", "user": "pl_user_v2"}  # the candidates (ADR-0026)
 
 
 def test_a_profile_override_renders_its_lane_and_rows_record_it(
-    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, candidate: str
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     found = views(evidence[0])
-    over = [
-        dataclasses.replace(v, render_as=candidate if v.lane == "cp" else None)
-        for v in found
-    ]
+    assert {v.profile for v in found}.isdisjoint(NEW.values())
+    over = [dataclasses.replace(v, render_as=NEW[v.lane]) for v in found]
     set_env(monkeypatch, "relay")
     sent = Sent()
     seams = {"relay": recording(sent, "relay", ["Okay."])}
@@ -486,14 +472,17 @@ def test_a_profile_override_renders_its_lane_and_rows_record_it(
     )
     bodies = [json.loads(b)["messages"] for b in sent["relay"]]
     for v, body in zip(over, bodies, strict=True):  # one arm: calls in view order
-        want = render_messages(v.view, candidate if v.lane == "cp" else v.profile)
+        want = render_messages(v.view, NEW[v.lane])
         assert body == [m.model_dump(include={"role", "content"}) for m in want]
-        if v.lane == "cp":
-            assert body[0]["content"] == "You are a test voice."
+        assert body[0]["content"] == fp.PROFILES[NEW[v.lane]].system
+        assert body != [
+            m.model_dump(include={"role", "content"})
+            for m in render_messages(v.view, v.profile)
+        ]
     for r in report["rows"]:
         recorded = next(v.profile for v in found if v.turn == r["turn"])
-        mine = r["lane"] == "cp" and r["model"] != pss.REFERENCE
-        assert r["profile_rendered"] == (candidate if mine else recorded)
+        mine = r["model"] != pss.REFERENCE
+        assert r["profile_rendered"] == (NEW[r["lane"]] if mine else recorded)
         assert r["seed_source"] == "recorded"
 
 
@@ -501,7 +490,6 @@ def test_profile_overrides_are_checked(
     evidence: tuple[Path, Sent],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    candidate: str,
 ) -> None:
     no_network(monkeypatch)
     args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "2", *MODELS]
@@ -518,8 +506,9 @@ def test_profile_overrides_are_checked(
     assert pss.main([*args, "--profile", "cp=pl_cp_v1"]) == 0
     plan = json.loads(capsys.readouterr().out)
     assert plan["profile_override"] == {"cp": "pl_cp_v1"}
-    assert pss.main([*args, "--profile", f"cp={candidate}"]) == 0
-    assert json.loads(capsys.readouterr().out)["profile_override"] == {"cp": candidate}
+    both = ["--profile", "cp=pl_cp_v4", "--profile", "user=pl_user_v2"]
+    assert pss.main([*args, *both]) == 0
+    assert json.loads(capsys.readouterr().out)["profile_override"] == NEW
     assert pss.main(args) == 0
     assert json.loads(capsys.readouterr().out)["profile_override"] is None
 
@@ -530,7 +519,7 @@ def test_any_fingerprint_needs_an_override_for_every_lane_present(
     no_network(monkeypatch)
     args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "99", *MODELS]
     for more in ([], ["--profile", "cp=pl_cp_v3"]):
-        with pytest.raises(SystemExit, match="--any-fingerprint needs a --profile"):
+        with pytest.raises(SystemExit, match="need a --profile for each lane"):
             pss.main([*args, "--any-fingerprint", *more])
     both = ["--profile", "cp=pl_cp_v3", "--profile", "user=pl_user_v1"]
     assert pss.main([*args, "--any-fingerprint", *both]) == 0
@@ -675,7 +664,44 @@ def test_a_views_file_takes_no_bundle_selection(
     path = views_file(views(evidence[0]), tmp_path / "c.json")
     args = ["--plan", "--views-file", str(path), "--max-views", "9", *MODELS]
     for more in (["--seed-missing", "1"], ["--family-exclude", "x"]):
-        with pytest.raises(SystemExit, match="takes no bundle selection"):
+        with pytest.raises(SystemExit, match="take no bundle selection"):
             pss.main([*args, *more])
     with pytest.raises(SystemExit):  # one source: bundles or a views file
         pss.main([*args, "--evidence", str(evidence[0])])
+
+
+def test_a_views_manifest_is_taken_exactly(
+    evidence: tuple[Path, Sent],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """``--views-manifest``: these views, in this order, stale or seedless alike."""
+    (new,) = pt.load_bundles(evidence[0])
+    found = views(evidence[0])
+    picked = [found[i] for i in (3, 0, 2)]  # any subset, any order
+    sel: dict[str, Any] = {"include": [], "exclude": [], "seed_missing": 9}
+    rows = [{"run_id": v.run_id, "turn": v.turn} for v in picked]
+    doc: dict[str, Any] = {"selection": sel, "views": rows}
+    assert [v.turn for v in pss.manifest_views([new], doc)] == [v.turn for v in picked]
+    lost = doc | {"views": [*rows, {"run_id": "gone", "turn": "t"}]}
+    with pytest.raises(SystemExit, match="1 manifest views not found"):
+        pss.manifest_views([new], lost)
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps(doc), "utf-8")
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(evidence[0]), "--views-manifest", str(path)]
+    args += ["--max-views", "99", *MODELS]
+    with pytest.raises(SystemExit, match="need a --profile for each lane"):
+        pss.main(args)
+    with pytest.raises(SystemExit, match="take no bundle selection"):
+        pss.main([*args, "--seed-missing", "1", "--profile", "cp=pl_cp_v4"])
+    assert (
+        pss.main([*args, "--profile", "cp=pl_cp_v4", "--profile", "user=pl_user_v2"])
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["views"] == 3 and plan["funnel"]["selected"] == 3
+    assert (
+        plan["views_manifest_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    )

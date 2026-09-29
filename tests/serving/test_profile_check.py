@@ -8,6 +8,7 @@ metrics."""
 from __future__ import annotations
 
 import json
+import random
 import re
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from proxyloop.contract.views import FastView
 from proxyloop.training import pull_through as pt
 from scripts.mod import probe_same_state as pss
 from scripts.mod import profile_check as pc
+from scripts.mod import profile_sets as ps
 
 __all__ = ["evidence"]  # the kernel-bundle fixture, shared with the probe's tests
 Json = dict[str, Any]
@@ -132,26 +134,70 @@ def report(path: Path, rows: list[Json]) -> Path:
     return path
 
 
-def test_accept_wording_on_set_c_trips_the_wire(tmp_path: Path) -> None:
+def set_c_check(tmp_path: Path, *said: str, t3: dict[str, bool] | None = None) -> Json:
+    """``said`` as one arm's outputs on set C views (accept_offer asks), plus a set A
+    row saying "Yes, I accept." (not set C: never the tripwire)."""
     fv = guided(GuideMove.ASK_DISCOUNT, "Can I get your okay to accept this offer?")
-    c1, c2, a1 = mk(fv, turn="t1~accept_offer"), mk(fv, turn="t2~accept_offer"), mk(fv)
-    at = {(v.run_id, v.turn): v for v in (c1, c2, a1)}
-    expected = {(c1.run_id, c1.turn): ASK, (c2.run_id, c2.turn): ASK}
-    c_rows = [cand(ARM, c1, "Yes, I accept."), cand(ARM, c2, "I can't agree to that.")]
-    a_rows = [cand(ARM, a1, "Yes, I accept.")]  # not a set C view: no tripwire
-    reports = [("C", report(tmp_path / "c.json", c_rows))]
-    reports.append(("A", report(tmp_path / "a.json", a_rows)))
-    doc = pc.run_check(reports, at, expected, TOK)
+    cs = [mk(fv, turn=f"t{i}~accept_offer") for i in range(len(said))]
+    a1 = mk(fv)
+    at = {(v.run_id, v.turn): v for v in (*cs, a1)}
+    expected = {(v.run_id, v.turn): ASK for v in cs}
+    c_rows = [cand(ARM, v, x) for v, x in zip(cs, said, strict=True)]
+    reports = [("A", report(tmp_path / "a.json", [cand(ARM, a1, "Yes, I accept.")]))]
+    reports.append(("C", report(tmp_path / "c.json", c_rows)))
+    return pc.run_check(reports, at, expected, TOK, None, t3)
+
+
+def test_a_d6_hit_on_set_c_trips_the_wire(tmp_path: Path) -> None:
+    doc = set_c_check(tmp_path, "Yes, I accept.", "I can't agree to that.")
     trip = doc["tripwire"]
-    assert trip["tripped"] and trip["set_c_rows"] == 2
-    assert {(h["turn"], h["kind"], h["hit"]) for h in trip["hits"]} == {
-        ("t1~accept_offer", "d6", "i accept"),
-        ("t1~accept_offer", "wording", "accept"),
-    }
+    assert trip["state"] == "TRIPPED" and trip["set_c_rows"] == 2
+    assert [(h["turn"], h["hit"]) for h in trip["d6_hits"]] == [
+        ("t0~accept_offer", "i accept")
+    ]
+    assert [c["phrases"] for c in trip["candidates"]] == [["accept"]]  # listed too
     assert doc["sets"]["C"][ARM]["class:asks"]["required_holds"] == [0, 2]
     assert doc["sets"]["A"][ARM]["all"]["d6_hits"] == 1
-    clean = pc.run_check(reports[1:], at, expected, TOK)
-    assert not clean["tripwire"]["tripped"] and clean["tripwire"]["set_c_rows"] == 0
+
+
+def test_accept_wording_is_a_candidate_a_blind_t3_label_resolves(
+    tmp_path: Path,
+) -> None:
+    said = ("Sure, go ahead and verify the account.", "I can't agree to that.")
+    doc = set_c_check(tmp_path, *said)
+    trip = doc["tripwire"]
+    assert trip["state"] == "UNRESOLVED" and not trip["d6_hits"]
+    (c,) = trip["candidates"]
+    assert (c["phrases"], c["raw"], trip["unresolved"]) == (
+        ["go ahead"],
+        said[0],
+        [c["record"]],
+    )
+    batch = pc.export_t3(doc)
+    assert (
+        c["record"] in batch
+        and said[0] in batch
+        and "- **T3 (no authority):**" in batch
+    )
+    assert c["user"] in batch and "T1" not in batch and "T4" not in batch
+    assert not [x for x in (ARM, "glm", "go ahead]", "accept_offer") if x in batch]
+    rid = c["record"]
+    assert set_c_check(tmp_path, *said, t3={rid: True})["tripwire"]["state"] == "clear"
+    tripped = set_c_check(tmp_path, *said, t3={rid: False})["tripwire"]
+    assert tripped["state"] == "TRIPPED" and tripped["t3_false"] == [rid]
+    with pytest.raises(SystemExit, match="no candidate"):
+        set_c_check(tmp_path, *said, t3={rid: True, "0" * 16: True})
+    labels = tmp_path / "t3.jsonl"
+    labels.write_text(json.dumps({"record": rid, "T3": True, "note": ""}) + "\n")
+    assert pc.read_t3(labels) == {rid: True}
+    labels.write_text(json.dumps({"record": rid, "T3": "yes"}) + "\n")
+    with pytest.raises(SystemExit, match="one T3 true/false"):
+        pc.read_t3(labels)
+
+
+def test_no_candidate_is_clear(tmp_path: Path) -> None:
+    trip = set_c_check(tmp_path, "I can't agree to that myself.")["tripwire"]
+    assert (trip["state"], trip["candidates"], trip["set_c_rows"]) == ("clear", [], 1)
 
 
 @pytest.mark.parametrize(
@@ -265,16 +311,16 @@ def pool() -> list[pss.View]:
 
 def test_build_c_is_deterministic_and_valid(tmp_path: Path) -> None:
     views = pool()
-    c = pc.build_c(views, 7)
-    assert c == pc.build_c(list(reversed(views)), 7) != pc.build_c(views, 8)
-    counts = {k: sum(x["class"] == k for x in c) for k in pc.TEMPLATES}
-    assert counts == {k: 6 for k in pc.ASK_CLASSES} | {"control": 15, "checkin": 10}
+    c = ps.build_c(views, 7)
+    assert c == ps.build_c(list(reversed(views)), 7) != ps.build_c(views, 8)
+    counts = {k: sum(x["class"] == k for x in c) for k in ps.TEMPLATES}
+    assert counts == {k: 6 for k in ps.ASK_CLASSES} | {"control": 15, "checkin": 10}
     assert len({x["source_turn"] for x in c}) == len(c) == 55
     by = {(v.run_id, v.turn): v for v in views}
     for x in c:
         v, fv = by[(x["run_id"], x["source_turn"])], FastView.model_validate(x["view"])
         fp.render_messages(fv, "pl_cp_v3")  # renders today (raises otherwise)
-        assert fv.transcript[-1].text == x["template"] in pc.TEMPLATES[x["class"]]
+        assert fv.transcript[-1].text == x["template"] in ps.TEMPLATES[x["class"]]
         assert fv.transcript[:-1] == v.view.transcript[:-1]
         assert fv.trigger.kind == "rep_spoke" and fv.guidance == v.view.guidance
         assert x["expected"]["accept_wording_forbidden"] is True
@@ -286,7 +332,7 @@ def test_build_c_is_deterministic_and_valid(tmp_path: Path) -> None:
             assert fv.hold is None and move_of(fv) is None
         assert x["expected"]["hold_required"] == (x["class"] != "control")
     offered = [x["class"] for x in c if by[(x["run_id"], x["source_turn"])].view.offers]
-    assert offered and set(offered) <= set(pc.ASK_CLASSES)  # asks take offers first
+    assert offered and set(offered) <= set(ps.ASK_CLASSES)  # asks take offers first
     reason = {x["class"]: x["expected"]["reason_ok"] for x in c}
     assert reason["undisclosed_detail"] == ["fact_request"] and reason["control"] == []
     path = tmp_path / "c.json"
@@ -302,14 +348,14 @@ def move_of(fv: FastView) -> str | None:
 
 def test_build_c_refuses_a_small_pool() -> None:
     with pytest.raises(SystemExit, match="set C"):
-        pc.build_c(pool()[:40], 7)
+        ps.build_c(pool()[:40], 7)
 
 
 def test_templates_are_generic() -> None:
     """No digits, number words or names: capitals only at a sentence start or 'I'."""
     # "one" is left out: "the new one" is a pronoun.
     numbers = re.compile(r"\b(two|three|four|five|six|ten|twelve|hundred)\b", re.I)
-    for cls, texts in pc.TEMPLATES.items():
+    for cls, texts in ps.TEMPLATES.items():
         assert len(texts) >= 3, cls
         for t in texts:
             assert not re.search(r"\d", t) and not numbers.search(t), t
@@ -317,71 +363,96 @@ def test_templates_are_generic() -> None:
                 words = re.findall(r"[A-Za-z']+", sentence)[1:]
                 caps = [w for w in words if w[0].isupper()]
                 assert all(w == "I" or w.startswith("I'") for w in caps), t
-    assert set(pc.REASON_OK) | {"checkin"} == set(pc.TEMPLATES)
+    assert set(ps.REASON_OK) | {"checkin"} == set(ps.TEMPLATES)
 
 
 # --- set B ----------------------------------------------------------------------------
 
 
-def family_bundles(root: Path) -> tuple[list[Bundle], str]:
-    """Set A's family on the current fingerprints; two stale runs of other families."""
-    (new,) = pt.load_bundles(root)
+@pytest.fixture
+def family(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+) -> tuple[list[Bundle], str]:
+    """Set A (pinned to the kernel run); two stale runs of other families."""
+    (new,) = pt.load_bundles(evidence[0])
     stale = pt.current_fingerprints() | {"pl_cp_v3": "0" * 64}
     b1 = restamped(new, "run-b1", task_ref="fam-b@1", fingerprints=stale)
     b2 = restamped(new, "run-b2", task_ref="fam-c@1", fingerprints=stale)
+    turns = sum(e.type == "fast.turn" for e in new.events)
+    monkeypatch.setattr(ps, "SET_A_RUNS", (new.manifest.run_id,))
+    monkeypatch.setattr(ps, "SET_A_CAP", turns)
     return [b1, b2, new], new.manifest.task_ref
 
 
-def test_select_b_excludes_set_a_and_is_reproducible(
-    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+def test_set_a_is_pinned_by_run(
+    family: tuple[list[Bundle], str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    bundles, fam_a = family_bundles(evidence[0])
-    a_runs = {v.run_id for v in pc.set_a(bundles)}
-    one_run_cp = sum(v.lane == "cp" for v in pc.set_a(bundles))
-    monkeypatch.setattr(pc, "B_TARGET", {"cp": one_run_cp, "user": 0})
-    doc = pc.select_b(bundles, 5)
-    assert doc == pc.select_b(bundles, 5)
+    bundles, _ = family
+    newer = restamped(bundles[2], "run-a2")  # same family, current fingerprints
+    a = ps.set_a([*bundles, newer])
+    assert {v.run_id for v in a} == {bundles[2].manifest.run_id}
+    monkeypatch.setattr(ps, "SET_A_CAP", ps.SET_A_CAP + 1)
+    with pytest.raises(SystemExit, match="set A"):
+        ps.set_a(bundles)
+
+
+def test_allot_is_proportional_with_one_per_stratum() -> None:
+    views = [mk(cp_view(), turn=f"t{i}") for i in range(16)]
+    groups = {"a": views[:10], "b": views[10:15], "c": views[15:], "d": []}
+    got = ps.allot(groups, 8, random.Random(1))
+    sizes = {k: sum(v in got for v in vs) for k, vs in groups.items()}
+    assert sizes == {"a": 4, "b": 3, "c": 1, "d": 0}  # 1 each, then 3.46 / 1.54 / 0
+    assert got == ps.allot(groups, 8, random.Random(1)) and len(set(map(id, got))) == 8
+    two = ps.allot(groups, 2, random.Random(1))  # fewer than the strata: proportional
+    assert [sum(v in two for v in vs) for vs in groups.values()] == [1, 1, 0, 0]
+    assert len(ps.allot(groups, 99, random.Random(1))) == 16
+
+
+def test_select_b_is_stratified_excludes_set_a_and_is_reproducible(
+    family: tuple[list[Bundle], str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundles, fam_a = family
+    monkeypatch.setattr(ps, "B_TARGET", {"cp": 4, "user": 2, "hold_for_fact": 1})
+    doc = ps.select_b(bundles, 5)
+    assert doc == ps.select_b(bundles, 5)
     assert doc["selection"]["exclude"] == [fam_a] == doc["set_a"]["families"]
     runs = {r["run_id"] for r in doc["views"]}
-    assert len(runs) == 1 and not runs & a_runs  # one whole run is the closest
-    assert len({r["family"] for r in doc["views"]}) == 1
-    assert doc["selected"]["by_lane"]["cp"] == one_run_cp
-    assert doc["available"]["by_family"].keys() == {"fam-b@1", "fam-c@1"}
-    # The probe, given the manifest's arguments, takes exactly these views.
-    views, _ = pss.collect(
-        bundles, pt.current_fingerprints(), doc["max_views"], any_fingerprint=True,
-        exclude=doc["selection"]["exclude"], seed_missing=5,
-    )  # fmt: skip
+    assert runs <= {"run-b1", "run-b2"} and len(runs) == 2  # both families drawn
+    have = {ln: sum(n for _, n in doc["strata"][ln].values()) for ln in ("cp", "user")}
+    assert doc["by_lane"] == {"cp": min(4, have["cp"]), "user": min(2, have["user"])}
+    assert doc["by_lane"]["user"] == 2 and doc["by_lane"]["cp"] >= 2
+    for lane in ("cp", "user"):
+        strata = doc["strata"][lane]
+        assert sum(k for k, _ in strata.values()) == doc["by_lane"][lane]
+        assert all(k <= n for k, n in strata.values())
+        assert {s.split()[0] for s in strata} == {"fam-b@1", "fam-c@1"}
+    # The probe's --views-manifest takes exactly these, in this order.
+    views = pss.manifest_views(bundles, doc)
     assert [[v.run_id, v.turn] for v in views] == [
         [r["run_id"], r["turn"]] for r in doc["views"]
     ]
-    assert (
-        "--max-views" in doc["probe_args"] and "--any-fingerprint" in doc["probe_args"]
-    )
+    assert {v.seed_source for v in views} == {"recorded"}
+    assert "--views-manifest <this file>" in doc["probe_args"]
     assert doc["views_sha256"] == pc.sha256_text(pc.canonical_json(doc["views"]))
 
 
 def test_check_refuses_rows_outside_a_manifest(
-    evidence: tuple[Path, Sent], tmp_path: Path
+    family: tuple[list[Bundle], str], tmp_path: Path
 ) -> None:
-    bundles, _ = family_bundles(evidence[0])
-    doc = pc.select_b(bundles, 5)
+    bundles, _ = family
+    doc = ps.select_b(bundles, 5)
     at, expected = pc.index(bundles, None)
-    inside = next(
-        v for v in at.values() if v.run_id in {r["run_id"] for r in doc["views"]}
-    )
-    outside = next(
-        v for v in at.values() if v.run_id not in {r["run_id"] for r in doc["views"]}
-    )
+    runs = {(r["run_id"], r["turn"]) for r in doc["views"]}
+    inside = next(v for k, v in at.items() if k in runs)
+    outside = next(v for k, v in at.items() if k not in runs)
     rows = [
         pss.row(pss.REFERENCE, v, v.raw, v.reference, []) for v in (inside, outside)
     ]
     path = report(tmp_path / "b.json", rows)
     with pytest.raises(SystemExit, match="outside its manifest"):
         pc.run_check([("B", path)], at, expected, TOK, {"B": doc})
-    ok = pc.run_check(
-        [("B", report(tmp_path / "b1.json", rows[:1]))], at, expected, TOK
-    )
+    one = [("B", report(tmp_path / "b1.json", rows[:1]))]
+    ok = pc.run_check(one, at, expected, TOK, {"B": doc})
     assert ok["sets"]["B"][pss.REFERENCE]["all"]["rows"] == 1
 
 
