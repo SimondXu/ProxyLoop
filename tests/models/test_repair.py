@@ -38,6 +38,13 @@ EXPECTED: dict[str, DecisionPoint | None] = {
     "c09_v2_hold_for_fact": None,  # guidance: not rep_spoke
     "c10_v3_empty": None,  # call_connected: not rep_spoke
     "c11_v3_hold_for_fact": None,  # guidance: not rep_spoke
+    "c12_v4_empty": None,  # call_connected: not rep_spoke
+    "c13_v4_hold_for_decision": None,  # guidance: not rep_spoke
+    "c14_v4_persisted_moves": "offer",
+    "c15_v4_over_budget": None,  # hold_wait
+    "u07_v2_empty": None,
+    "u08_v2_user_msg": None,
+    "u09_v2_over_budget": "approval",
     "u01_empty": None,
     "u02_user_msg": None,
     "u03_ask_user": None,

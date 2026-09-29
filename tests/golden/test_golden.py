@@ -9,7 +9,12 @@ from typing import Any
 import pytest
 from tests.golden.cases import CASES, GOLDEN, Case
 
-from proxyloop.contract.protocol import OMITTED_ACTIONS, OMITTED_LINES, render_messages
+from proxyloop.contract.protocol import (
+    CONTEXT_BUDGET_CHARS,
+    OMITTED_ACTIONS,
+    OMITTED_LINES,
+    render_messages,
+)
 from proxyloop.contract.state import Mandate, PrivateState
 from proxyloop.contract.views import FastView
 
@@ -50,6 +55,8 @@ def test_golden_set_covers_the_acceptance_cases() -> None:
         "pl_cp_v1",
         "pl_cp_v2",
         "pl_cp_v3",
+        "pl_cp_v4",
+        "pl_user_v2",
     }
     user_text = {c.name: _golden(c)["messages"][1]["content"] for c in CASES}
     assert "PENDING APPROVAL: (none)" in user_text["u01_empty"]
@@ -62,6 +69,27 @@ def test_golden_set_covers_the_acceptance_cases() -> None:
     assert OMITTED_ACTIONS in user_text["c07_over_budget_actions"]
     assert "- action number 11" in user_text["c07_over_budget_actions"]
     assert "(@hold fact_request)." in user_text["c09_v2_hold_for_fact"]
+    # ADR-0026: the four new move texts render, as new and as persisted guidance
+    assert (
+        "hold a moment; end with `@hold decision`. (offer:o1.monthly_price"
+        in (user_text["c13_v4_hold_for_decision"])
+    )
+    persisted = user_text["c14_v4_persisted_moves"]
+    for text in (
+        "- Give only the account details given here, so they can verify the account.",
+        "hold a moment; end with `@hold fact_request`.",
+        "- Thank them and say goodbye; end with `@end_call`.",
+    ):
+        assert text in persisted
+    for name in ("u09_v2_over_budget", "c15_v4_over_budget"):
+        assert OMITTED_LINES in user_text[name]
+        assert OMITTED_ACTIONS.removeprefix("- ") in user_text[name]
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
+def test_every_golden_fits_the_context_budget(case: Case) -> None:
+    system, user = _golden(case)["messages"]
+    assert len(system["content"]) + len(user["content"]) <= CONTEXT_BUDGET_CHARS
 
 
 def _private_values(private: PrivateState) -> set[str]:
