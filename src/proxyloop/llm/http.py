@@ -12,6 +12,10 @@ hashed). The success record is also yielded or returned, per the contract.
 Retry rule (AGENTS rules 6 and 12): at most one retry, only for a connection
 failure before the first token. Everything else raises ``LLMUnavailable`` at once,
 with its record; a malformed body is such a failure, never a raw exception.
+
+A stream is a success only if it carries a finish reason (and ``[DONE]`` or the
+usage chunk). One without, empty or not, is an ``EndpointError`` and so
+``LLMUnavailable``: it is not a connection failure, so it is not retried.
 """
 
 from __future__ import annotations
@@ -138,9 +142,11 @@ class Attempt:
                 self.finish_reason = reason
 
     def complete(self) -> bool:
-        """A stream finished: ``[DONE]``, or a finish reason and the usage chunk."""
+        """A stream finished only if the model said so: a finish reason, then
+        ``[DONE]`` or the usage chunk. ``[DONE]`` alone (an empty or cut-off
+        stream) is not a finish."""
 
-        return self.saw_done or (self.finish_reason is not None and bool(self.usage))
+        return self.finish_reason is not None and (self.saw_done or bool(self.usage))
 
     def record(
         self, t_end: int, response: str | None, error: str | None = None
