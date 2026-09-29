@@ -32,12 +32,26 @@ export function approvalStatusText(v: CardView, events: Ev[]): string {
   return `${WORDS[v.status]}${words && (v.status === "stale" || v.status === "refused") ? `: ${words}` : ""}`;
 }
 
-/** "Accept $78 a month for 24 months?", from the card's own rows. */
-export function headline(rows: TermRow[]): string {
+/** "$78 a month for 24 months" (no term: "$78 a month"), from the card's own rows; null without a monthly price. */
+function priceTerm(rows: TermRow[]): string | null {
   const price = rows.find((r) => r.field === "monthly_price")?.value;
   const term = rows.find((r) => r.field === "term_months")?.value;
-  if (!price) return "Accept this offer?";
-  return `Accept ${whole(price)} a month${term ? ` for ${term}` : ""}?`;
+  return price ? `${whole(price)} a month${term ? ` for ${term}` : ""}` : null;
+}
+
+/** "Accept $78 a month for 24 months?", from the card's own rows. */
+export function headline(rows: TermRow[]): string {
+  const terms = priceTerm(rows);
+  return terms ? `Accept ${terms}?` : "Accept this offer?";
+}
+
+/**
+ * The verified receipt's headline (S1-SYS-80), "Accepted: $78 a month for 24 months.", from the approved card's
+ * rows as headline() reads them; null without a monthly price (the receipt then shows its title).
+ */
+export function acceptedHeadline(rows: TermRow[]): string | null {
+  const terms = priceTerm(rows);
+  return terms && `Accepted: ${terms}.`;
 }
 
 // The mandate in force: granted and not superseded, tightened or withdrawn since.
