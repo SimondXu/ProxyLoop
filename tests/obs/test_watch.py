@@ -6,12 +6,13 @@ refusal codes and offer_slots' naming refusal text."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, get_args
 
 import pytest
 from tests.obs.path_bundle import P, Run
 
-from proxyloop.contract.state import ReadbackSlot
+from proxyloop.contract.state import Blackboard, ChannelState, Line
 from proxyloop.obs import watch
 from proxyloop.slow import offer_slots
 from proxyloop.slow.result import Code
@@ -180,12 +181,14 @@ def test_no_rep_policy_is_not_observable() -> None:
 
 # B5: Slow tool refusals by code and tool, S1-SYS-85 naming refusals apart.
 def _naming_text(field: str, line: str) -> str:
-    role = "credit" if field.startswith("credit:") else "one_time"
-    slot = ReadbackSlot(field=field, value="500", unit="usd_minor", role=role,
-                        status="unknown", source_utt="cp-1")  # fmt: skip
-    problems = offer_slots._named(slot, line)  # pyright: ignore[reportPrivateUsage]
-    assert problems
-    return offer_slots.refused(problems)
+    """offer_slots' own naming refusal (S1-SYS-91: with its tails)."""
+    lines = (Line(utt_id="cp-1", speaker="partner", text=line),)
+    bb = Blackboard(channels={"user": ChannelState(),
+                              "cp": ChannelState(lines=lines)})  # fmt: skip
+    slot = {"field": field, "value": "500", "utt_ref": "cp-1"}
+    got = offer_slots.record_offer(bb, "o1", [slot], 0, datetime.now(UTC))
+    assert not got.ok and got.code == "invalid_args", got.text
+    return got.text
 
 
 def test_the_refusal_codes_are_slows() -> None:
@@ -211,7 +214,8 @@ def test_slow_refusals_break_out_naming() -> None:
     assert got["by_tool"] == {"finish": 1, "guide_fast": 1, "record_offer": 3,
                               "share_fact": 1}  # fmt: skip
     by = {"fee:generic_word": 1, "fee:not_said": 1}
-    assert got["naming"] == {"count": 2, "seqs": [r.seq(g), r.seq(u)], "by": by}
+    assert got["naming"] == {"count": 2, "seqs": [r.seq(g), r.seq(u)], "by": by,
+                             "lower_bound": []}  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -236,7 +240,8 @@ def test_a_shape_refusal_echoing_the_naming_phrase_is_not_naming(
     r = Run()
     r.tool("record_offer", False, "invalid_args", offer_slots.refused([problem]))
     got = _item(r, "slow_refusals")
-    assert got["count"] == 1 and got["naming"] == {"count": 0, "seqs": [], "by": {}}
+    assert got["count"] == 1
+    assert got["naming"] == {"count": 0, "seqs": [], "by": {}, "lower_bound": []}
 
 
 def test_a_credit_naming_refusal_is_named_credit() -> None:
@@ -245,7 +250,7 @@ def test_a_credit_naming_refusal_is_named_credit() -> None:
     refusal = r.tool("record_offer", False, "invalid_args", text)
     naming = _item(r, "slow_refusals")["naming"]
     assert naming == {"count": 1, "seqs": [r.seq(refusal)],
-                      "by": {"credit:generic_word": 1}}  # fmt: skip
+                      "by": {"credit:generic_word": 1}, "lower_bound": []}  # fmt: skip
     both = _naming_text("credit:paperless_credit", "a credit of $5")  # 2 problems
     r.tool("record_offer", False, "invalid_args", both)
     by = _item(r, "slow_refusals")["naming"]["by"]
@@ -389,7 +394,9 @@ def test_summary_per_family_lists_runs_and_totals() -> None:
     fams: Any = s["families"]
     fam = fams["fam-a"]
     assert fam["runs"] == 2
-    assert fam["slow_refusals"] == {"total": 2, "runs": ["r1"], "naming": 0}
+    assert fam["slow_refusals"] == {"total": 2, "runs": ["r1"], "naming": 0,
+                                    "naming_lower_bound": 0,
+                                    "naming_unparsed": 0}  # fmt: skip
     assert fam["identity_strikes"] == {"total": 0, "runs": [], "unknown": 2}
     text = watch.block(s, "git_sha:abc")
     assert text.splitlines()[0] == f"== watch git_sha abc ({watch.LABEL})"
