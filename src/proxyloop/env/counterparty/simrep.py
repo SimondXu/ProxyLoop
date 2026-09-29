@@ -71,7 +71,10 @@ class SimRep:
             if not block or self.policy.done:
                 return RepTurn((), (), "")
             policy, made = self.policy, self.policy.made()
-            acts = await self.ear.classify(block, made, policy.open_offers())
+            verified = policy.state not in ("GREET", "IDENTIFY")
+            acts = await self.ear.classify(
+                block, made, policy.open_offers(), verified=verified
+            )
             listed = frozenset(made)  # ADR-0021: only these could have been heard
             steps: list[Step] = [
                 (d, h.text, (h.utt_id, ear_ev))
