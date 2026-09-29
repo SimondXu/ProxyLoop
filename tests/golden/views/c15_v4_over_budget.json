@@ -1,0 +1,1638 @@
+{
+ "profile": "pl_cp_v4",
+ "view": {
+  "lane": "cp",
+  "brief": "You are calling Contoso Mobile to ask for a lower monthly price.",
+  "private_summary": null,
+  "public_summary": "The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.",
+  "action_log": [
+   "action number 0: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 1: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 2: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 3: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 4: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 5: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 6: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 7: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 8: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 9: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 10: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. ",
+   "action number 11: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. "
+  ],
+  "offers": [
+   {
+    "offer_ref": "o1",
+    "revision": 1,
+    "slots": [
+     {
+      "field": "monthly_price",
+      "value": "6500",
+      "unit": "usd_minor",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "term_months",
+      "value": "12",
+      "unit": "months",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "fee:activation",
+      "value": "3000",
+      "unit": "usd_minor",
+      "role": "one_time",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "changes_none",
+      "value": "true",
+      "unit": "bool",
+      "role": "change",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     },
+     {
+      "field": "expires",
+      "value": "2026-10-15",
+      "unit": "iso",
+      "role": "expiry",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     }
+    ],
+    "status": "open",
+    "expires_ms": null,
+    "terms_hash": "c0ffee"
+   }
+  ],
+  "public_facts": [
+   {
+    "key": "competitor_quote",
+    "value": "$55.00 a month from Northwind",
+    "source": "shareable",
+    "source_ref": "task"
+   },
+   {
+    "key": "rep.name",
+    "value": "Jordan",
+    "source": "cp_utt",
+    "source_ref": "c2"
+   }
+  ],
+  "pending_approval": null,
+  "guidance": [
+   {
+    "move": "cite_competitor",
+    "slots": [
+     "fact:competitor_quote"
+    ]
+   },
+   {
+    "move": "ask_readback",
+    "slots": [
+     "offer:o1"
+    ]
+   },
+   {
+    "move": "hold_for_decision",
+    "slots": [
+     "offer:o1.monthly_price",
+     "offer:o1.fee:activation"
+    ]
+   }
+  ],
+  "hold": {
+   "reason": "decision",
+   "since_ms": 80000
+  },
+  "status": "IN_CALL",
+  "transcript": [
+   {
+    "utt_id": "c0",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c1",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c2",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c3",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c4",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c5",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c6",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c7",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c8",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c9",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c10",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c11",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c12",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c13",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c14",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c15",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c16",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c17",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c18",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c19",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c20",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c21",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c22",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c23",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c24",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c25",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c26",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c27",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c28",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c29",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c30",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c31",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c32",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c33",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c34",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c35",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c36",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c37",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c38",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c39",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c40",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c41",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c42",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c43",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c44",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c45",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c46",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c47",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c48",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c49",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c50",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c51",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c52",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c53",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c54",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c55",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c56",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c57",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c58",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c59",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c60",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c61",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c62",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c63",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c64",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c65",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c66",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c67",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c68",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c69",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c70",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c71",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c72",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c73",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c74",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c75",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c76",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c77",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c78",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c79",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c80",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c81",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c82",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c83",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c84",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c85",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c86",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c87",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c88",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c89",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c90",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c91",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c92",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c93",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c94",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c95",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c96",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c97",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c98",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c99",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c100",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c101",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c102",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c103",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c104",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c105",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c106",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c107",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c108",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c109",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c110",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c111",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c112",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c113",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c114",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c115",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c116",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c117",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c118",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c119",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c120",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c121",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c122",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c123",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c124",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c125",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c126",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c127",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c128",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c129",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c130",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c131",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c132",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c133",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c134",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c135",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c136",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c137",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c138",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c139",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c140",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c141",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c142",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c143",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c144",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c145",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c146",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c147",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c148",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c149",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c150",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c151",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c152",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c153",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c154",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c155",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c156",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c157",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c158",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c159",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c160",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c161",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c162",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c163",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c164",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c165",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c166",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c167",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c168",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c169",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c170",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c171",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c172",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c173",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c174",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c175",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c176",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c177",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c178",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c179",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c180",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c181",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c182",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c183",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c184",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c185",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c186",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c187",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c188",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c189",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c190",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c191",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c192",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c193",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c194",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c195",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c196",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c197",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c198",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c199",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c200",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c201",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c202",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c203",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c204",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c205",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c206",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c207",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c208",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c209",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c210",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c211",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c212",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c213",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c214",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c215",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c216",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c217",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c218",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c219",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c220",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c221",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c222",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c223",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c224",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c225",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c226",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c227",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c228",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c229",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c230",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c231",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c232",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c233",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c234",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c235",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c236",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c237",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c238",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c239",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c240",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c241",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c242",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c243",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c244",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c245",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c246",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c247",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c248",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c249",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c250",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c251",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c252",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c253",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c254",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c255",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c256",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c257",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c258",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c259",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c260",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c261",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c262",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c263",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c264",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c265",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c266",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c267",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c268",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c269",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c270",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c271",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c272",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c273",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c274",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c275",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c276",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c277",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c278",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c279",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c280",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c281",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c282",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c283",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c284",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c285",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c286",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c287",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c288",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c289",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c290",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c291",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c292",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c293",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c294",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c295",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c296",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c297",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c298",
+    "speaker": "agent",
+    "text": "We keep talking about the plan, the price and the fees."
+   },
+   {
+    "utt_id": "c299",
+    "speaker": "partner",
+    "text": "We keep talking about the plan, the price and the fees."
+   }
+  ],
+  "trigger": {
+   "kind": "hold_wait",
+   "msg_id": null,
+   "wait_s": 10
+  },
+  "slow_msg": null
+ },
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the voice of an AI assistant on a live phone call with a company representative, calling on behalf of your customer. You have already said you are an AI assistant. A CASE AGENT behind you plans the call. CASE AGENT GUIDANCE shows its latest guidance and stays shown after you act on it: when the trigger says it is new, do it; otherwise do it only if the conversation shows it is not done yet, and else respond to the representative. Say only facts in the context; never invent prices, quotes or personal data. Never agree to, accept or commit to anything yourself.\n\nWrite what you say first, then any directives, each on its own line:\n- Speech: 1-2 short sentences, natural on the phone, numbers said naturally; no markdown, lists or stage directions. Always speak, unless you choose silence: then output only `@wait`.\n- `@slow: fact <key>=<value>`: one line for each price, fee, term, date or change the representative just stated, and nothing else on that line. The key uses only lowercase letters, digits and underscores (monthly_price); the value is as they said it.\n- `@slow: <one plain sentence>`: anything else from the representative the case agent should know. Relay only what the representative just said; when they did not just speak, relay nothing.\n- `@hold <reason>`: you are stalling: you say you must check with your customer and ask them to wait. Stall and hold only when the guidance says so, or when the representative asks you to accept, agree to or choose something (or acts as if you already had), or asks for a detail you were not given. Reasons: offer (accept an offer), decision (anything else to agree to or choose), fact_request (a detail you lack), pressure (they demand an answer now), unclear (you cannot tell what they want); if the guidance names one, use it. No hold when you ask them something, answer them, or give details you were given: they speak next. While HOLD STATUS shows a hold and you are still waiting, answer briefly and repeat that `@hold` line; a turn without one ends the hold.\n- `@end_call`: the last line, only when the guidance says to close the call.\nOrder: speech, `@slow:` lines, at most one `@hold` or `@wait`, `@end_call`. Never a directive inside a sentence, never speech after a directive.\n\nFormat examples (the content is only illustrative).\nThe representative stated two terms:\nThank you, I have noted that.\n@slow: fact setup_fee=waived\n@slow: fact autopay=required\n@slow: they say the waiver ends if autopay is cancelled\nThe representative asks you to accept:\nI can't agree to that myself. Please hold a moment while I check with my customer.\n@hold offer"
+  },
+  {
+   "role": "user",
+   "content": "TASK CONTEXT: You are calling Contoso Mobile to ask for a lower monthly price.\n\nCASE AGENT SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- (earlier actions omitted)\n- action number 3: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 4: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 5: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 6: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 7: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 8: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 9: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 10: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n- action number 11: recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. recorded a fact and a note. \n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [heard]; term_months 12 months [heard]; fee:activation $30.00 [heard]; changes_none true [unknown]; expires 2026-10-15 [unknown]\n\nCASE AGENT GUIDANCE:\n- Mention the competitor quote given here. (fact:competitor_quote = $55.00 a month from Northwind)\n- Ask them to read back every term of the offer: monthly price, term, fees, changes and expiry. (offer:o1 = offer o1)\n- Say you need to check with your customer and ask them to hold a moment; end with `@hold decision`. (offer:o1.monthly_price = $65.00; offer:o1.fee:activation = $30.00)\n\nHOLD STATUS: on hold (decision)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\n(earlier conversation omitted)\n\nTRIGGER: You have kept the representative waiting for 10 seconds.\n\nRespond now per the output format."
+  }
+ ]
+}

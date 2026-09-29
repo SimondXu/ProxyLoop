@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
+from proxyloop.contract.protocol import PROFILES
 from proxyloop.contract.state import (
     ApprovalCard,
     Blackboard,
@@ -57,6 +58,7 @@ USER_BRIEF = "Help Dana Reyes lower her Contoso Mobile bill. Keep her informed."
 CP_BRIEF = "You are calling Contoso Mobile to ask for a lower monthly price."
 V2 = "pl_cp_v2"
 V3 = "pl_cp_v3"
+V4, USER_V2 = "pl_cp_v4", "pl_user_v2"  # candidates (ADR-0026)
 
 
 def _slot(field: str, value: str, unit: str, role: str, status: str) -> ReadbackSlot:
@@ -183,6 +185,11 @@ GUIDES = (
     ),
 )
 HOLD_FOR_FACT = Guide(move=GuideMove.HOLD_FOR_FACT)
+V4_MOVES = (
+    Guide(move=GuideMove.IDENTIFY),
+    HOLD_FOR_FACT,
+    Guide(move=GuideMove.CLOSE_CALL),
+)
 ACTIONS = tuple(
     f"action number {i}: " + "recorded a fact and a note. " * 32 for i in range(12)
 )
@@ -197,12 +204,14 @@ class Case:
     brief: str
 
     def view(self) -> FastView:
-        build = view_user if self.profile == "pl_user_v1" else view_cp
+        build = view_user if PROFILES[self.profile].lane == "user" else view_cp
         return build(self.bb, self.trigger, self.brief)
 
 
-def _user(name: str, bb: Blackboard, trigger: Trigger) -> Case:
-    return Case(name, "pl_user_v1", bb, trigger, USER_BRIEF)
+def _user(
+    name: str, bb: Blackboard, trigger: Trigger, profile: str = "pl_user_v1"
+) -> Case:
+    return Case(name, profile, bb, trigger, USER_BRIEF)
 
 
 def _cp(
@@ -285,5 +294,49 @@ CASES = (
         _bb(public=_public(guidance_cp=(GUIDES[0], HOLD_FOR_FACT))),
         Trigger(kind="guidance"),
         profile=V3,
+    ),
+    # pl_cp_v4 and pl_user_v2 (ADR-0026, candidates): a new system text, the four
+    # new move texts (as new guidance and as persisted guidance), the worst case
+    _cp("c12_v4_empty", Blackboard(), Trigger(kind="call_connected"), profile=V4),
+    _cp(
+        "c13_v4_hold_for_decision",
+        _bb(public=_public(guidance_cp=GUIDES)),
+        Trigger(kind="guidance"),
+        profile=V4,
+    ),
+    _cp(
+        "c14_v4_persisted_moves",
+        _bb(public=_public(guidance_cp=V4_MOVES)),
+        Trigger(kind="rep_spoke"),
+        profile=V4,
+    ),
+    _cp(
+        "c15_v4_over_budget",
+        _bb(
+            cp=_long("c", 300),
+            public=_public(
+                action_log=ACTIONS,
+                guidance_cp=GUIDES,
+                cp_hold=HoldState(reason="decision", since_ms=80_000),
+            ),
+        ),
+        Trigger(kind="hold_wait", wait_s=10),
+        profile=V4,
+    ),
+    _user("u07_v2_empty", Blackboard(), Trigger(kind="session_start"), USER_V2),
+    _user("u08_v2_user_msg", _bb(), Trigger(kind="user_msg"), USER_V2),
+    _user(
+        "u09_v2_over_budget",
+        _bb(
+            user=_long("u", 300),
+            public=_public(
+                offers={"o1": CONFIRMED},
+                action_log=ACTIONS,
+                status=CaseStatus.AWAITING_APPROVAL,
+            ),
+            private=PRIVATE.model_copy(update={"pending_approval": CARD}),
+        ),
+        Trigger(kind="approval_card"),
+        USER_V2,
     ),
 )
