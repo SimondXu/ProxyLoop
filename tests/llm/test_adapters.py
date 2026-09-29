@@ -272,6 +272,51 @@ def test_finish_and_usage_without_done_succeed(monkeypatch: Any) -> None:
     asyncio.run(assert_text_conformance(llm, FAST))
 
 
+def _unfinished_chunk(ref: ModelRef, delta: dict[str, str]) -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-77a1",
+        "model": ref.model_id,
+        "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+    }
+
+
+def test_an_empty_done_only_stream_is_unavailable_not_a_success(
+    monkeypatch: Any,
+) -> None:
+    """S1-SYS-93: no text, no finish_reason, zero usage, then [DONE] (seen on
+    TeamRouter gemini) is a failed call: one error record, no retry."""
+    wire = Recorder(stream_response(sse(_unfinished_chunk(GEMINI, {}))))
+    records: list[LLMCallRecord] = []
+    llm = client(monkeypatch, GEMINI, wire, records)
+    delivered, error = asyncio.run(drain(llm, HOSTED))
+    assert delivered == [] and len(wire.requests) == 1
+    assert records == [error.record]
+    assert error.record.error and "without finishing" in error.record.error
+    assert error.record.response_sha is None and error.record.finish_reason is None
+
+
+def test_text_and_done_without_a_finish_reason_is_unavailable(monkeypatch: Any) -> None:
+    chunks = [_unfinished_chunk(GEMINI, {"content": "Sure"})]
+    wire = Recorder(stream_response(sse(*chunks)))
+    records: list[LLMCallRecord] = []
+    delivered, error = asyncio.run(
+        drain(client(monkeypatch, GEMINI, wire, records), HOSTED)
+    )
+    assert delivered == ["Sure"] and len(wire.requests) == 1
+    assert records == [error.record] and error.record.error
+    assert error.record.response_sha == sha256_text("Sure")  # what was delivered
+
+
+@pytest.mark.parametrize("reason", ["stop", "length", "tool_calls"])
+def test_any_finish_reason_with_done_succeeds(monkeypatch: Any, reason: str) -> None:
+    chunks = chat_chunks(GEMINI, ["Sure."])
+    chunks[0]["choices"][0]["finish_reason"] = reason
+    llm = client(monkeypatch, GEMINI, Recorder(stream_response(sse(*chunks))))
+    record = asyncio.run(assert_text_conformance(llm, HOSTED))
+    assert record.finish_reason == reason and record.error is None
+
+
 def test_echoed_model_change_mid_stream_is_an_error(monkeypatch: Any) -> None:
     chunks = completion_chunks(QWEN, ["Hello", " there."])
     chunks[1]["model"] = "Qwen3.5-9B-live"
