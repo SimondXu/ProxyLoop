@@ -46,7 +46,7 @@ These are the repository rules for every coding agent. Product intent and invari
 
 ## Git flow (worktrees)
 - The session that dispatches you (the main root, or a lane lead for its own lane) creates your worktree with `scripts/root/new_worktree.sh <TASK-ID> task/<task-id> <owned globs…>`, which runs `git worktree add ../pl-wt/<TASK-ID> -b task/<task-id> origin/main` and writes the owned-paths grant.
-- Hooks enforce this for subagents (`.claude/hooks/`): an implementer's edits outside its grant are denied, no subagent runs state-changing git on the shared checkout or launches apps and installs, and an implementer that stops with uncommitted or no work is asked once to commit or explain.
+- Hooks enforce this for subagents (`.claude/hooks/`): an implementer's edits outside its grant are denied, and no subagent runs state-changing git on the shared checkout or launches apps and installs.
 - Work only inside it, and commit on your task branch with messages that start `<TASK-ID>: `.
 - Never push, merge, rebase `main`, force anything, or touch another worktree.
 - If `main` moved and you conflict, stop and report. The session that dispatched you updates the branch with `git merge origin/main` (never a rebase or force-push of a pushed branch).

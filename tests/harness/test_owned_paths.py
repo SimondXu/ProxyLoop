@@ -213,5 +213,4 @@ def test_settings_register_the_agent_hooks() -> None:
         ("PreToolUse", "Bash", "block_destructive.py"),
         ("PreToolUse", "Bash", "agent_bash.py"),
         ("PreToolUse", "Edit|Write|NotebookEdit|MultiEdit", "owned_paths.py"),
-        ("SubagentStop", "implementer", "done_gate.py"),
     }

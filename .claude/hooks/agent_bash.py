@@ -1,9 +1,10 @@
 """PreToolUse(Bash) hook for subagents (S1-ROOT-24). Denies state-changing git on the
-shared checkout (via `git -C`, the cwd or an earlier `cd`) and `git worktree` other
-than `list` anywhere; app launches and system installs (open -a/X.app, docker,
-colima, brew install, npm -g, pip install, sudo); and, for a `scout`, any write.
-Top-level sessions are never affected; a subagent's malformed input or unparseable
-command is denied. Heredoc bodies are data unless a shell runs them. Stdlib only."""
+shared checkout (via `git -C`, the cwd or an earlier `cd`), `git worktree` changes
+except from a ../pl-wt worktree onto ../pl-wt paths, app launches and system installs
+(open -a/X.app, docker, colima, brew install, npm -g, pip install, sudo), and any
+write by a `scout`. Top-level sessions are never affected; a subagent's malformed
+input or unparseable command is denied. Heredoc bodies are data unless a shell runs
+them. Stdlib only."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ SHARED_VERBS = {
     "fetch", "pull", "checkout", "switch", "reset", "merge", "rebase",
     "commit", "stash", "clean",
 }  # fmt: skip
+WORKTREE_VALUE_OPTS = {"-b", "-B", "--reason", "--expire"}
 GIT_VALUE_OPTS = {"-c", "--git-dir", "--work-tree", "--namespace", "--config-env"}
 READ_VERBS = {
     "log", "show", "diff", "status", "blame", "annotate", "grep", "ls-files",
@@ -74,6 +76,27 @@ def scout_git_ok(verb: str, rest: list[str]) -> bool:
     return False
 
 
+def worktree_reason(rest: list[str], rundir: str, shared: Path) -> str | None:
+    """`git worktree add|remove|...` only from a ../pl-wt worktree, only on paths
+    under ../pl-wt (never the shared checkout: the 2026-09-28 stray worktree)."""
+    plwt = shared.parent / "pl-wt"
+    paths: list[Path] = []  # an add's commit-ish resolves under the rundir: harmless
+    i = 1
+    while i < len(rest):
+        if rest[i] in WORKTREE_VALUE_OPTS:
+            i += 1
+        elif rest[i][:1] != "-":
+            paths.append(hl.real(os.path.join(rundir, hl.expand(rest[i]))))
+        i += 1
+    ok = [hl.real(rundir), *paths]
+    if all(hl.inside(p, plwt) and not hl.inside(p, shared) for p in ok):
+        return None
+    return (
+        "subagents run `git worktree` only from a ../pl-wt worktree and on paths "
+        f"under {plwt}, never on the shared checkout {shared}" + ASK
+    )
+
+
 def git_reason(args: list[str], cwd: str, shared: Path, scout: bool) -> str | None:
     target, i = cwd, 0
     while i < len(args) and args[i].startswith("-"):
@@ -83,9 +106,12 @@ def git_reason(args: list[str], cwd: str, shared: Path, scout: bool) -> str | No
     if i >= len(args):
         return None
     verb, rest = args[i], args[i + 1 :]
-    if verb == "worktree":  # anywhere: a stray worktree is the 2026-09-28 incident
-        ok = rest[:1] == ["list"]
-        return None if ok else "subagents never add, move or remove worktrees" + ASK
+    if verb == "worktree":
+        if rest[:1] == ["list"]:
+            return None
+        if scout:
+            return "a scout is read-only (`git worktree`)" + ASK
+        return worktree_reason(rest, target, shared)
     if scout and not scout_git_ok(verb, rest):
         return f"a scout is read-only (`git {verb}`)" + ASK
     flags = short_flags(rest)

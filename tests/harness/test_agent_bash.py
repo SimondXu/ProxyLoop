@@ -70,10 +70,13 @@ SHARED_GIT_DENIED = [
     "sh -s <<EOF\necho hi\ngit -C <SHARED> commit -m x\nEOF",
     "echo hi && git --no-pager -C <SHARED> merge x",
     "cd <SHARED>/pl-wt/stray && git commit -m x",  # a stray worktree is inside
-    # git worktree mutations are never a subagent's job, wherever they point
-    "git -C <WT> worktree add ../elsewhere",
-    "git worktree remove <PLWT>/T1",
-    "git -C <WT> worktree prune",
+    # git worktree changes: never from, or onto, the shared checkout
+    "git worktree remove <PLWT>/T1",  # cwd is the shared checkout
+    "git -C <SHARED> worktree prune",
+    "git -C <WT> worktree add <SHARED>/stray",
+    "git -C <WT> worktree add ../../pine/stray --detach",
+    "git -C <WT> worktree add /tmp/elsewhere",
+    "cd <WT> && git worktree add -b x <SHARED>/src/stray main",
 ]
 
 SHARED_GIT_ALLOWED = [
@@ -82,6 +85,12 @@ SHARED_GIT_ALLOWED = [
     "git -C <SHARED> status",
     "git -C <SHARED> diff origin/main",
     "git -C <SHARED> worktree list",
+    # the reviewer's review worktree (reviewer.md, S1-ROOT-23), verbatim
+    "git -C ../pl-wt/T1 worktree add --detach ../pl-wt/review-T1 abc123",
+    "git -C <WT> worktree add --detach <PLWT>/review-T1 abc123",
+    "git -C <WT> worktree add ../review-T1 -b r HEAD",
+    "cd <WT> && git worktree remove --force <PLWT>/review-T1",
+    "git -C <WT> worktree prune",
     "git -C <SHARED> branch -a",
     "git log",
     "cd <WT> && git commit -m 'S1-X: y'",
@@ -188,6 +197,7 @@ SCOUT_DENIED = [
     "git -C <WT> restore a",
     "git -C <WT> config user.name x",
     "git -C <WT> frobnicate",  # unknown verbs fail closed for a scout
+    "git -C <WT> worktree add ../review-T1 HEAD",
     "cd <WT> && git apply p.diff",
 ]
 
@@ -261,5 +271,3 @@ def test_the_hooks_run_under_system_python(layout: Layout) -> None:
     assert "deny" in layout.run("owned_paths.py", {**edit, **IMPL}, python=py)
     ok = {"tool_name": "Edit", "tool_input": {"file_path": str(layout.wt / "a.txt")}}
     assert layout.run("owned_paths.py", {**ok, **IMPL}, python=py) == ""
-    stop = {"stop_hook_active": False, "cwd": str(layout.wt), **IMPL}
-    assert '"block"' in layout.run("done_gate.py", stop, python=py)
