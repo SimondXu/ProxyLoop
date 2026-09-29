@@ -2,13 +2,15 @@
 
     python -m scripts.mod.teacher_select export --reports <probe json>... \
         --evidence runs --max-views 127 --out-dir <dir> --key-out <json outside it> \
-        --seed N [--views-per-batch 5]
+        --seed N [--views-per-batch 5] [--no-reference]
     python -m scripts.mod.teacher_select score --reports <probe json>... \
         --evidence runs --max-views 127 --key <json> --labels-dir <dir> \
-        [--costs <json>] --out <json> --md <md> [--seed 0] [--resamples 10000]
+        [--costs <json>] --out <json> --md <md> [--seed 0] [--resamples 10000] \
+        [--no-reference]
 
 Inputs: same-state probe reports (``probe_same_state``); an arm is its label (the full
-``<endpoint>:<model>@<effort>`` spec); views re-collected (``pss.collect``), matched
+``<endpoint>:<model>@<effort>`` spec); views re-collected (``views_of``: --evidence
+[--views-manifest] or --views-file with --no-reference; both commands), matched
 by (run_id, turn) and checked (``load``). ``checks``: every row, the reference's too.
 ``export``: blind judge batches; ``score``: the report. ``NOTES`` define the metrics.
 """
@@ -27,6 +29,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, fields
 from itertools import combinations
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -125,6 +128,9 @@ NOTES = {
     "delta over the whole batch; else null, never 0; usd_per_useful = usd / useful "
     "rows (TRAINING §7 cpue sense).",
     "dash": "A '-' cell is null: no denominator, or not known.",
+    "profile": "A row is checked and judged under its profile_rendered (else the "
+    "view's recorded profile): one judge block per (view, profile); one profile per "
+    "arm and lane; a pair of arms on different profiles is flagged different_prompts.",
 }
 
 
@@ -187,13 +193,21 @@ def directive_ok(items: Sequence[fp.TurnItem], v: pss.View) -> tuple[bool, int]:
     return held and ends == (move == "close_call"), 0
 
 
-def slots_stated(speech: str, v: pss.View) -> bool | None:
+def profile_of(row: Json, v: pss.View) -> str:
+    """The profile the row's prompt was rendered with (``NOTES['profile']``)."""
+    name = str(row.get("profile_rendered") or v.profile)
+    if name not in fp.PROFILES or fp.PROFILES[name].lane != v.lane:
+        raise SystemExit(f"{v.run_id} {v.turn}: {name!r} is not a {v.lane} profile")
+    return name
+
+
+def slots_stated(speech: str, v: pss.View, profile: str) -> bool | None:
     """D3: each slot value, read back from the rendered guidance line, in the speech."""
     if not v.view.guidance or not v.view.guidance[0].slots:
         return None
     g = v.view.guidance[0]
-    head = f"- {fp.PROFILES[v.profile].moves[g.move.value]} ("
-    user = fp.render_messages(v.view, v.profile)[1].content
+    head = f"- {fp.PROFILES[profile].moves[g.move.value]} ("
+    user = fp.render_messages(v.view, profile)[1].content
     body = next(x for x in user.splitlines() if x.startswith(head))[len(head) : -1]
     values: list[str] = []
     for n, slot in enumerate(g.slots):
@@ -213,16 +227,17 @@ def checks(row: Json, v: pss.View, tok: Tok) -> Json:
     """The deterministic checks of one row at its view (``NOTES``)."""
     if len(v.view.guidance) > 1:
         raise SystemExit(f"{v.run_id} {v.turn}: more than one guide; D2 assumes one")
+    profile = profile_of(row, v)
     if row["error"] is not None:
         return dict.fromkeys(HARD, False) | {"error": True, "authority_hits": []}
     raw: str = row["raw"]
-    items = fp.parse_turn(raw, v.lane, v.profile)
+    items = fp.parse_turn(raw, v.lane, profile)
     speech = " ".join(i.text for i in items if isinstance(i, fp.Speech))
     relays = [i for i in items if isinstance(i, fp.Relay)]
     relayed = " ".join(
         [r.text for r in relays] + [x for r in relays for _, x in r.facts]
     )
-    known = set(pss.numbers(fp.render_messages(v.view, v.profile)[1].content))
+    known = set(pss.numbers(fp.render_messages(v.view, profile)[1].content))
     invented = [n for n in pss.numbers(speech) + pss.numbers(relayed) if n not in known]
     hits, (d2, wrong) = authority(speech, v), directive_ok(items, v)
     n_tok = len(tok.encode(raw, add_special_tokens=False))
@@ -233,7 +248,7 @@ def checks(row: Json, v: pss.View, tok: Tok) -> Json:
     out: Json = {"error": False, "D2": d2, "D4": not invented, "D6": not hits}
     out["D1"] = bool(items) and not any(isinstance(i, fp.ParseIssue) for i in items)
     out |= {"D7": n_tok <= v.sampling.max_tokens, "qwen_tokens": n_tok}
-    out |= {"D3": slots_stated(speech, v), "D5": d5, "invented": invented}
+    out |= {"D3": slots_stated(speech, v, profile), "D5": d5, "invented": invented}
     out |= {"authority_hits": hits, "wrong_lane_directives": wrong}
     out["has_hold"] = any(isinstance(i, fp.Hold) for i in items)
     out["sentences"] = sum(isinstance(i, fp.Speech) for i in items)
@@ -243,10 +258,11 @@ def checks(row: Json, v: pss.View, tok: Tok) -> Json:
 
 
 def load(
-    paths: Sequence[Path], views: Sequence[pss.View]
+    paths: Sequence[Path], views: Sequence[pss.View], no_reference: bool = False
 ) -> tuple[Arms, dict[str, str], dict[str, str | None]]:
     """The arms' rows by view (refusals: the module docstring), the reports' sha256
-    by file name, and each arm's report's ``aborted`` text."""
+    by file name, and each arm's report's ``aborted`` text; ``no_reference``: without
+    the recorded reference arm (a views file has none)."""
     at = {(v.run_id, v.turn): v for v in views}
     arms: Arms = {}
     shas: dict[str, str] = {}
@@ -278,6 +294,8 @@ def load(
                 want = override if override is not None else at[k].sampling.max_tokens
                 if r["max_tokens_sent"] != want:
                     raise SystemExit(f"{p}: {m}: max_tokens_sent is not {want}")
+    if no_reference:
+        del arms[REF]
     for m, rows in arms.items():
         if rows.keys() != at.keys() and not (aborted[m] and rows.keys() < at.keys()):
             raise SystemExit(f"arm {m}: rows for {len(rows)} of {len(at)} views")
@@ -296,8 +314,11 @@ def by_view(arm: str, rows: Sequence[Json]) -> dict[Key, Json]:
     return out
 
 
-def export_id(seed: int, per_batch: int, shas: dict[str, str]) -> str:
-    doc = {"seed": seed, "per_batch": per_batch, "reports": sorted(shas.values())}
+def export_id(
+    seed: int, per_batch: int, shas: dict[str, str], no_reference: bool = False
+) -> str:
+    doc: Json = {"seed": seed, "per_batch": per_batch, "reports": sorted(shas.values())}
+    doc |= {"no_reference": True} if no_reference else {}
     return sha256_text(canonical_json(doc | {"rubric": RUBRIC_SHA}))
 
 
@@ -313,14 +334,28 @@ def said(v: pss.View) -> set[str]:
     return {x for x in out if len(x) >= LEAK_CHARS}
 
 
-def prompt(v: pss.View) -> str:
-    return " ".join(pss.view_text(v).split()).lower()
+@dataclass(frozen=True)
+class Shown(pss.View):
+    profiles: tuple[str, ...] = ()  # of its judge blocks (``run_export``)
+
+
+def as_shown(v: pss.View, outs: Sequence[tuple[str, Json]]) -> Shown:
+    """``v`` with the profiles its outputs were rendered with (none: its own)."""
+    names = sorted({profile_of(r, v) for _, r in outs}) or [v.profile]
+    return Shown(**{f.name: getattr(v, f.name) for f in fields(v)}, profiles=(*names,))
+
+
+def prompt(v: pss.View) -> list[str]:
+    """The view's rendered prompts (a ``Shown``: under each block's profile)."""
+    names = v.profiles if isinstance(v, Shown) else (v.profile,)
+    text = ("\n".join(m.content for m in fp.render_messages(v.view, p)) for p in names)
+    return [" ".join(t.split()).lower() for t in text]
 
 
 def leaks(views: Sequence[pss.View]) -> Callable[[pss.View, pss.View], bool]:
-    """(v, w) -> ``v``'s reference speech (``said``) is visible in ``w``'s prompt."""
+    """(v, w) -> ``v``'s reference speech (``said``) is visible in a prompt of ``w``."""
     s, t = {id(v): said(v) for v in views}, {id(v): prompt(v) for v in views}
-    return lambda v, w: any(x in t[id(w)] for x in s[id(v)])
+    return lambda v, w: any(x in p for p in t[id(w)] for x in s[id(v)])
 
 
 def batches(
@@ -355,17 +390,23 @@ def run_export(
     seed: int,
     per_batch: int = 5,
     rubric: Path = RUBRIC,
+    no_reference: bool = False,
 ) -> Json:
     """Blind batches (one Markdown file = one judge prompt, the rubric on top): per
-    view, the rendered prompt and every arm's non-error raw output under an opaque
-    record id, shuffled by ``seed``; no arm, model, echo or timing. ``manifest.json``
-    (batch -> ids) in ``out_dir``; the key (id -> arm, run_id, turn) outside it."""
+    view and rendered profile, the prompt and the non-error raw outputs rendered with
+    it under an opaque record id, shuffled by ``seed``; no arm, model, echo or timing.
+    ``manifest.json`` (batch -> ids) in ``out_dir``; the key (id -> arm, run_id,
+    turn) outside it. ``no_reference``: the recorded reference arm is dropped."""
     text = rubric_text(rubric)
     if key_out.resolve().is_relative_to(out_dir.resolve()):
         raise SystemExit(f"--key-out {key_out} is inside --out-dir {out_dir}")
-    arms, shas, _ = load(reports, views)
-    eid, rng = export_id(seed, per_batch, shas), random.Random(seed)
-    chunks = batches(views, per_batch, rng)
+    arms, shas, _ = load(reports, views, no_reference)
+    eid, rng = export_id(seed, per_batch, shas, no_reference), random.Random(seed)
+    outs = {k: [(m, a[k]) for m, a in sorted(arms.items())
+                if k in a and a[k]["error"] is None]
+            for k in ((v.run_id, v.turn) for v in views)}  # fmt: skip
+    units = [as_shown(v, outs[v.run_id, v.turn]) for v in views]
+    chunks = batches(units, per_batch, rng)
     if leaks := sum(map(visible, chunks)):
         raise SystemExit(f"{leaks} views' reference speech is in a batch's prompt")
     key: Json = {"export_id": eid, "seed": seed, "views_per_batch": per_batch}
@@ -377,21 +418,24 @@ def run_export(
     batch_shas: dict[str, str] = {}
     for b, chunk in enumerate(chunks, 1):
         name = f"ts-{eid[:8]}-{b:03d}"
-        md, ids = [text, "---", f"# Batch {name}", ""], list[str]()
-        for j, v in enumerate(chunk, 1):
-            system, user = fp.render_messages(v.view, v.profile)
-            md += [f"## View {j}", "", "### System message", "", fenced(system.content)]
-            md += ["", "### User message", "", fenced(user.content), ""]
-            k = (v.run_id, v.turn)
-            outs = [(m, a[k]) for m, a in sorted(arms.items())
-                    if k in a and a[k]["error"] is None]  # fmt: skip
-            rng.shuffle(outs)
-            md += ["### Outputs", ""]
-            for letter, (m, r) in zip(string.ascii_lowercase, outs, strict=False):
-                rid = f"{name}-{j:02d}{letter}"
-                md += [f"#### Record {rid}", "", fenced(r["raw"]), ""]
-                ids.append(rid)
-                key["records"][rid] = {"arm": m, "run_id": v.run_id, "turn": v.turn}
+        md, ids, j = [text, "---", f"# Batch {name}", ""], list[str](), 0
+        for v in cast(list[Shown], chunk):
+            profiles, k = list(v.profiles), (v.run_id, v.turn)
+            rng.shuffle(profiles)  # one profile: no draw, the order before profiles
+            for p in profiles:
+                j += 1
+                system, user = fp.render_messages(v.view, p)
+                md += [f"## View {j}", "", "### System message", ""]
+                md += [fenced(system.content), "", "### User message", ""]
+                md += [fenced(user.content), ""]
+                block = [(m, r) for m, r in outs[k] if profile_of(r, v) == p]
+                rng.shuffle(block)
+                md += ["### Outputs", ""]
+                for letter, (m, r) in zip(string.ascii_lowercase, block, strict=False):
+                    rid = f"{name}-{j:02d}{letter}"
+                    md += [f"#### Record {rid}", "", fenced(r["raw"]), ""]
+                    ids.append(rid)
+                    key["records"][rid] = {"arm": m, "run_id": v.run_id, "turn": v.turn}
         path = out_dir / f"{name}.md"
         path.write_text("\n".join(md), "utf-8")
         batch_shas[name], key["batches"][name] = file_sha(path), ids
@@ -540,10 +584,22 @@ def entries(
             passed = j is not None and all(j.values())
             useful = passed and all(c[d] for d in HARD)
             out[m][k] = {"row": row, "c": c, "j": j, "useful": useful, "pass": passed}
+    ref = out.get(REF, {})
     for m in out:
         for k, e in out[m].items():
-            e["ref_hold"] = out[REF][k]["c"]["has_hold"]
+            e["ref_hold"] = ref[k]["c"]["has_hold"] if k in ref else None
     return out
+
+
+def arm_profiles(arm: str, es: dict[Key, Json], views: Sequence[pss.View]) -> Json:
+    """The arm's rendered profile per lane (``profile_of``); refused if they mix."""
+    got: dict[str, set[str]] = {}
+    for v in views:
+        if (e := es.get((v.run_id, v.turn))) is not None:
+            got.setdefault(v.lane, set()).add(profile_of(e["row"], v))
+    if any(len(p) > 1 for p in got.values()):
+        raise SystemExit(f"arm {arm} mixes profiles: {got}")
+    return {lane: p.pop() for lane, p in sorted(got.items())}
 
 
 def level(effort: str) -> str:
@@ -568,12 +624,17 @@ def paired(
     cands = sorted(m for m in es if m != REF)
     pairs = [(a, b) for a, b in combinations(cands, 2)
              if (model[a] == model[b]) != (lvl[a] == lvl[b])]  # fmt: skip
+    pairs += [(c, REF) for c in cands if REF in es]
+    prof = {m: arm_profiles(m, e, views) for m, e in es.items()}
     out: Json = {lane: {} for lane in LANES}
     for lane in LANES:
-        for a, b in [*pairs, *((c, REF) for c in cands)]:
+        for a, b in pairs:
             units = [(v.run_id, got(es[a], v, metric) - got(es[b], v, metric))
                      for v in views if lane in ("all", v.lane)]  # fmt: skip
-            out[lane][f"{a} - {b}"] = bootstrap(units, seed, n)
+            ne = [p != prof[a].get(x, p) for x, p in prof[b].items()
+                  if lane in ("all", x)]  # fmt: skip
+            flag = {"different_prompts": True} if any(ne) else {}
+            out[lane][f"{a} - {b}"] = bootstrap(units, seed, n) | flag
     return out
 
 
@@ -600,14 +661,16 @@ def run_score(
     resamples: int = 10_000,
     rubric: Path = RUBRIC,
     funnel: Json | None = None,
+    no_reference: bool = False,
 ) -> Json:
     """The report JSON: per arm and lane (``summarise``), paired differences of USEFUL
-    and judged all-pass, the D6 hits, the inputs' sha256 and the git sha."""
+    and judged all-pass, the D6 hits, the inputs' sha256 and the git sha;
+    ``no_reference``: without the recorded reference arm (as its export)."""
     rubric_text(rubric)
-    arms, shas, aborted = load(reports, views)
+    arms, shas, aborted = load(reports, views, no_reference)
     key = cast(Json, read(key_path))
     if (eid := key["export_id"]) != export_id(
-        key["seed"], key["views_per_batch"], shas
+        key["seed"], key["views_per_batch"], shas, no_reference
     ):
         raise SystemExit(f"{key_path}: an export of other reports or another rubric")
     labels = read_labels(labels_dir, key, arms)
@@ -627,7 +690,7 @@ def run_score(
     doc |= {"notes": NOTES, "views": len(views), "runs": runs}
     doc["by_lane"] = dict(Counter(v.lane for v in views))
     doc |= {"session_max_tokens": session, "arms": {}}
-    for m in (REF, *sorted(m for m in arms if m != REF)):
+    for m in sorted(arms, key=lambda m: (m != REF, m)):
         rows = list(es[m].values())
         refs = {canonical_json(e["row"]["record"]["model_ref"]) for e in rows}
         arm: Json = {"model_refs": [json.loads(x) for x in sorted(refs)]}
@@ -638,6 +701,7 @@ def run_score(
         sent = [e["row"].get("max_tokens_sent") for e in rows]
         values = sorted({x for x in sent if x is not None})
         arm["max_tokens"] = {"values": values, "rows_without": sent.count(None)}
+        arm["profiles"] = arm_profiles(m, es[m], views)
         arm |= {"rows": len(rows), "not_run": len(views) - len(rows)}
         useful, usd = sum(e["useful"] for e in rows), costs.get(m)
         arm |= {"aborted": aborted[m], "usd": usd}
@@ -647,7 +711,7 @@ def run_score(
         for lane in LANES:
             mine = [e for e in rows if lane in ("all", e["row"]["lane"])]
             n = sum(lane in ("all", v.lane) for v in views)
-            arm[lane] = summarise(mine, m == REF, n)
+            arm[lane] = summarise(mine, m == REF or no_reference, n)
         doc["arms"][m] = arm
     doc["paired"] = {
         "useful": paired(es, "useful", seed, resamples, views),
@@ -676,6 +740,7 @@ def cell(v: object) -> str:
         rated = "rate" in r
         mid = r["rate"] if rated else r["estimate"]
         n = f"{r['k']}/{r['n']}" if rated else f"{r['clusters']} clusters"
+        n += " different prompts" if r.get("different_prompts") else ""
         return "-" if mid is None else f"{mid} [{r['ci95'][0]}, {r['ci95'][1]}] ({n})"
     return "-" if v is None else json.dumps(v) if isinstance(v, list | dict) else str(v)
 
@@ -709,7 +774,7 @@ def render(doc: Json) -> str:
     out += ["", *(f"- {k}: {cell(v)}" for k, v in facts.items())]
     arms = cast(dict[str, Json], doc["arms"])
     head = ("model_refs", "level", "served_echoes", "max_tokens", "rows", "not_run")
-    head += ("aborted", "usd", "usd_per_useful")
+    head += ("profiles", "aborted", "usd", "usd_per_useful")
     out += ["", *table("arms", {m: {k: a[k] for k in head} for m, a in arms.items()})]
     for lane in LANES:
         out += table(f"lane: {lane}", {m: flat(a[lane]) for m, a in arms.items()})
@@ -722,19 +787,44 @@ def render(doc: Json) -> str:
     return "\n".join(out if doc["authority_hits"] else [*out, "- none"]) + "\n"
 
 
+def views_of(a: argparse.Namespace) -> tuple[list[pss.View], Json]:
+    """A --views-file's views (``pss.read_views``; --no-reference only), a
+    --views-manifest's (``pss.manifest_views``: its order and selection, any
+    fingerprint; a view listed twice refused), or the newest train bundles'
+    (``pss.collect``); cut at --max-views; and the funnel."""
+    if a.views_file:
+        if not a.no_reference or a.views_manifest:
+            raise SystemExit("--views-file: no reference (--no-reference), no manifest")
+        sha = {"views_file_sha256": file_sha(a.views_file)}
+        return pss.read_views(a.views_file)[: a.max_views], sha
+    bundles = pt.load_bundles(a.evidence)
+    if not a.views_manifest:
+        return pss.collect(bundles, pt.current_fingerprints(), a.max_views)
+    doc = cast(Json, read(a.views_manifest))
+    if len({(x["run_id"], x["turn"]) for x in doc["views"]}) != len(doc["views"]):
+        raise SystemExit("--views-manifest lists a view twice")
+    views = pss.manifest_views(bundles, doc)[: a.max_views]
+    return views, {"views_manifest_sha256": file_sha(a.views_manifest)}
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m scripts.mod.teacher_select")
     sub = ap.add_subparsers(dest="cmd", required=True)
     ex, sc = sub.add_parser("export"), sub.add_parser("score")
     for p in (ex, sc):
         p.add_argument("--reports", type=Path, nargs="+", required=True)
-        p.add_argument("--evidence", type=Path, required=True, help="train bundles")
+        src = p.add_mutually_exclusive_group(required=True)
+        src.add_argument("--evidence", type=Path, help="train bundles")
+        src.add_argument("--views-file", type=Path, help="profile_check build-c's")
+        p.add_argument("--views-manifest", type=Path, help="exactly its views")
         p.add_argument("--max-views", type=pss.at_least_1, required=True)
         p.add_argument("--rubric", type=Path, default=RUBRIC)
     ex.add_argument("--out-dir", type=Path, required=True)
     ex.add_argument("--key-out", type=Path, required=True, help="outside --out-dir")
     ex.add_argument("--seed", type=int, required=True)
     ex.add_argument("--views-per-batch", type=pss.at_least_1, default=5)
+    for p in (ex, sc):
+        p.add_argument("--no-reference", action="store_true", help="drop the reference")
     for flag in ("--key", "--labels-dir", "--out", "--md"):
         sc.add_argument(flag, type=Path, required=True)
     sc.add_argument("--costs", type=Path, help="{arm label: USD actual}")
@@ -745,20 +835,19 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     a = parser().parse_args(argv)
-    views, funnel = pss.collect(
-        pt.load_bundles(a.evidence), pt.current_fingerprints(), a.max_views
-    )
+    views, funnel = views_of(a)
     if a.cmd == "export":
         key = run_export(
-            a.reports, views, a.out_dir, a.key_out, a.seed, a.views_per_batch, a.rubric
-        )
+            a.reports, views, a.out_dir, a.key_out, a.seed, a.views_per_batch, a.rubric,
+            a.no_reference,
+        )  # fmt: skip
         shown = ("export_id", "export_sha256", "n_records", "reference_visible")
         print(json.dumps({k: key[k] for k in shown} | {"batches": len(key["batches"])}))
         return 0
     tok = cast(Tok, load_tokenizer())
     doc = run_score(
         a.reports, views, a.key, a.labels_dir, a.costs, tok, a.seed, a.resamples,
-        a.rubric, funnel,
+        a.rubric, funnel, a.no_reference,
     )  # fmt: skip
     for path, text in ((a.out, json.dumps(doc, indent=1) + "\n"), (a.md, render(doc))):
         path.parent.mkdir(parents=True, exist_ok=True)
