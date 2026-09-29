@@ -120,8 +120,10 @@ NOTES = {
     "one run, nor a view whose prompt carries another's reference sentence "
     f"(>= {LEAK_CHARS} characters, whitespace and case normalised); errored outputs "
     "are not judged.",
-    "cost": "usd: the arm's actual spend (--costs, per-arm balance deltas), else null, "
-    "never 0; usd_per_useful = usd / useful rows (TRAINING §7 cpue sense).",
+    "cost": "usd: the arm's actual spend (--costs): the sum of TeamRouter's billed "
+    "amounts of its rows' request_ids, cross-checked against the account balance "
+    "delta over the whole batch; else null, never 0; usd_per_useful = usd / useful "
+    "rows (TRAINING §7 cpue sense).",
     "dash": "A '-' cell is null: no denominator, or not known.",
 }
 
