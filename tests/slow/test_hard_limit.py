@@ -129,12 +129,16 @@ def test_a_confirmed_offer_outside_the_mandate_keeps_the_approval_hint(
     tmp_path: Path,
 ) -> None:
     """#166's hint covers the confirmed case: no second signal, no decline.
-    S1-SYS-66: with the bar, an available lever comes first."""
+    S1-SYS-66: with the bar, an available lever comes first (the tenure
+    public, S1-SYS-94)."""
     h = _confirmed(tmp_path)  # $69
     _mandate(h, 6500)
+    auth.tenure_public(h)
     line = _offers_line(h)
     assert "save-2 confirmed, outside mandate → first" in line
-    assert "guide_fast(mention_tenure)" in line and HINT not in line
+    assert (
+        'guide_fast(mention_tenure, ["fact:tenure_years"])' in line and HINT not in line
+    )
     assert prompt.OUTSIDE_MANDATE not in line and prompt.HARD_LIMIT not in line
     assert "decline" not in line
 

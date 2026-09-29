@@ -1,8 +1,9 @@
-"""Slow's S1 authority, evidence and close tools (ARCHITECTURE §8, §9.3). Each
-calls Guard and returns Guard's effects, or its denial as text: Slow never
-decides a rule itself. Models may restrict authority (revoke, tighten) but never
-grant it (I6): a proposed mandate grants nothing until a ``mandate.decided``
-from the UI or the sim approver, and an accept needs a decided grant."""
+"""Slow's S1 authority, evidence and close tools, and the lever checks
+(ARCHITECTURE §7, §8, §9.3). Each calls Guard and returns Guard's effects, or
+its denial as text: Slow never decides a rule itself. Models may restrict
+authority (revoke, tighten) but never grant it (I6): a proposed mandate grants
+nothing until a ``mandate.decided`` from the UI or the sim approver, and an
+accept needs a decided grant."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from proxyloop.contract.events import Event
-from proxyloop.contract.messages import FastToSlow, SlowToFast
+from proxyloop.contract.messages import FastToSlow, Guide, GuideMove, SlowToFast
 from proxyloop.contract.state import (
     Blackboard,
     Capability,
@@ -29,6 +30,41 @@ from proxyloop.guard.status import status_change
 from proxyloop.guard.terms import offer_terms_hash
 from proxyloop.guard.verify import verify_completion, verify_no_deal
 from proxyloop.slow.result import Effect, Result, no
+
+TENURE_NEEDS = (  # S1-SYS-94 (reverses n6): FastC never states a tenure it lacks
+    "needs fact:tenure_years public: ask_user (keys [tenure_years]) for how "
+    "long the user has been a customer, then record_fact it citing the user's reply"
+)
+
+
+def lever_denial(bb: Blackboard, guide: Guide) -> tuple[str, str] | None:
+    """The lever checks (§7, I11, C14): a competitor is cited only with a quote
+    the user shared, the tenure only as its public fact slot, and the
+    cancellation lever only with the user's public authorisation.
+    ``(reason, text)`` of a denial, else None."""
+    facts = bb.public.facts
+    tenure = "tenure_years" in facts and "fact:tenure_years" in guide.slots
+    if guide.move == GuideMove.MENTION_TENURE and not tenure:
+        return "tenure_not_public", f"mention_tenure {TENURE_NEEDS}"
+    if guide.move == GuideMove.CITE_COMPETITOR:  # a name alone is no quote
+        keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
+        quotes = [k for k in keys if k in ("competitor_quote", "competitor.price_usd")]
+        if not any((f := facts.get(k)) and f.source == "shareable" for k in quotes):
+            return "competitor_quote_not_shareable", (
+                "cite_competitor needs a fact:competitor.price_usd (or "
+                "fact:competitor_quote) slot the user shared (source shareable); "
+                "none is public, so the lever is denied: no fabricated quotes. "
+                "Use another move"
+            )
+    lever = facts.get("authorization.cancel_lever")
+    granted = lever and lever.value == "granted" and lever.source == "shareable"
+    if guide.move == GuideMove.CANCEL_LEVER and not granted:
+        return "cancel_lever_not_authorized", (
+            "cancel_lever needs the public fact authorization.cancel_lever=granted "
+            "from the user; it is not, so the lever is denied"
+        )
+    return None
+
 
 HINTS = {  # what Slow can do about a denial; the reason itself is Guard's
     "fence_raised": "a new user message or rep turn is not reflected in your view "

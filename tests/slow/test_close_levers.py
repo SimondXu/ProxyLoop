@@ -211,20 +211,22 @@ def _denied(h: Host) -> list[str]:
 
 def test_f12_levers_lists_only_what_guide_fast_would_refuse(tmp_path: Path) -> None:
     """0a921a/f828f1/84f731: cite_competitor without a shared quote, mention_tenure
-    citing a private tenure, an unauthorised cancel_lever. Each class on the
-    line is the one the real guide_fast refusal carries."""
+    without a public tenure (none, or a private one: S1-SYS-94), an
+    unauthorised cancel_lever. Each class on the line is the one the real
+    guide_fast refusal carries."""
     h = Host(tmp_path)
     h.call()
     got = dict(state.unavailable(h.bb))
     assert got == {
         "cite_competitor": "competitor_quote_not_shareable",
+        "mention_tenure": "tenure_not_public",
         "cancel_lever": "cancel_lever_not_authorized",
     }
     said = h.emit("user.msg", "kernel", {"text": "I've been with you for 6 years."})
     fact = {"key": "tenure_years", "value": "6", "utt_ref": said.event_id}
     h.act({"tool": "record_fact", **fact})  # not a shareable key here: private
     got = dict(state.unavailable(h.bb))
-    assert got["mention_tenure"] == "guide_slot_not_public"
+    assert got["mention_tenure"] == "tenure_not_public"
     tries = [
         {"tool": "guide_fast", "move": m, "slots": s}
         for m, s in (

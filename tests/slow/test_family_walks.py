@@ -212,7 +212,9 @@ def escalated(h: Host) -> None:
 # each family: its mandate, then (state, the step to it, the one next step)
 # each family (tasks/families/*.yaml): its mandate, then (state, the step to
 # it, the one next step). The rep states price and term; the read-back
-# states the hidden slots, and Slow records them as a new revision.
+# states the hidden slots, and Slow records them as a new revision. The
+# intake (``_verified``) makes the tenure public first: mention_tenure needs
+# fact:tenure_years, and LEVER cites it (S1-SYS-94 reverses n6).
 ACTIVATION = ("activation", 20)
 WALKS: dict[str, tuple[dict[str, int], list[tuple[str, Step | None, str | None]]]] = {
     "cp-direct-discount": (
@@ -424,7 +426,9 @@ def _levers(h: Host) -> str:
     return _line(h, "levers: ")
 
 
-FOR_OUTSIDE = "levers: for an offer outside the mandate: mention_tenure; "
+FOR_OUTSIDE = (
+    "levers: for an offer outside the mandate: mention_tenure with fact:tenure_years; "
+)
 
 
 def test_l_an_inside_offer_alone_lists_no_lever_step(tmp_path: Path) -> None:
@@ -458,7 +462,9 @@ def test_l_a_lever_on_its_way_is_unchanged(tmp_path: Path) -> None:
     h = _verified(tmp_path, 6500, max_term_months=24, max_one_time_fees_minor=0)
     h.act(DISCOUNT)
     offer("save-1", 78, 24)(h)
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
     h.act(TENURE)
     line = _levers(h)
     assert line.startswith("levers: available: none; ") and "(wait)" in line, line
@@ -470,16 +476,21 @@ def test_l_after_a_denial_with_no_inside_offer_the_lever_is_available(
 ) -> None:
     h = first.auth._confirmed(tmp_path)  # pyright: ignore[reportPrivateUsage]
     first._mandate(h, 6500)  # pyright: ignore[reportPrivateUsage]
+    first.auth.tenure_public(h)
     h.act({"tool": "request_approval", "offer_ref": "save-2"})
     first._deny(h)  # pyright: ignore[reportPrivateUsage]
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
     assert next_steps(h) == {"mention_tenure"}
 
 
 def _no_grant(tmp_path: Path, propose: bool) -> Host:
     """The call open and verified with no mandate granted (``propose``: one
-    proposed, the user has not decided it), then save-1 recorded."""
+    proposed, the user has not decided it), the tenure public (S1-SYS-94),
+    then save-1 recorded."""
     h = Host(tmp_path)
+    first.auth.tenure_public(h)
     if propose:
         envelope = {"max_monthly_price_minor": 6500, "max_term_months": 24}
         h.act({"tool": "propose_mandate", "envelope": envelope})
@@ -500,7 +511,9 @@ def test_l_no_mandate_granted_keeps_the_lever_available(tmp_path: Path) -> None:
     before round 3: with a proposal pending it is the one step; with none,
     the case line's propose_mandate shows too (unchanged by round 3)."""
     h = _no_grant(tmp_path, propose=True)
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
     assert next_steps(h) == {"mention_tenure"}
 
 
@@ -508,7 +521,9 @@ def test_l_no_mandate_at_all_shows_the_lever_and_propose_mandate(
     tmp_path: Path,
 ) -> None:
     h = _no_grant(tmp_path, propose=False)
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
     # two steps as before round 3, on no family trajectory (the mandate is
     # granted in the intake): reported, no fix in this PR
     assert next_steps(h) == {"mention_tenure", "propose_mandate"}
@@ -528,7 +543,9 @@ def test_m2_the_discount_ask_answered_without_an_offer_frees_the_levers(
     # round 5 (D1): the lever is the step once the rep has moved on; the bar
     # cannot tell that from a rep still asking for a fact, so it is
     # conditional (not counted as an unconditional step)
-    assert _levers(h).startswith(f"levers: {state.ONCE_MOVED_ON}: mention_tenure; ")
+    assert _levers(h).startswith(
+        f"levers: {state.ONCE_MOVED_ON}: mention_tenure with fact:tenure_years; "
+    )
     assert next_steps(h) == set()
 
 

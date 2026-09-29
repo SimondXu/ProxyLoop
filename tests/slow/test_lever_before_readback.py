@@ -35,9 +35,11 @@ SIGNAL = f"{prompt.OUTSIDE_MANDATE} → "
 
 
 def _recorded(tmp_path: Path, cap: int = 6500, *calls: dict[str, Any]) -> Host:
-    """save-2 ($69) recorded, not read back, against a granted ``cap``."""
+    """save-2 ($69) recorded, not read back, against a granted ``cap``, the
+    tenure public (S1-SYS-94)."""
     h = Host(tmp_path)
     _mandate(h, cap)
+    auth.tenure_public(h)
     h.call()
     h.rep("cp-1", auth.TERMS)
     got = h.act(RECORD, *calls)
@@ -61,7 +63,9 @@ def test_t1_a_recorded_outside_offer_gets_a_lever_before_its_read_back(
 ) -> None:
     h = _recorded(tmp_path)
     step = _step(h, mode)
-    assert step.startswith("first one lever: guide_fast(mention_tenure)"), step
+    assert step.startswith(
+        'first one lever: guide_fast(mention_tenure, ["fact:tenure_years"])'
+    ), step
     assert "ask_readback only once none is left" in step, step
     assert ASK_READBACK not in step and "request_approval" not in step
 
@@ -85,7 +89,7 @@ def test_t2_no_lever_left_asks_the_read_back_then_request_approval(
     _reply(h)  # answered: no lever left (the others are unavailable)
     step = _step(h)
     assert step.startswith(f"{ASK_READBACK}, then request_approval(save-2)"), step
-    assert "guide_fast(mention_tenure)" not in step
+    assert 'guide_fast(mention_tenure, ["fact:tenure_years"])' not in step
     (asked,) = h.act(READBACK)
     assert asked.endswith("read-back asked for save-2 r1"), asked
     h.voice()

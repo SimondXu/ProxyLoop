@@ -300,7 +300,7 @@ class SlowTools:
             )
             return no(text, ("action.denied", denied))
         guide = Guide(move=a["move"], slots=tuple(a.get("slots") or ()))
-        if lever := lever_denial(bb, guide):
+        if lever := authority.lever_denial(bb, guide):
             reason, text = lever
             return no(
                 text, ("action.denied", {"intent": "guide_fast", "reason": reason})
@@ -450,31 +450,6 @@ class SlowTools:
                 "tenure as 'I've been with you for N years'); other keys stay private"
             )
         return Result(True, text, tuple(effects))
-
-
-def lever_denial(bb: st.Blackboard, guide: Guide) -> tuple[str, str] | None:
-    """The lever checks (§7, I11, C14): a competitor is cited only with a quote
-    the user shared, and the cancellation lever only with the user's public
-    authorisation. ``(reason, text)`` of a denial, else None."""
-    facts = bb.public.facts
-    if guide.move == GuideMove.CITE_COMPETITOR:  # a name alone is no quote
-        keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
-        quotes = [k for k in keys if k in ("competitor_quote", "competitor.price_usd")]
-        if not any((f := facts.get(k)) and f.source == "shareable" for k in quotes):
-            return "competitor_quote_not_shareable", (
-                "cite_competitor needs a fact:competitor.price_usd (or "
-                "fact:competitor_quote) slot the user shared (source shareable); "
-                "none is public, so the lever is denied: no fabricated quotes. "
-                "Use another move"
-            )
-    lever = facts.get("authorization.cancel_lever")
-    granted = lever and lever.value == "granted" and lever.source == "shareable"
-    if guide.move == GuideMove.CANCEL_LEVER and not granted:
-        return "cancel_lever_not_authorized", (
-            "cancel_lever needs the public fact authorization.cancel_lever=granted "
-            "from the user; it is not, so the lever is denied"
-        )
-    return None
 
 
 def _partner(bb: st.Blackboard, lane: Lane) -> dict[str, str]:  # utt id -> text

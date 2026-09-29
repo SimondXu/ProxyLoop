@@ -20,7 +20,7 @@ _reply = neg._reply  # pyright: ignore[reportPrivateUsage]
 READBACK, TENURE = lbr.READBACK, neg.TENURE
 AGAIN = "ask again or ask_final_offer"
 FACTS = "read-back asked 1×; the rep has not read the offer back"  # noqa: RUF001
-LEVER = "first one lever: guide_fast(mention_tenure)"
+LEVER = 'first one lever: guide_fast(mention_tenure, ["fact:tenure_years"])'
 
 
 def _unread(tmp_path: Path) -> Host:
@@ -52,7 +52,10 @@ def test_with_no_lever_left_asking_again_comes_back(tmp_path: Path) -> None:
     h.voice()
     _reply(h)  # answered: no lever left (the others are unavailable)
     line = _offers(h)
-    assert "guide_fast(mention_tenure)" not in line and "wait" not in line, line
+    assert (
+        'guide_fast(mention_tenure, ["fact:tenure_years"])' not in line
+        and "wait" not in line
+    ), line
     assert f"{FACTS}; {AGAIN}" in line, line
 
 
@@ -87,7 +90,10 @@ def test_with_no_lever_left_the_stuck_clause_comes_back(tmp_path: Path) -> None:
     h.voice()
     _reply(h)  # answered: no lever left (the others are unavailable)
     line = _offers(h)
-    assert "guide_fast(mention_tenure)" not in line and "wait" not in line, line
+    assert (
+        'guide_fast(mention_tenure, ["fact:tenure_years"])' not in line
+        and "wait" not in line
+    ), line
     assert STUCK in line and "stop asking" in line and DECLINE in line, line
 
 
@@ -102,7 +108,10 @@ def test_inside_the_mandate_an_unread_read_back_keeps_ask_again(
     h.voice()
     h.rep("cp-2", "Sorry about that. How can I help with the account?")
     line = _offers(h)
-    assert "guide_fast(mention_tenure)" not in line and "wait" not in line, line
+    assert (
+        'guide_fast(mention_tenure, ["fact:tenure_years"])' not in line
+        and "wait" not in line
+    ), line
     assert line.endswith(f"{FACTS}; {AGAIN}"), line
     assert line.count(AGAIN) == 1, line
 

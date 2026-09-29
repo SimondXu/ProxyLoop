@@ -168,6 +168,17 @@ def _confirmed(tmp_path: Path) -> Host:
     return h
 
 
+def tenure_public(h: Host) -> None:
+    """S1-SYS-94: the user states the tenure in the allow-listed form and it
+    is recorded public (the test plays record_fact's publication, as for a
+    shared quote: ``KEYS`` holds no tenure_years): fact:tenure_years, the
+    slot mention_tenure needs."""
+    said = h.emit("user.msg", "kernel", {"text": "I've been with you for 8 years."})
+    fact = {"key": "tenure_years", "value": "8", "source": "shareable"}
+    fact |= {"source_ref": said.event_id, "scope": "public"}
+    h.emit("fact.recorded", "guard", fact, [said.event_id])
+
+
 def _granted(h: Host) -> None:
     """The sim approver's post and the kernel's decision (S1-SYS-02/05 wire it)."""
     (text,) = h.act({"tool": "request_approval", "offer_ref": "save-2"})

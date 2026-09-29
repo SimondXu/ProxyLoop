@@ -26,7 +26,8 @@ from proxyloop.slow import prompt, state
 _confirmed = auth._confirmed  # pyright: ignore[reportPrivateUsage]
 _mandate = auth._mandate  # pyright: ignore[reportPrivateUsage]
 
-TENURE = {"tool": "guide_fast", "move": "mention_tenure"}  # slot-free (state.WHY)
+SLOT = "fact:tenure_years"  # S1-SYS-94: mention_tenure needs it public
+TENURE = {"tool": "guide_fast", "move": "mention_tenure", "slots": [SLOT]}
 CANCEL = {"tool": "guide_fast", "move": "cancel_lever"}
 REQUEST = {"tool": "request_approval", "offer_ref": "save-2"}
 OUTSIDE = "save-2 confirmed, outside mandate → "
@@ -73,9 +74,11 @@ def _next(h: Host, mode: SlowViewMode = SlowViewMode.RELAY_ONLY) -> str:
 
 
 def _outside(tmp_path: Path) -> Host:
-    """save-2 ($69) confirmed against a granted $65 mandate (ed5063)."""
+    """save-2 ($69) confirmed against a granted $65 mandate (ed5063), the
+    tenure public (S1-SYS-94)."""
     h = _confirmed(tmp_path)
     _mandate(h, 6500)
+    auth.tenure_public(h)
     return h
 
 
@@ -118,7 +121,7 @@ def test_p1_an_available_lever_comes_before_request_approval(
     levers line is state-derived, not transcript text."""
     h = _outside(tmp_path)
     step = _next(h, mode)
-    assert "guide_fast(mention_tenure)" in step, step
+    assert 'guide_fast(mention_tenure, ["fact:tenure_years"])' in step, step
     assert "request_approval" not in step
     assert HINT not in _offers(h, mode)
 
@@ -200,8 +203,10 @@ def test_f2_a_lever_dead_once_is_offered_again_dead_twice_is_not(
     h = _outside(tmp_path)
     h.act(TENURE)
     _cut(h)
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
-    assert "guide_fast(mention_tenure)" in _next(h)
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
+    assert 'guide_fast(mention_tenure, ["fact:tenure_years"])' in _next(h)
     h.act(TENURE)
     _cancelled(h)
     line = _levers(h)
@@ -230,10 +235,10 @@ def test_n2_the_hint_names_the_slot_a_lever_needs(tmp_path: Path) -> None:
     _share_quote(h)
     step = _next(h)
     assert f'guide_fast(cite_competitor, ["{QUOTE}"])' in step, step
-    assert "guide_fast(mention_tenure)" in step, step
+    assert 'guide_fast(mention_tenure, ["fact:tenure_years"])' in step, step
     line = _levers(h)
     assert line.startswith(
-        f"levers: available: cite_competitor with {QUOTE}, mention_tenure; "
+        f"levers: available: cite_competitor with {QUOTE}, mention_tenure with {SLOT}; "
     ), line
     cite = {"tool": "guide_fast", "move": "cite_competitor", "slots": [QUOTE]}
     (got,) = h.act(cite)
@@ -249,7 +254,9 @@ def test_p2_after_a_denial_an_unused_lever_is_still_listed(tmp_path: Path) -> No
     assert sent.startswith("request_approval: card"), sent
     _deny(h)
     assert "request_approval" not in _offers(h)  # decided: no second card
-    assert _levers(h).startswith("levers: available: mention_tenure; ")
+    assert _levers(h).startswith(
+        "levers: available: mention_tenure with fact:tenure_years; "
+    )
     h.act(TENURE)
     h.voice()
     _reply(h)
@@ -275,7 +282,7 @@ def test_p2_the_playbook_orders_lever_approval_decline() -> None:
 def test_l1_nothing_sent_lists_the_available_lever(tmp_path: Path) -> None:
     h = _outside(tmp_path)
     assert _levers(h) == (
-        f"levers: available: mention_tenure; {COMPETITOR}; {CANCELLING}"
+        f"levers: available: mention_tenure with {SLOT}; {COMPETITOR}; {CANCELLING}"
     )
 
 
@@ -325,10 +332,10 @@ def _silent(h: Host) -> None:
         (_playing, WAIT),
         (_heard, HEARD),
         (_answered, USED),
-        (_cancelled, "available: mention_tenure"),
-        (_cancelled_playing, "available: mention_tenure"),
-        (_cut, "available: mention_tenure"),
-        (_silent, "available: mention_tenure"),
+        (_cancelled, "available: mention_tenure with fact:tenure_years"),
+        (_cancelled_playing, "available: mention_tenure with fact:tenure_years"),
+        (_cut, "available: mention_tenure with fact:tenure_years"),
+        (_silent, "available: mention_tenure with fact:tenure_years"),
     ],
 )
 def test_l1_each_fate_of_a_sent_lever(tmp_path: Path, fate: Any, want: str) -> None:
@@ -338,9 +345,11 @@ def test_l1_each_fate_of_a_sent_lever(tmp_path: Path, fate: Any, want: str) -> N
     fate(h)
     line = _levers(h)
     assert want in line, line
-    others = {WAIT, HEARD, USED, "available: mention_tenure"} - {want}
+    others = {WAIT, HEARD, USED, "available: mention_tenure with fact:tenure_years"} - {
+        want
+    }
     assert not any(x in line for x in others), line
-    if want != "available: mention_tenure":
+    if want != "available: mention_tenure with fact:tenure_years":
         assert line.startswith("levers: available: none; ")
 
 
@@ -371,13 +380,16 @@ def test_l1_unavailable_wins_over_heard() -> None:
     assert line == (f"levers: available: cite_competitor, mention_tenure; {CANCELLING}")
 
 
-def test_l1_the_tenure_slot_clause_keeps_the_move_available() -> None:
-    """n6: only the private slot is unavailable; the move works without it."""
-    line = state.levers_line((("mention_tenure", "guide_slot_not_public"),))
-    assert line.startswith(
-        "levers: available: cite_competitor, mention_tenure, cancel_lever; "
-    )
-    assert "mention_tenure with fact:tenure_years unavailable" in line
+def test_l1_without_a_public_tenure_the_move_is_unavailable() -> None:
+    """S1-SYS-94 reverses n6: mention_tenure needs a public fact:tenure_years;
+    the clause says how to get it."""
+    line = state.levers_line((("mention_tenure", "tenure_not_public"),))
+    assert line.startswith("levers: available: cite_competitor, cancel_lever; ")
+    assert line.endswith(
+        "mention_tenure unavailable (tenure_not_public: needs fact:tenure_years "
+        "public: ask_user (keys [tenure_years]) for how long the user has been a "
+        "customer, then record_fact it citing the user's reply)"
+    ), line
 
 
 # L2: the wording (same request, no pressure) and no world coupling

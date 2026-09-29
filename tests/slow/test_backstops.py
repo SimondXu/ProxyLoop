@@ -1,7 +1,8 @@
-"""S1-SYS-94 (run 8433bd): Slow backstops. (1) An amount a rep line states
-that no recorded offer carries is named on the offers line, and the close
-line then never says "would verify"; (2) record_fact citing a utt_ref that
-names no line is refused. The test plays the kernel (rule 12: generic words)."""
+"""S1-SYS-94 (run 8433bd): three Slow backstops. (1) An amount a rep line
+states that no recorded offer carries is named on the offers line, and the
+close line then never says "would verify"; (2) record_fact citing a utt_ref
+that names no line is refused; (3) mention_tenure needs a public
+fact:tenure_years slot. The test plays the kernel (rule 12: generic words)."""
 
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from tests.slow import test_authority as auth
 from tests.slow import test_discount_first as first
 from tests.slow.test_authority import Host
 
@@ -24,6 +26,8 @@ NOTE = (
     "cp-2 states $78.00, which no recorded offer carries: record_offer it if it "
     "is an offer, else record_fact it citing that line"
 )
+TENURE = {"tool": "guide_fast", "move": "mention_tenure"}
+SLOT = "fact:tenure_years"
 
 
 def _bar(h: Host, mode: SlowViewMode = T) -> list[str]:
@@ -210,3 +214,56 @@ def test_c_a_public_key_hides_its_stale_private_duplicate(tmp_path: Path) -> Non
     h.act(name | {"value": "Dana Reyes", "utt_ref": told.event_id})
     facts = _line(h, "facts: ")
     assert facts == 'facts: account.holder_name="Dana Reyes" [public]', facts
+
+
+# (3)/(d) mention_tenure needs a public fact:tenure_years slot
+
+NEEDS = (
+    "mention_tenure needs fact:tenure_years public: ask_user (keys "
+    "[tenure_years]) for how long the user has been a customer, then "
+    "record_fact it citing the user's reply"
+)
+
+
+def _tenure(h: Host, text: str) -> None:
+    """The user states the tenure; Slow records it citing that message."""
+    told = h.emit("user.msg", "kernel", {"text": text})
+    call = {"tool": "record_fact", "key": "tenure_years", "value": "8"}
+    (got,) = h.act(call | {"utt_ref": told.event_id})
+    assert got.startswith("record_fact: recorded"), got
+
+
+def test_d_mention_tenure_without_a_public_tenure_is_refused(tmp_path: Path) -> None:
+    h = first.verified(tmp_path, 6500, {"max_term_months": 24}, tenure=False)
+    for call in (TENURE, TENURE | {"slots": [SLOT]}):
+        (got,) = h.act(call)
+        assert got == f"guide_fast: {NEEDS}", got
+    guides = [e.payload.get("guide") for e in h.of("s2f.msg")]
+    assert "mention_tenure" not in str(guides), guides
+    (denied,) = [e for e in h.of("action.denied")][-1:]
+    assert denied.payload["reason"] == "tenure_not_public"
+    levers = _line(h, "levers: ")
+    assert f"mention_tenure unavailable (tenure_not_public: {NEEDS[15:]})" in levers
+    assert "mention_tenure" not in levers.split(";", 1)[0], levers
+
+
+def test_d_a_private_tenure_is_still_refused(tmp_path: Path) -> None:
+    h = first.verified(tmp_path, 6500, {"max_term_months": 24}, tenure=False)
+    _tenure(h, "I've been with them for 8 years, I think.")  # not the allow-listed form
+    assert h.bb.private.case_facts["tenure_years"].value == "8"
+    (got,) = h.act(TENURE | {"slots": [SLOT]})
+    assert got == f"guide_fast: {NEEDS}", got
+
+
+def test_d_with_a_public_tenure_the_slot_is_passed(tmp_path: Path) -> None:
+    h = first.verified(tmp_path, 6500, {"max_term_months": 24}, tenure=False)
+    auth.tenure_public(h)
+    assert h.bb.public.facts["tenure_years"].value == "8"
+    (got,) = h.act(TENURE)  # slotless: refused, never repaired (rule 12)
+    assert got == f"guide_fast: {NEEDS}", got
+    (got,) = h.act(TENURE | {"slots": [SLOT]})
+    assert got.startswith("guide_fast: sent"), got
+    (msg,) = [e for e in h.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]
+    assert msg.payload["guide"] == {"move": "mention_tenure", "slots": [SLOT]}
+    assert _line(h, "levers: ").startswith("levers: ")
+    assert "tenure_not_public" not in _line(h, "levers: ")

@@ -37,7 +37,8 @@ from proxyloop.guard.declass import numbers, spoken
 from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
-from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
+from proxyloop.slow.authority import TENURE_NEEDS, lever_denial
+from proxyloop.slow.tools import SlowTools
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
 STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
@@ -45,11 +46,10 @@ UNNAMED_FEE = (
     "for a fee the rep stated without naming it: its amount, as an unnamed fee"
 )
 LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_LEVER)
-TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
     "competitor_quote_not_shareable": "no competitor quote the user shared is public",
+    "tenure_not_public": TENURE_NEEDS,  # S1-SYS-94: n6 reversed
     "cancel_lever_not_authorized": "cancelling cannot be authorised in this build",
-    "guide_slot_not_public": f"{TENURE} is private; the move works without it",
     "lever_failed_twice": "failed to reach the rep twice",
 }
 DIES = 2  # a lever whose guide died this often is unavailable (root, §0.5a)
@@ -262,17 +262,13 @@ def stated_note(earlier: Sequence[Stated]) -> str:
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
     """V5: (lever move, refusal class) for each lever ``guide_fast`` would
-    refuse now: ``lever_denial`` over each public fact as its slot, and
-    ``mention_tenure`` citing a tenure the user gave that stays private."""
+    refuse now: ``lever_denial`` over each public fact as its slot."""
     out: list[tuple[str, str]] = []
     slots = [(f"fact:{k}",) for k in sorted(bb.public.facts)] or [()]
     for move in LEVERS:
         denials = [lever_denial(bb, Guide(move=move, slots=s)) for s in slots]
         if all(denials) and (first := denials[0]) is not None:
             out.append((move.value, first[0]))
-    tenure = Guide(move=GuideMove.MENTION_TENURE, slots=(f"fact:{TENURE}",))
-    if TENURE in bb.private.case_facts and not public_guide(bb, tenure):
-        out.append((tenure.move.value, "guide_slot_not_public"))
     return tuple(out)
 
 
@@ -350,9 +346,9 @@ def lever_slots(bb: Blackboard) -> dict[str, str]:
 
 
 def _gone(levers: Sequence[tuple[str, str]]) -> set[str]:
-    """The moves ``guide_fast`` refuses whole (n6: a private tenure slot
-    leaves the move itself usable)."""
-    return {m for m, c in levers if c != "guide_slot_not_public"}
+    """The moves ``guide_fast`` refuses (S1-SYS-94: n6's slotless tenure is
+    refused too)."""
+    return {m for m, _ in levers}
 
 
 def free_levers(
@@ -374,9 +370,8 @@ def levers_line(
     unavailable lever is only that, whatever was sent. ``label``: how the
     free ones are listed ("available" is a next step; ``Bar.lines``)."""
 
-    def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
-        slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
-        return f"{move}{slot} unavailable ({code}: {WHY.get(code, code)})"
+    def what(move: str, code: str) -> str:
+        return f"{move} unavailable ({code}: {WHY.get(code, code)})"
 
     sends, slots = sends or {}, slots or {}
     usable = [m.value for m in LEVERS if m.value not in _gone(levers)]
