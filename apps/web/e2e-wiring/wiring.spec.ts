@@ -137,7 +137,8 @@ test("a) replay: lists evidence/s0, loads a run with a real_http Fast sentence a
   await page.goto("/?live=no-such-run");
   await expect(page.getByRole("alert")).toHaveText("Stream stopped: unknown run (4404 unknown run)");
   await expect(page.getByRole("heading", { name: "Live case" })).toBeVisible();
-  await expect(page.getByText("no-such-run", { exact: true })).toBeVisible();
+  await page.getByText("Technical details", { exact: true }).click(); // the run id's place since S1-SYS-92, not the case header
+  await expect(page.locator("details.pl-tech").getByText("no-such-run", { exact: true })).toBeVisible();
 });
 
 test("b) live: /live sets the cookies and 303s, /ws/live streams the seed, Approve posts once and the kernel decides", async ({
@@ -274,7 +275,7 @@ test("h) rep: /rep 303s to ?rep, opens /ws/rep only, sees only public cp speech,
   const heard = String(one(seed, "utt.delivered").payload.text_heard);
   const hidden = [String(one(seed, "summary.updated").payload.text), String(one(seed, "user.msg").payload.text)];
   const transcript = page.getByRole("list", { name: "Call transcript" });
-  await expect(transcript.getByRole("listitem")).toHaveText(["Call: call connected", `Agent: ${heard}`]);
+  await expect(transcript.getByRole("listitem")).toHaveText(["Call: call connected", `The agent: ${heard}`]);
   expect(seen.map((s) => s.path)).toEqual([`/ws/rep/${id}?from_seq=0`]);
   await expect.poll(() => seqs(seen[0])).toEqual([0, 1]);
   for (const text of hidden) {

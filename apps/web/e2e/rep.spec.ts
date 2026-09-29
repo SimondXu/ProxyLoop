@@ -36,12 +36,25 @@ test("rep page: its own stream, only what the rep can hear, and it sends a rep u
   const transcript = page.getByRole("list", { name: "Call transcript" });
   await expect(transcript.getByRole("listitem")).toHaveText([
     "Call: call connected",
-    "Agent: Hi, calling about the bill. [interrupted]",
+    "The agent: Hi, calling about the bill. [interrupted]",
     "You: We can do $75.",
   ]);
   for (const text of PRIVATE) await expect(page.locator("body")).not.toContainText(text);
   await expect(page.locator("body")).not.toContainText(/qwen|real_http|Slow|Guard/);
   await expect(page.getByLabel("Connection")).toHaveText("open"); // no raw event count
+  // S1-SYS-92: a v4 call card with two named voices, each over its own plain line (no bold prefix in a bubble); the
+  // header holds the title and the Human rep mode chip, and the raw connection state sits folded under it.
+  const call = page.getByRole("group", { name: "Call with the agent" });
+  await expect(call.getByText("Connected", { exact: true })).toBeVisible();
+  await expect(call.locator(".pl-who")).toHaveText(["The agent", "You"]);
+  await expect(call.locator("strong, b")).toHaveCount(0);
+  await expect(call.getByText("The agent: the AI caller · You: the company's rep")).toBeVisible();
+  const header = page.locator("header");
+  await expect(header.getByText("Human rep mode", { exact: true })).toBeVisible();
+  await expect(header).toHaveText("You're the rep on this callHuman rep mode");
+  await expect(page.getByLabel("Connection")).toBeHidden(); // folded
+  await page.getByText("Connection", { exact: true }).click();
+  await expect(page.locator("details").filter({ has: page.getByLabel("Connection") }).getByLabel("Connection")).toBeVisible();
 
   const input = page.getByRole("textbox", { name: "Say to the agent" });
   await input.fill("Best I can do is $72.");
@@ -102,7 +115,7 @@ test("rep page: the input waits for the kernel's call opening, and a 409 not_ope
   ws.send(JSON.stringify({ ...JSON.parse(frame("chan.opened", { lane: "cp" })), actor: "fast.cp" }));
   ws.send(frame("utt.delivered", { lane: "cp", text_heard: "Hello, this is an AI agent calling for a customer." }));
   await expect(page.getByRole("list", { name: "Call transcript" }).getByRole("listitem")).toHaveText([
-    "Agent: Hello, this is an AI agent calling for a customer.",
+    "The agent: Hello, this is an AI agent calling for a customer.",
   ]);
   await expect(input).toBeDisabled();
   ws.send(frame("chan.opened", { lane: "cp" }));

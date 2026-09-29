@@ -422,9 +422,11 @@ test("v4 stream: the call card holds the rep's line, a message sent during the c
   await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts.map((p) => p.path)).toEqual([`/api/cases/${RUN}/messages`, `/api/cases/${RUN}/approvals/ap-1`]);
 
-  // The Task details rail: Now, the limits, the to-do; the authority area is folded in Technical details.
+  // The Task details rail: Now, the limits, the to-do; the authority area is folded in Technical details. Now sits
+  // above the landmark, outside it (S1-SYS-92: so a closed drawer leaves no near-empty landmark).
   const rail = page.getByRole("complementary", { name: "Task details" });
-  await expect(rail.getByLabel("Status line")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Status line" })).toBeVisible();
+  await expect(rail.getByLabel("Status line")).toHaveCount(0);
   await expect(rail.getByRole("region", { name: "Your limits (summary)" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "To-do" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "Authority" })).toBeHidden();
@@ -434,6 +436,40 @@ test("v4 stream: the call card holds the rep's line, a message sent during the c
   await expect(rail.getByRole("region", { name: "Authority" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "Run" })).toBeVisible();
 });
+
+// S1-SYS-92: the case header holds the title and the one tag, in sentence case; the run id, the raw connection state
+// and the event count moved to the rail's Technical details; a dropped stream's Reconnect stays in the header.
+for (const size of [
+  { width: 1280, height: 800 },
+  { width: 390, height: 844 },
+]) {
+  test(`case header at ${size.width}: the title and one tag; the run's technical words in Technical details`, async ({ page, baseURL }) => {
+    await page.setViewportSize(size);
+    await csrfCookie(page, baseURL);
+    const { connected } = await mockSockets(page);
+    await page.goto(`/?live=${RUN}`);
+    const ev = events();
+    const ws = await connected;
+    ws.send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+    ws.send(ev("status.changed", "guard", { previous: "INTAKE", status: "IN_CALL" }));
+    const head = page.locator(".pl-casehead");
+    await expect(head.getByRole("heading", { level: 1 })).toHaveText("E2e");
+    await expect(head.locator(".pl-case-tag")).toHaveText(["On the call"]); // one tag; statusWords says "on the call"
+    await expect(head).toHaveText("E2eOn the callTask details");
+    await expect(head).not.toContainText(RUN);
+    await expect(head.getByLabel("Connection")).toHaveCount(0);
+    if (size.width < 1100) await page.getByRole("button", { name: "Task details" }).click();
+    await page.getByText("Technical details", { exact: true }).click();
+    const tech = page.locator("details.pl-tech");
+    await expect(tech.getByText(RUN, { exact: true })).toBeVisible();
+    await expect(tech.getByLabel("Connection")).toHaveText("open · 2 events");
+    if (size.width < 1100) await page.keyboard.press("Escape");
+    // The stream drops: its Reconnect is in the header, in view, whatever the rail shows.
+    ws.close({ code: 4000, reason: "gone" });
+    await expect(head.getByRole("button", { name: "Reconnect from seq 2" })).toBeInViewport();
+    await expect(tech.getByLabel("Connection")).toHaveText("closed: disconnected (4000 gone) · 2 events");
+  });
+}
 
 test("aria-live: one polite announcement per new heard line; a split re-announces nothing", async ({ page }) => {
   const { connected } = await mockSockets(page);
@@ -933,6 +969,8 @@ async function cardLook(browser: Browser, baseURL: string | undefined, priceMino
     }, rendered);
   await settled();
   const shown = await snapshot(true);
+  // A floor for `shown`: an emptied snapshot (every element filtered out) must fail, not compare equal (S1-SYS-92).
+  expect(shown.some((e) => e.el.startsWith("summary"))).toBe(true);
   // Then open every <details> in the card, checked, so the whole card is laid out and compared in one defined state.
   await card.locator("details").evaluateAll((ds) => ds.forEach((d) => ((d as HTMLDetailsElement).open = true)));
   await expect(card.locator("details")).not.toHaveCount(0);

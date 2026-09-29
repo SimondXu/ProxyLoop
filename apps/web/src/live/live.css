@@ -6,10 +6,9 @@
   .pl-case { position: relative; flex: 1; min-height: 0; display: grid; column-gap: var(--s6); grid-template: "head details" auto "chat details" minmax(0, 1fr) / minmax(0, 1fr) minmax(330px, 356px); }
   .pl-casehead, .pl-chat { width: 100%; max-width: 760px; justify-self: center; }
 
-  /* the case header row: the title, the connection, the one tag */
-  .pl-casehead { anchor-name: --pl-head; grid-area: head; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s3) 0 var(--s2); }
+  /* the case header row: the title, the one tag (Reconnect or why the stream stopped, when it drops) */
+  .pl-casehead { grid-area: head; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s3) 0 var(--s2); }
   .pl-casehead h1 { font: 600 19px / 1.3 var(--font-ui); letter-spacing: -0.01em; }
-  .pl-casehead output { font-size: var(--fs-meta); color: var(--ink-3); }
   .pl-casehead [role="alert"] { order: 1; flex-basis: 100%; margin: 0; }
   .pl-case-tag { margin-left: auto; }
 
@@ -62,7 +61,7 @@
   .pl-line .pl-bubble-guard { padding: 6px 10px; border-radius: var(--r-panel); background: var(--neutral-tint); }
 
   /* the composer: a pill box with a round ink send button, the hint under it */
-  .pl-dock { anchor-name: --pl-dock; flex: none; padding-top: var(--s2); }
+  .pl-dock { flex: none; padding-top: var(--s2); }
   .pl-composer-box { display: flex; align-items: flex-end; gap: var(--s2); padding: 6px 6px 6px 18px; border: 1px solid var(--line-ui); border-radius: var(--r-card); background: var(--card); box-shadow: var(--shadow-card); }
   .pl-composer-box:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 4px var(--you-glow); }
   .pl-composer textarea { flex: 1; min-height: 44px; max-height: 140px; padding: 10px 0; border: 0; border-radius: 0; background: transparent; resize: none; font-size: var(--fs-body); line-height: 1.45; }
@@ -70,13 +69,15 @@
   .pl-send { flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--r-pill); background: var(--pill); color: var(--on-pill); }
   .pl-composer-hint { display: flex; align-items: center; justify-content: center; gap: 7px; margin: var(--s2) 0 0; text-align: center; }
 
-  /* the Task details rail */
-  .pl-details { grid-area: details; display: flex; flex-direction: column; gap: var(--s3); min-height: 0; overflow-y: auto; padding: var(--s4) var(--s1) var(--s6); }
-  .pl-details > * { flex: none; margin: 0; }
+  /* the rail: its heading, Now (outside the landmark), then the Task details landmark */
+  .pl-rail { grid-area: details; display: flex; flex-direction: column; gap: var(--s3); min-height: 0; overflow-y: auto; padding: var(--s4) var(--s1) var(--s6); }
+  .pl-details { display: flex; flex-direction: column; gap: var(--s3); }
+  .pl-rail > *, .pl-details > * { flex: none; margin: 0; }
   .pl-details-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
   .pl-details-head h2 { margin: 0; font: 600 16px / 1.3 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
   .pl-tech summary { font-weight: 600; }
   .pl-tech .authority { margin: var(--s2) 0 0; }
+  .pl-tech-run { margin: var(--s2) 0 0; overflow-wrap: anywhere; }
   .pl-details-toggle, .pl-details-close { display: none; }
   .pl-details-toggle { background: var(--card); }
 
@@ -89,26 +90,24 @@
     .pl-tx { flex: none; overflow: visible; }
   }
   /* below 1100: one column; the rail is a drawer over the case (under the honesty band), behind the header's button.
-     Closed, only its status line stays, visually hidden, so that its changes are still announced. */
+     Closed, only Now stays, visually hidden, so that the status line's changes are still announced; the Task details
+     landmark is not rendered (display: none) until the drawer opens. */
   @media (max-width: 1099px) {
     .pl-case { grid-template: "head" auto "chat" minmax(0, 1fr) / minmax(0, 1fr); }
     .pl-details-toggle, .pl-details-close { display: inline-flex; }
-    .pl-details { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
-    .pl-case:not([data-details]) > .pl-details > :not(.pl-now) { display: none; }
-    .pl-case[data-details] > .pl-details { inset: 0 calc(-1 * var(--s5)) calc(-1 * var(--s5)) auto; z-index: 5; width: min(400px, 100% + 2 * var(--s5)); height: auto; padding: var(--s4); overflow-y: auto; clip-path: none; background: var(--page); border-left: 1px solid var(--line); box-shadow: var(--shadow-pop); }
+    .pl-rail { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+    .pl-case:not([data-details]) > .pl-rail > :not(.pl-now) { display: none; }
+    .pl-case[data-details] > .pl-rail { inset: 0 calc(-1 * var(--s5)) calc(-1 * var(--s5)) auto; z-index: 5; width: min(400px, 100% + 2 * var(--s5)); height: auto; padding: var(--s4); overflow-y: auto; clip-path: none; background: var(--page); border-left: 1px solid var(--line); box-shadow: var(--shadow-pop); }
   }
-  /* below 768: the phone; an open approval card is a sheet between the case header and the composer (their anchors);
-     where anchors are not supported, at the bottom, 70dvh at most */
+  /* below 768: the phone; an open approval card is a sheet between the case header and the composer, placed by
+     Sheet.tsx in inline px from their measured boxes (no CSS anchor(): every browser takes the same path); before the
+     first measure, at the bottom, 70dvh at most */
   @media (max-width: 767px) {
-    .pl-runid, .pl-band > p:not(.pl-band-sim) { display: none; }
+    .pl-casehead .pl-runid, .pl-band > p:not(.pl-band-sim) { display: none; }
     .pl-case:has(.pl-sheet) .pl-tx { padding-bottom: 72px; }
     .pl-sheet { position: fixed; inset: auto 0 0; z-index: 3; display: flex; flex-direction: column; max-height: 70dvh; overflow: hidden; background: var(--card); border-radius: var(--r-card) var(--r-card) 0 0; box-shadow: var(--shadow-pop); }
-    @supports (anchor-name: --a) {
-      .pl-sheet { top: anchor(--pl-head bottom); bottom: anchor(--pl-dock top); max-height: none; }
-      .pl-sheet-folded { top: auto; }
-    }
-    /* a short phone (landscape) scrolls the page, so the composer may be below the fold: no anchors, the sheet at the
-       bottom of the screen, its decision row always in view */
+    /* a short phone (landscape) scrolls the page, so the composer may be below the fold: not placed (Sheet.tsx), the
+       sheet at the bottom of the screen, its decision row always in view */
     @media (max-height: 500px) {
       .pl-sheet { top: auto; bottom: 0; max-height: 85dvh; }
     }

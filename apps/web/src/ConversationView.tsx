@@ -98,15 +98,21 @@ function CaseTag({ events, input }: { events: Ev[]; input?: ChatInput }) {
       </Chip>
     );
   }
-  return status === undefined ? null : <Chip className="pl-case-tag">{statusWords(String(status))}</Chip>;
+  return status === undefined ? null : <Chip className="pl-case-tag">{capital(statusWords(String(status)))}</Chip>;
 }
 
+/** Sentence case for a header tag ("On the call"); statusWords' own words stay as they are. */
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /**
- * The case (prototype v4): the header row (`head`, then the tag), the stream and composer, and the Task details rail
- * (`details`; below 1100px a drawer behind the header's button). `announce`: the stream is aria-live (live only: a
- * replay seek must not read out every line). The phone's sheet sits between the header and the composer (live.css).
+ * The case (prototype v4): the header row (`head`, then the tag), the stream and composer, and the rail: its heading,
+ * `now` (the status line) and the Task details landmark (`details`). Below 1100px the rail is a drawer behind the
+ * header's button; closed, only `now` stays, visually hidden, outside the landmark, which is then not rendered
+ * (S1-SYS-92). `announce`: the stream is aria-live (live only: a replay seek must not read out every line). The
+ * phone's sheet sits between the header and the composer (live/Sheet.tsx).
  */
-export function Panes({ events, p, announce, input, head, details }: { events: Ev[]; p: Parties; announce: boolean; input?: ChatInput; head: ReactNode; details: ReactNode }) {
+export function Panes(props: { events: Ev[]; p: Parties; announce: boolean; input?: ChatInput; head: ReactNode; now: ReactNode; details: ReactNode }) {
+  const { events, p, announce, input, head, now, details } = props;
   const [open, setOpen] = useState(false);
   const id = useId();
   const toggle = useRef<HTMLButtonElement>(null);
@@ -133,15 +139,18 @@ export function Panes({ events, p, announce, input, head, details }: { events: E
         </button>
       </div>
       <Stream events={events} p={p} announce={announce} input={input} />
-      <aside id={id} className="pl-details" aria-labelledby={`${id}-h`}>
+      <div id={id} className="pl-rail">
         <div className="pl-details-head">
           <h2 id={`${id}-h`}>Task details</h2>
           <button type="button" ref={close} className="pl-details-close" onClick={() => show(false)}>
             Close
           </button>
         </div>
-        {details}
-      </aside>
+        {now}
+        <aside className="pl-details" aria-labelledby={`${id}-h`}>
+          {details}
+        </aside>
+      </div>
     </div>
   );
 }

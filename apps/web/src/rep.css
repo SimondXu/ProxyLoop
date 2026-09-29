@@ -1,7 +1,10 @@
-/* The rep page (redesign §3.3): one column; the transcript classes are in styles.css. */
+/* The rep page (redesign §3.3): one column; the transcript is a v4 call card (live/live.css .pl-call, S1-SYS-92). */
 @layer components {
   .rep h1 { font-size: 28px; margin-right: auto; }
   .pl-rep-about { margin: 0 0 var(--s3); color: var(--ink-2); }
+  .rep .pl-call { margin-bottom: var(--s3); }
+  .rep .pl-call-tt h2 { margin: 0; font: 600 15.5px / 1.35 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .pl-rep-key { margin: 2px 0 0; }
   .pl-rep-hint { margin-top: var(--s3); font-size: var(--fs-small); color: var(--ink-2); }
   .pl-rep-hint p { margin: var(--s1) 0 0; }
 }
