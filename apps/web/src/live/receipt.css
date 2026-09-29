@@ -1,14 +1,40 @@
-/* The receipt in the chat column (redesign §3.2): a Guard card, its tone from the variant. */
+/* The receipt in the chat column (redesign §3.2; v4 result card, S1-SYS-80): a soft card with a tinted tag (words and an
+   icon, never the tint alone), a serif italic headline, and sunken panels of label/value rows. An endpoint or error
+   receipt tints the whole card; its panels stay on the card colour. */
 @layer components {
-  .pl-outcome > h3, .pl-outcome-line { margin-left: var(--s4); margin-right: var(--s4); }
-  .pl-outcome > h3 { margin-bottom: var(--s2); }
-  .pl-outcome-line { margin-top: var(--s1); margin-bottom: 0; font-size: var(--fs-small); color: var(--ink-2); }
-  .pl-outcome-line .pl-mono { font-weight: 600; color: var(--ink); }
-  .pl-outcome > .pl-terms { margin-top: var(--s2); }
-  .pl-outcome > .pl-gcard-tech { margin-top: var(--s3); }
+  .pl-outcome { padding: var(--s5) var(--s6) 0; }
+  .pl-outcome > .pl-gcard-tech { margin: var(--s4) calc(-1 * var(--s6)) 0; padding-inline: var(--s6); }
+  .pl-outcome-tag-err { background: var(--err-tint); color: var(--err); }
+  .pl-outcome > .pl-outcome-head {
+    margin-top: var(--s3); margin-bottom: 0; font: italic 500 var(--fs-page) / 1.2 var(--font-serif); letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .pl-outcome > .pl-outcome-line.pl-outcome-line { margin: var(--s2) 0 0; }
+  .pl-outcome-note { font-size: var(--fs-small); color: var(--ink-2); }
+  .pl-outcome-panel { margin-top: var(--s4); padding: var(--s1) var(--s4); border-radius: var(--r-panel); background: var(--sunk); }
+  .pl-outcome-panel + .pl-outcome-panel { margin-top: var(--s2); }
+  .pl-outcome-panel .pl-terms { padding: 0; }
+  .pl-outcome-panel .pl-terms li { padding: var(--s2) 0; }
+  .pl-outcome-kv { display: flex; justify-content: space-between; gap: var(--s3); margin: 0; padding: var(--s2) 0; border-top: 1px solid var(--line); font-size: var(--fs-small); }
+  .pl-outcome-panel > .pl-outcome-kv:first-child { border-top: 0; }
+  .pl-outcome-kv .pl-mono { margin: 0; font-weight: 600; color: var(--ink); }
+  .pl-outcome-back {
+    display: inline-flex; align-items: center; min-height: 44px; margin-top: var(--s4); padding: 0 var(--s4);
+    border: 1px solid var(--line-2); border-radius: var(--r-pill); background: transparent; font-size: var(--fs-small);
+  }
+  .pl-outcome-tech summary { cursor: pointer; padding: var(--s1) 0; }
   .pl-outcome-cost { margin: var(--s2) 0 0; padding-left: var(--s4); }
-  /* "Done. Verified." and the failures: a ~15 % tint behind the heading's own words */
-  .pl-outcome-ok > h3 { display: inline-block; padding: 2px 12px; border-radius: var(--r-pill); background: var(--ok-tint); color: var(--ok); }
-  .pl-outcome-err { border-color: transparent; background: var(--err-tint); }
-  .pl-outcome-err > h3 { color: var(--err); }
+  .pl-outcome-err { border-color: transparent; background: var(--err-tint); box-shadow: none; }
+  .pl-outcome-err .pl-outcome-panel { background: var(--card); }
+
+  @media (max-width: 767px) {
+    .pl-outcome { padding: var(--s4) var(--s4) 0; }
+    .pl-outcome > .pl-gcard-tech { margin-inline: calc(-1 * var(--s4)); padding-inline: var(--s4); }
+    .pl-outcome > .pl-outcome-head { font-size: 26px; }
+    .pl-outcome-panel { padding-inline: var(--s3); }
+    /* each term on two lines: the value on the right, the read-back chip under it */
+    .pl-outcome-panel .pl-terms li { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+    .pl-outcome-panel .pl-term-value { justify-self: end; text-align: right; }
+    .pl-outcome-panel .pl-terms .pl-chip { grid-column: 2; justify-self: end; }
+  }
 }

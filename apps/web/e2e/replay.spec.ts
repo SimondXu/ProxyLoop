@@ -91,11 +91,14 @@ test("opens a run at its end in the conversation view: the heard lines, the rece
     const outcome = chatRegion.getByRole("region", { name: "Outcome" });
     await expect(outcome).toBeInViewport();
     await expect(outcome).toContainText(`Reason: ${String(ended.payload.reason)}`);
-    await expect(page.getByLabel("Status line")).toHaveText((await outcome.getByRole("heading").textContent()) ?? "");
+    // S1-SYS-80: the title is the receipt's heading, or on a verified receipt its tag (the heading is the accepted terms).
+    const title = (await page.getByLabel("Status line").textContent()) ?? "";
+    expect(title).not.toBe("");
+    await expect(outcome.getByText(title, { exact: true }).first()).toBeVisible();
     // The to-do at the end (S1-SYS-79): no row in progress or waiting, and the Result row is the receipt's title.
     const todo = page.getByRole("list", { name: "To-do" });
     await expect(todo.getByRole("listitem").filter({ hasText: /· (in progress|needs you|also needs you|waiting|not started)/ })).toHaveCount(0);
-    await expect(todo.getByRole("listitem").filter({ hasText: /^Result/ })).toContainText((await outcome.getByRole("heading").textContent()) ?? "");
+    await expect(todo.getByRole("listitem").filter({ hasText: /^Result/ })).toContainText(title);
   } else {
     await expect(page.getByRole("region", { name: "Outcome" })).toHaveCount(0);
   }

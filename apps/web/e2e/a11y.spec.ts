@@ -153,6 +153,45 @@ async function liveBesideLimits(page: Page, baseURL: string | undefined, slots =
   return card;
 }
 
+/**
+ * S1-SYS-80: a live page at its end, with a call line and the offer: a verified receipt (your grant, the released yes,
+ * the confirmation, the verifier's ok) or an information-only one.
+ */
+async function liveEnded(page: Page, baseURL: string | undefined, kind: "verified" | "info_only") {
+  await csrfCookie(page, baseURL, "pl_csrf", CSRF);
+  const { connected } = await mockSockets(page);
+  await page.goto(`/?live=${RUN}`);
+  const ws = await connected;
+  const ev = events();
+  const send = (e: string, cause_ids: string[] = []) => {
+    const parsed = JSON.parse(e) as { event_id: string };
+    ws.send(JSON.stringify({ ...parsed, cause_ids }));
+    return parsed.event_id;
+  };
+  send(ev("session.started", "kernel", started(REAL), { stream: "ops" }));
+  send(ev("user.msg", "kernel", { text: "Please lower my internet bill." }));
+  send(ev("chan.opened", "kernel", { lane: "cp" }));
+  send(ev("utt.final", "kernel", { lane: "cp", speaker: "partner", text: "We can do $75 a month for 12 months." }));
+  send(ev("offer.recorded", "guard", { ...OFFER, slots: FIVE }));
+  if (kind === "verified") {
+    send(ev("approval.requested", "guard", CARD));
+    const granted = send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
+    send(ev("action.authorized", "guard", { intent: {}, capability: { cap_id: "cap-1", terms_hash: CARD.terms_hash, epoch: 0 } }), [granted]);
+    const said = send(ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" }));
+    send(ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }), [said]);
+    send(ev("evidence.recorded", "guard", { evidence_id: "ledger:CNF-8841", kind: "ledger", confirmation_id: "CNF-8841" }));
+    send(ev("completion.decided", "guard", { verdict: "ok", reasons: [] }));
+    send(ev("status.changed", "guard", { previous: "EVIDENCE_PENDING", status: "VERIFIED_COMPLETE" }));
+  } else send(ev("status.changed", "guard", { previous: "IN_CALL", status: "CLOSED_NO_ACTION" }));
+  const spend = { priced_micro_usd: 12_345, unpriced_calls: 0, gpu_time_calls: 0 };
+  send(ev("session.ended", "kernel", { reason: kind === "verified" ? "completed" : "info_only", counts: {}, spend }, { stream: "ops" }));
+  const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
+  await expect(receipt.getByRole("heading")).toHaveText(
+    kind === "verified" ? "Accepted: $75 a month for 12 months." : "Here's what they offered · nothing accepted (information only)",
+  );
+  return receipt;
+}
+
 for (const theme of THEMES) {
   test.describe(`${theme} theme`, () => {
     test.use({ colorScheme: theme });
@@ -212,6 +251,23 @@ for (const theme of THEMES) {
           await audit(page);
           await shot(page, `a11y-rep-${size.name}-${theme}`);
         });
+
+        for (const kind of ["verified", "info_only"] as const) {
+          test(`live page ended with a ${kind} receipt (S1-SYS-80), then its cost fold open`, async ({ page, baseURL }) => {
+            const receipt = await liveEnded(page, baseURL, kind);
+            await receipt.scrollIntoViewIfNeeded();
+            await audit(page);
+            await receipt.getByText("Cost and details", { exact: true }).click();
+            await expect(receipt.getByRole("list", { name: "Cost" })).toBeVisible();
+            await audit(page);
+            await shot(page, `a11y-receipt-${kind}-${size.name}-${theme}`);
+            // Back to the call: the call card's heading, in view and focused.
+            await receipt.getByRole("button", { name: "Back to the call" }).click();
+            const head = page.getByRole("heading", { name: "Call with the company" }).last();
+            await expect(head).toBeFocused();
+            await expect(head).toBeInViewport();
+          });
+        }
       });
     }
 

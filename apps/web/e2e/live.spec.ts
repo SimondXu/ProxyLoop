@@ -693,7 +693,10 @@ test("receipt: Done. Verified. with the accepted terms, the confirmation, the ve
   ws.send(ev("session.ended", "kernel", { reason: "completed", counts: {}, spend: SPEND }, { stream: "ops" }));
 
   const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
-  await expect(receipt.getByRole("heading")).toHaveText("Done. Verified.");
+  // S1-SYS-80: the title is the tag (words and the Guard icon); the serif headline is the accepted card's price and term.
+  await expect(receipt.getByText("Done. Verified.", { exact: true })).toBeVisible();
+  await expect(receipt.getByRole("heading")).toHaveText("Accepted: $75 a month for 12 months.");
+  await expect(receipt.getByRole("heading")).toHaveCSS("font-style", "italic");
   await expect(receipt.getByRole("list", { name: "Accepted terms" }).getByRole("listitem")).toHaveText([
     "Monthly price $75.00 Read back",
     "Contract length 12 months Read back",
