@@ -70,12 +70,13 @@ class SimRep:
             block, self._heard = self._heard, []
             if not block or self.policy.done:
                 return RepTurn((), (), "")
-            policy = self.policy
-            acts = await self.ear.classify(block, policy.made(), policy.open_offers())
+            policy, made = self.policy, self.policy.made()
+            acts = await self.ear.classify(block, made, policy.open_offers())
+            listed = frozenset(made)  # ADR-0021: only these could have been heard
             steps: list[Step] = [
                 (d, h.text, (h.utt_id, ear_ev))
                 for h, (act, ear_ev) in zip(block, acts, strict=True)
-                for d in self.policy.step(act, h.utt_id, h.text, h.t_ms)
+                for d in self.policy.step(act, h.utt_id, h.text, h.t_ms, listed=listed)
             ]  # step returns nothing once the call is over
             return await self._run(steps)
 
