@@ -13,12 +13,22 @@ before the first token) shows under ``failed_attempts``. A failed call raises
 ``LLMUnavailable``: its row is written with the partial report, and the run aborts
 (AGENTS rule 6). Keys and URLs stay in ``PL_<ENDPOINT>_*`` and are never written.
 Numbers: see ``NUMBER_RULE``; number words are not seen. p90: nearest rank.
+
+S1-MOD-10 (a revised profile, re-tested): ``--profile <lane>=<name>`` renders every view
+of that lane with that profile (``View.rendered``; rows record ``profile_rendered``,
+the reference's being the recorded one); ``--any-fingerprint`` (only with an override
+for every lane present) also takes stale-fingerprint bundles; ``--family-include`` /
+``--family-exclude`` filter on ``manifest.task_ref``; ``--seed-missing`` seeds a turn
+that recorded none (rows record ``seed_source``); ``--views-file`` probes the views
+``profile_check build-c`` wrote, which have no recorded answer: no reference rows.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
+import hashlib
 import json
 import math
 import random
@@ -61,6 +71,7 @@ SLOW = tuple(f"slow:{t}" for t in get_args(fp.RelayType))
 DIRECTIVES = ("hold", "wait", "end_call", *SLOW)
 REFERENCE = "reference"
 LANES: tuple[Lane, ...] = ("user", "cp")
+HUGE = 10**9  # "no cap"
 
 
 @dataclass(frozen=True)
@@ -74,22 +85,55 @@ class View:
     seed: int  # the seed the recorded call sent
     reference: Rec  # the recorded call
     raw: str  # its response text
+    seed_source: str = "recorded"  # "default": none recorded, --seed-missing's seed
+    render_as: str | None = None  # a --profile override; None: ``profile``
+    # A --views-file view: ``reference`` is its source turn's call, kept only for the
+    # request's call_id and role; it has no recorded answer and no reference row.
+    counterfactual: bool = False
+
+    @property
+    def rendered(self) -> str:
+        """The profile its requests are rendered with."""
+        return self.render_as or self.profile
+
+
+def family_ok(task_ref: str, include: Sequence[str], exclude: Sequence[str]) -> bool:
+    """Substrings of ``manifest.task_ref``: any include (none: all), no exclude."""
+    taken = not include or any(s in task_ref for s in include)
+    return taken and not any(s in task_ref for s in exclude)
 
 
 def collect(
-    bundles: Sequence[Bundle], fps: dict[str, str], cap: int
+    bundles: Sequence[Bundle],
+    fps: dict[str, str],
+    cap: int,
+    *,
+    any_fingerprint: bool = False,
+    include: Sequence[str] = (),
+    exclude: Sequence[str] = (),
+    seed_missing: int | None = None,
 ) -> tuple[list[View], Json]:
-    """The recorded Fast turns of the train bundles on ``fps``: whole bundles, newest
-    first (as ``pull_through.select``), each bundle's turns in their recorded order, cut
-    at ``cap``. The funnel's ``composition``: per run, turns taken of those available,
-    and taken per lane."""
+    """The recorded Fast turns of the train bundles on ``fps`` (any fingerprint with
+    ``any_fingerprint``; ``family_ok``): whole bundles, newest first (as
+    ``pull_through.select``), each bundle's turns in their recorded order, cut at
+    ``cap``. A turn with no recorded seed is dropped, or given ``seed_missing``. The
+    funnel's ``composition``: per run, turns taken of those available, and taken per
+    lane; the new funnel keys appear only when their option acts."""
     funnel, found, composition = Counter[str](), list[View](), dict[str, Json]()
     newest = sorted(bundles, key=lambda b: (b.events[0].wall, b.manifest.run_id))
     for b in reversed(newest):
-        why = "not_train" if b.manifest.split != "train" else "stale_fingerprint"
-        if b.manifest.split != "train" or b.manifest.fingerprints != fps:
-            funnel[f"bundle_{why}"] += 1
+        stale = b.manifest.fingerprints != fps
+        if b.manifest.split != "train":
+            funnel["bundle_not_train"] += 1
             continue
+        if not family_ok(b.manifest.task_ref, include, exclude):
+            funnel["bundle_family_filtered"] += 1
+            continue
+        if stale and not any_fingerprint:
+            funnel["bundle_stale_fingerprint"] += 1
+            continue
+        if stale:
+            funnel["bundle_stale_fingerprint_taken"] += 1
         asked = {
             e.payload["gen_id"]: e.payload for e in b.events if e.type == "fast.request"
         }
@@ -100,14 +144,19 @@ def collect(
             if rec is None or rec.response_sha is None:
                 funnel["no_reference_answer"] += 1
                 continue
-            if (seed := (rec.sampling_sent or {}).get("seed")) is None:
-                funnel["seed_not_recorded"] += 1
-                continue
+            source, seed = "recorded", (rec.sampling_sent or {}).get("seed")
+            if seed is None:
+                if seed_missing is None:
+                    funnel["seed_not_recorded"] += 1
+                    continue
+                source, seed = "default", seed_missing
+                funnel["seed_defaulted"] += 1
             view = FastView.model_validate_json(b.prompts[str(req["view_sha"])].content)
             lane: Lane = "user" if req["lane"] == "user" else "cp"
             args = (b.manifest.run_id, e.event_id, lane, str(req["profile"]), view)
             args += (b.manifest.cfg.fast_sampling, int(seed), rec)
-            mine.append(View(*args, b.prompts[rec.response_sha].content))
+            raw = b.prompts[rec.response_sha].content
+            mine.append(View(*args, raw, seed_source=source))
         taken = mine[: max(cap - len(found), 0)]
         comp: Json = {"taken": len(taken), "available": len(mine)}
         comp |= {lane: sum(v.lane == lane for v in taken) for lane in LANES}
@@ -117,6 +166,31 @@ def collect(
     seen = len(found) + funnel["dropped_over_cap"]
     counts = {"bundles": len(bundles), "views_found": seen, "selected": len(found)}
     return found, counts | {**funnel, "composition": composition}
+
+
+def read_views(path: Path) -> list[View]:
+    """The views of a ``profile_check build-c`` file (``counterfactual``)."""
+    out = list[View]()
+    for x in json.loads(path.read_text("utf-8"))["views"]:
+        lane: Lane = "user" if x["lane"] == "user" else "cp"
+        args = (x["run_id"], x["turn"], lane, x["profile"])
+        args += (FastView.model_validate(x["view"]), Sampling(**x["sampling"]))
+        args += (int(x["seed"]), Rec.model_validate(x["source_call"]), "")
+        out.append(View(*args, seed_source=x["seed_source"], counterfactual=True))
+    return out
+
+
+def overrides(specs: Sequence[str]) -> dict[str, str]:
+    """``<lane>=<profile>`` pairs: a known profile of that lane, one per lane."""
+    out: dict[str, str] = {}
+    for spec in specs:
+        lane, _, name = spec.partition("=")
+        if lane not in LANES or lane in out:
+            raise SystemExit(f"--profile {spec}: not <user|cp>=<name>, once per lane")
+        if name not in fp.PROFILES or fp.PROFILES[name].lane != lane:
+            raise SystemExit(f"--profile {spec}: no {lane}-lane profile {name!r}")
+        out[lane] = name
+    return out
 
 
 def parse_model(spec: str) -> llm.ModelRef:
@@ -138,16 +212,18 @@ def build_request(
         args["max_tokens"] = max_tokens
     args |= {"call_id": v.reference.call_id, "role": v.reference.role}
     if ref.endpoint != "vllm":
-        args["messages"] = fp.render_messages(v.view, v.profile)
+        args["messages"] = fp.render_messages(v.view, v.rendered)
     elif tok is None:
         raise RuntimeError("a vLLM candidate needs the pinned tokenizer")
     else:
-        args["prompt"] = fp.render_prompt(v.view, v.profile, tok)
+        args["prompt"] = fp.render_prompt(v.view, v.rendered, tok)
     return llm.TextRequest(**args)
 
 
-def view_text(v: View) -> str:
-    return "\n".join(m.content for m in fp.render_messages(v.view, v.profile))
+def view_text(v: View, profile: str | None = None) -> str:
+    """The rendered messages' text (default: as its requests are rendered)."""
+    msgs = fp.render_messages(v.view, profile or v.rendered)
+    return "\n".join(m.content for m in msgs)
 
 
 def numbers(text: str) -> list[str]:
@@ -160,10 +236,10 @@ def directives(items: Sequence[fp.TurnItem]) -> list[str]:
     return sorted(out | {f"slow:{i.type}" for i in items if isinstance(i, fp.Relay)})
 
 
-def analyse(raw: str, v: View) -> Json:
-    items = fp.parse_turn(raw, v.lane, v.profile)
+def analyse(raw: str, v: View, profile: str) -> Json:
+    items = fp.parse_turn(raw, v.lane, profile)
     spoken = " ".join(i.text for i in items if isinstance(i, fp.Speech))
-    known = set(numbers(view_text(v)))
+    known = set(numbers(view_text(v, profile)))
     return {
         "items": [i.model_dump(mode="json") for i in items],
         "issues": [i.reason for i in items if isinstance(i, fp.ParseIssue)],
@@ -183,9 +259,11 @@ def row(
     sent_max_tokens: int | None = None,
 ) -> Json:
     """``max_tokens_sent``: what the call's body carried (``sampling_sent`` has no
-    max_tokens); None: the session's, which the recorded (reference) call sent."""
-    first = rec.t_first_token
+    max_tokens); None: the session's, which the recorded (reference) call sent.
+    ``profile_rendered``: the reference's recorded profile, else ``View.rendered``."""
+    first, profile = rec.t_first_token, v.profile if label == REFERENCE else v.rendered
     out: Json = {"model": label, "run_id": v.run_id, "turn": v.turn, "lane": v.lane}
+    out |= {"profile_rendered": profile, "seed_source": v.seed_source}
     out["max_tokens_sent"] = (
         v.sampling.max_tokens if sent_max_tokens is None else sent_max_tokens
     )
@@ -193,8 +271,9 @@ def row(
     out["failed_attempts"] = [r.model_dump(mode="json") for r in failed]
     out["ttft_ms"] = None if first is None else first - rec.t_start
     if rec.error is None:
-        out |= analyse(raw, v)
-        out["reference_directives"] = analyse(v.raw, v)["directives"]
+        out |= analyse(raw, v, profile)
+    if rec.error is None and not v.counterfactual:
+        out["reference_directives"] = analyse(v.raw, v, v.profile)["directives"]
         out["agrees"] = out["directives"] == out["reference_directives"]
     return out
 
@@ -226,8 +305,9 @@ def summarise(rows: Sequence[Json]) -> Json:
     out["spoken_words_mean"] = statistics.fmean(words) if words else None
     out["spoken_words_p90"] = words[math.ceil(0.9 * len(words)) - 1] if words else None
     out["unsupported_number_share"] = rate(ok, lambda r: bool(r["unsupported_numbers"]))
-    out["directive_agreement"] = rate(ok, lambda r: r["agrees"])
-    acting = [r for r in ok if r["reference_directives"]]  # the reference gave one
+    ok_ref = [r for r in ok if "agrees" in r]  # a --views-file view has no reference
+    out["directive_agreement"] = rate(ok_ref, lambda r: r["agrees"])
+    acting = [r for r in ok_ref if r["reference_directives"]]  # the reference gave one
     out["directive_agreement_acting_reference"] = rate(acting, lambda r: r["agrees"])
     out["acting_reference_n"] = len(acting)
     # Unknown usage stays unknown: summed only over the calls that reported it.
@@ -279,7 +359,9 @@ async def probe(
     ``transports``: per endpoint, a test seam. ``max_tokens``: the override, recorded
     in the report as ``max_tokens_override`` (None: the kernel's own)."""
     sunk: list[Rec] = []  # every attempt's record, as the adapter sinks it
-    rows = [row(REFERENCE, v, v.raw, v.reference, []) for v in views]
+    rows = [
+        row(REFERENCE, v, v.raw, v.reference, []) for v in views if not v.counterfactual
+    ]
     report |= {"rows": rows, "max_tokens_override": max_tokens}
     clients: dict[str, llm.LLMClient] = {}
     ms, sink, seams = WallClock().monotonic_ms, sunk.append, transports or {}
@@ -346,9 +428,39 @@ def at_least_1(text: str) -> int:
     return n
 
 
+def select(a: argparse.Namespace) -> tuple[list[View], Json, Json]:
+    """The views (from bundles or ``--views-file``) with any ``--profile`` override,
+    the funnel, and the selection the report records."""
+    over, path = overrides(a.profile), a.views_file
+    sel: Json = {"profile_override": over or None}
+    picks = (a.any_fingerprint, a.family_include, a.family_exclude)
+    if path and (any(picks) or a.seed_missing is not None):
+        raise SystemExit("--views-file takes no bundle selection option")
+    if path:
+        views = read_views(path)[: a.max_views]
+        funnel: Json = {"views_file": str(path), "selected": len(views)}
+        sel["views_file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    else:
+        bundles, fps = pt.load_bundles(a.evidence), pt.current_fingerprints()
+        views, funnel = collect(
+            bundles, fps, a.max_views, any_fingerprint=a.any_fingerprint,
+            include=a.family_include, exclude=a.family_exclude,
+            seed_missing=a.seed_missing,
+        )  # fmt: skip
+        refs = {b.manifest.run_id: b.manifest.task_ref for b in bundles}
+        sel["families"] = dict(Counter(refs[v.run_id] for v in views))
+    missing = sorted({v.lane for v in views} - over.keys())
+    if a.any_fingerprint and (missing or not over):
+        raise SystemExit(f"--any-fingerprint needs a --profile for each lane {missing}")
+    views = [dataclasses.replace(v, render_as=over.get(v.lane)) for v in views]
+    return views, funnel, sel
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.mod.probe_same_state")
-    parser.add_argument("--evidence", required=True, help="a dir of train bundles")
+    src = parser.add_mutually_exclusive_group(required=True)
+    src.add_argument("--evidence", type=Path, help="a dir of train bundles")
+    src.add_argument("--views-file", type=Path, help="profile_check build-c's views")
     parser.add_argument(
         "--model", action="append", required=True, help=parse_model.__doc__
     )
@@ -360,14 +472,20 @@ def main(argv: list[str] | None = None) -> int:
         type=at_least_1,
         help="override the request's max_tokens (default: the kernel's sampling)",
     )
+    parser.add_argument("--profile", action="append", default=[], help="<lane>=<name>")
+    parser.add_argument("--any-fingerprint", action="store_true")
+    parser.add_argument("--family-include", action="append", default=[])
+    parser.add_argument("--family-exclude", action="append", default=[])
+    parser.add_argument("--seed-missing", type=int, help="the seed of a seedless turn")
     parser.add_argument("--out", help="the report JSON (required without --plan)")
     parser.add_argument("--plan", action="store_true", help="counts only; no call")
     args = parser.parse_args(argv)
     models = {spec: parse_model(spec) for spec in args.model}
     fps = pt.current_fingerprints()
-    views, funnel = collect(pt.load_bundles(Path(args.evidence)), fps, args.max_views)
+    views, funnel, sel = select(args)
     if args.plan:
-        print(json.dumps(plan(views, list(models), funnel, args.max_tokens), indent=1))
+        shown = plan(views, list(models), funnel, args.max_tokens) | sel
+        print(json.dumps(shown, indent=1))
         return 0
     if not args.out:
         raise SystemExit("--out is required without --plan")
@@ -375,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
     tok = load_tokenizer() if vllm else None
     report: Json = {"about": ABOUT, "measured_at": time.time(), "models": list(models)}
     report |= {"fingerprints": fps, "funnel": funnel, "number_rule": NUMBER_RULE}
+    report |= sel
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:

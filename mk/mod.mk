@@ -232,3 +232,21 @@ WSG_ARGS ?=
 
 world-select-gold:
 	uv run python -m scripts.mod.world_select gold $(WSG_ARGS)
+
+# S1-MOD-10 (a revised Fast profile, re-tested): offline, no keys, no model call. PC_ARGS,
+# select-b: --evidence runs --seed N --out <manifest json> [--family-include <task_ref>];
+# build-c: --evidence runs --b-manifest <json> --seed N --out <views json> --manifest-out
+# <json>; check: --evidence runs --report <set>=<probe json>... [--views-file <views json>]
+# [--manifest <set>=<json>] --out <json> --md <md>. The probe calls are probe-same-state's
+# (PSS_ARGS: --profile, --any-fingerprint, --family-*, --seed-missing, --views-file).
+PC_ARGS ?=
+.PHONY: profile-check-select-b profile-check-build-c profile-check
+
+profile-check-select-b:
+	uv run python -m scripts.mod.profile_check select-b $(PC_ARGS)
+
+profile-check-build-c:
+	uv run python -m scripts.mod.profile_check build-c $(PC_ARGS)
+
+profile-check:
+	uv run python -m scripts.mod.profile_check check $(PC_ARGS)
