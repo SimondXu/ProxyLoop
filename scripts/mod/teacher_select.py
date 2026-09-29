@@ -26,7 +26,7 @@ import string
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from itertools import combinations
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -43,7 +43,7 @@ Key = tuple[str, str]  # (run_id, turn)
 Arms = dict[str, dict[Key, Json]]
 REPO = Path(__file__).resolve().parents[2]
 RUBRIC = REPO / "docs/decisions/data/teacher-select-rubric.md"
-RUBRIC_SHA = "f29d7394ef9cb57d608a3cc718206e1f3c451776352e88aa1ddb234d6d68b794"
+RUBRIC_SHA = "eac7fbfe1ae6c0b8d6169bca560d86633fd87b4561d47ee49f0e476931dba536"
 REF = pss.REFERENCE
 LANES = ("all", *pss.LANES)
 HARD = ("D1", "D2", "D4", "D6", "D7")
@@ -65,12 +65,13 @@ USER_COMPLETION = (
     "all set", "i've accepted", "i have accepted", "is confirmed",
 )
 GUARDS = frozenset((
-    "not", "no", "never", "nothing", "cannot", "unable", "without", "before", "once",
+    "not", "never", "nothing", "cannot", "unable", "without", "before", "once",
     "until", "after", "when", "if", "unless", "need", "needs", "will", "would",
     "could", "should", "might", "may",
 ))
 # fmt: on
 GUARD_WINDOW = 6
+LEAK_CHARS = 25  # a reference sentence this long, seen in another prompt, is a leak
 PATTERNS = {
     p: re.compile(r"\b" + r"\s+".join(map(re.escape, p.split())) + r"\b")
     for p in (*CP_AUTHORITY, *USER_COMPLETION)
@@ -80,9 +81,10 @@ NOTE = (
     "train runs; the user decides (ADR-0025)."
 )
 NOTES = {
-    "useful": "USEFUL = D1 & D2 & D4 & D6 & D7 & judged T1..T6 over every row of the "
-    "arm (an errored row is not judged, not useful); views an aborted arm never called "
-    "are `not_run`, outside its denominators. Rates: Wilson 95 % CIs.",
+    "useful": "USEFUL = D1 & D2 & D4 & D6 & D7 & judged T1..T6. Primary ('all', and "
+    "USEFUL itself): k / every view of the lane; an errored row and a view an aborted "
+    "arm never called (`not_run`) are not useful. 'over_rows_run': k / the arm's rows; "
+    "'answered' / 'judged': k / its non-error rows. Rates: Wilson 95 % CIs.",
     "timing": "TTFT/latency: the candidates' TeamRouter-relay-measured by the probe, "
     "the reference's recorded live via OpenRouter in a session: not comparable. "
     "Percentiles: nearest rank.",
@@ -97,21 +99,23 @@ NOTES = {
     "speech, as digits or a case-insensitive substring; numbers said naturally (as the "
     "profile asks) read as not stated.",
     "D4": "Every number of the speech and of the relays' values and texts (not fact "
-    "keys) is among the rendered messages' numbers.",
+    "keys) is among the rendered user message's numbers (not the system text's).",
     "D5": "Informational: on rep_spoke / user_msg whose last partner line has a "
     "number, a relay value or text carries one of its numbers.",
     "D6": "Frozen phrase lists (CP_AUTHORITY; USER_COMPLETION unless "
     "VERIFIED_COMPLETE) in the speech, a negation/modality guard over the "
-    f"{GUARD_WINDOW} words before; lexical, not semantic (T3 is the backstop). Every "
-    "hit is listed.",
+    f"{GUARD_WINDOW} words before it in its sentence (GUARDS: 'if', 'will', 'once', "
+    "words ending in n't or 'll, ...; not a bare 'no'); lexical, not semantic (T3 is "
+    "the backstop). Every hit is listed.",
     "D7": "The raw output's pinned-Qwen token count (no special tokens) <= the "
     "recorded sessions' Fast max_tokens (the student's cap). finish_reason 'length' is "
     "a runaway: the candidates' max_tokens is a guard, not the length control.",
     "paired": "Every candidate - the reference, the two arms of a model, the models at "
-    "one level (none/minimal/low = low-end; medium); over the views both arms have; "
-    "run_id clusters resampled; few clusters, wide CI.",
+    "one level (none/minimal/low = low-end; medium); over every view (not run = not "
+    "useful); run_id clusters resampled; few clusters, wide CI.",
     "judging": "Blind batches, one fresh judge each; a batch never holds two views of "
-    "one run (the reference's speech is in its run's later prompts); errored outputs "
+    "one run, nor a view whose prompt carries another's reference sentence "
+    f"(>= {LEAK_CHARS} characters, whitespace and case normalised); errored outputs "
     "are not judged.",
     "cost": "usd: the arm's actual spend (--costs, per-arm balance deltas), else null, "
     "never 0; usd_per_useful = usd / useful rows (TRAINING §7 cpue sense).",
@@ -205,7 +209,7 @@ def checks(row: Json, v: pss.View, tok: Tok) -> Json:
     relayed = " ".join(
         [r.text for r in relays] + [x for r in relays for _, x in r.facts]
     )
-    known = set(pss.numbers(pss.view_text(v)))
+    known = set(pss.numbers(fp.render_messages(v.view, v.profile)[1].content))
     invented = [n for n in pss.numbers(speech) + pss.numbers(relayed) if n not in known]
     hits, (d2, wrong) = authority(speech, v), directive_ok(items, v)
     n_tok = len(tok.encode(raw, add_special_tokens=False))
@@ -264,8 +268,11 @@ def load(
     for m, rows in arms.items():
         if rows.keys() != at.keys() and not (aborted[m] and rows.keys() < at.keys()):
             raise SystemExit(f"arm {m}: rows for {len(rows)} of {len(at)} views")
-        if len({canonical_json(r["record"]["model_ref"]) for r in rows.values()}) > 1:
+        refs = {canonical_json(r["record"]["model_ref"]) for r in rows.values()}
+        if len(refs) > 1:
             raise SystemExit(f"arm {m}: more than one model_ref")
+        if m != REF and any('"reasoning_effort":null' in x for x in refs):
+            raise SystemExit(f"arm {m}: no explicit reasoning_effort (ADR-0025 (3))")
     return arms, shas, aborted
 
 
@@ -286,34 +293,45 @@ def fenced(text: str) -> str:
     return f"{fence}text\n{text}\n{fence}"
 
 
+def said(v: pss.View) -> set[str]:
+    """The reference's spoken sentences of at least LEAK_CHARS, normalised."""
+    items = fp.parse_turn(v.raw, v.lane, v.profile)
+    out = {" ".join(i.text.split()).lower() for i in items if isinstance(i, fp.Speech)}
+    return {x for x in out if len(x) >= LEAK_CHARS}
+
+
+def prompt(v: pss.View) -> str:
+    return " ".join(pss.view_text(v).split()).lower()
+
+
+def leaks(views: Sequence[pss.View]) -> Callable[[pss.View, pss.View], bool]:
+    """(v, w) -> ``v``'s reference speech (``said``) is visible in ``w``'s prompt."""
+    s, t = {id(v): said(v) for v in views}, {id(v): prompt(v) for v in views}
+    return lambda v, w: any(x in t[id(w)] for x in s[id(v)])
+
+
 def batches(
     views: Sequence[pss.View], per_batch: int, rng: random.Random
 ) -> list[list[pss.View]]:
-    """Round-robin across runs: a batch never holds two views of one run (a run's
-    later prompts carry the reference's recorded speech), at most ``per_batch``;
-    views in a seeded order, the runs with the most views left first."""
-    order, runs = list(views), dict[str, list[pss.View]]()
+    """Seeded greedy: each view, in a seeded order, joins the first batch with room,
+    no view of its run, and no leak either way (``leaks``); else a new batch."""
+    order, out, leak = list(views), list[list[pss.View]](), leaks(views)
     rng.shuffle(order)
     for v in order:
-        runs.setdefault(v.run_id, []).append(v)
-    out: list[list[pss.View]] = []
-    while any(runs.values()):
-        pick = sorted((r for r in runs if runs[r]), key=lambda r: -len(runs[r]))
-        out.append([runs[r].pop() for r in pick[:per_batch]])
-        rng.shuffle(out[-1])
+        for b in out:
+            fits = len(b) < per_batch and all(w.run_id != v.run_id for w in b)
+            if fits and not any(leak(v, w) or leak(w, v) for w in b):
+                b.append(v)
+                break
+        else:
+            out.append([v])
     return out
 
 
 def visible(batch: Sequence[pss.View]) -> int:
-    """Views whose recorded (reference) speech appears verbatim in another prompt of
-    the batch (a later view of its run): the reference arm's blinding leak."""
-    n = 0
-    for v in batch:
-        items = fp.parse_turn(v.raw, v.lane, v.profile)
-        said = [i.text for i in items if isinstance(i, fp.Speech)]
-        other = [pss.view_text(w) for w in batch if w.run_id == v.run_id and w is not v]
-        n += any(s in t for s in said for t in other)
-    return n
+    """Views whose reference speech (``said``) is in another prompt of the batch."""
+    leak = leaks(batch)
+    return sum(any(leak(v, w) for w in batch if w is not v) for v in batch)
 
 
 def run_export(
@@ -447,19 +465,28 @@ def bootstrap(units: Sequence[tuple[str, float]], seed: int, resamples: int) -> 
     return out | {"estimate": round4(est), "ci95": [round4(lo), round4(hi)]}
 
 
-def summarise(es: Sequence[Json], reference: bool) -> Json:
-    """One arm's rows of one lane (or all); ``es``: {row, c (checks), j (labels)}."""
+def summarise(es: Sequence[Json], reference: bool, views: int) -> Json:
+    """One arm's rows of one lane (or all) of ``views`` views; ``es``: {row, c
+    (checks), j (labels)}; ``NOTES['useful']`` names the denominators."""
     ok = [e for e in es if not e["c"]["error"]]
-    out: Json = {"n": len(es), "errors": len(es) - len(ok)}
+    out: Json = {"views": views, "n": len(es), "not_run": views - len(es)}
+    out["errors"] = len(es) - len(ok)
     for d in HARD:
         k = sum(e["c"][d] for e in es)
-        out[d] = {"answered": rate(k, len(ok)), "all": rate(k, len(es))}
+        out[d] = {"answered": rate(k, len(ok)), "all": rate(k, views)}
+        out[d]["over_rows_run"] = rate(k, len(es))
     judged = [cast(Json, e["j"]) for e in es if e["j"] is not None]
     out["judged"] = {t: rate(sum(j[t] for j in judged), len(judged)) for t in JUDGED}
     passed = sum(all(j.values()) for j in judged)
     out["judged_all_pass"] = {"judged": rate(passed, len(judged))}
-    out["judged_all_pass"]["all"] = rate(passed, len(es))
-    out["useful"] = rate(sum(e["useful"] for e in es), len(es))
+    out["judged_all_pass"] |= {"all": rate(passed, views)}
+    out["judged_all_pass"]["over_rows_run"] = rate(passed, len(es))
+    useful = sum(e["useful"] for e in es)
+    out["useful"] = rate(useful, views)
+    out["useful_over_rows_run"] = rate(useful, len(es))
+    out["failed_attempts"] = sum(len(e["row"].get("failed_attempts", [])) for e in es)
+    echo = [e["row"]["record"]["served_model_echo"] for e in ok]
+    out["missing_echoes"] = echo.count(None)
     for name, d in (("D3_slots_stated", "D3"), ("D5_relay_expected", "D5")):
         seen = [e["c"][d] for e in ok if e["c"][d] is not None]
         out[name] = rate(sum(seen), len(seen))
@@ -506,30 +533,41 @@ def entries(
     return out
 
 
-def level(effort: str | None) -> str:
+def level(effort: str) -> str:
     """ADR-0025 (3): the low-end arm (none, else minimal, else low) or medium."""
-    return "low-end" if effort in (None, "none", "minimal", "low") else effort
+    return "low-end" if effort in ("none", "minimal", "low") else effort
 
 
-def paired(es: dict[str, dict[Key, Json]], metric: str, seed: int, n: int) -> Json:
+def paired(
+    es: dict[str, dict[Key, Json]],
+    metric: str,
+    seed: int,
+    n: int,
+    views: Sequence[pss.View],
+) -> Json:
     """Every candidate - the reference; the arms of one model (the effort effect); the
     models at one level. Model and effort are read from the rows."""
     ref = {
         m: next(iter(e.values()))["row"]["record"]["model_ref"] for m, e in es.items()
     }
     model = {m: (r["endpoint"], r["model_id"]) for m, r in ref.items()}
-    lvl = {m: level(r["reasoning_effort"]) for m, r in ref.items()}
+    lvl = {m: level(r["reasoning_effort"]) for m, r in ref.items() if m != REF}
     cands = sorted(m for m in es if m != REF)
     pairs = [(a, b) for a, b in combinations(cands, 2)
              if (model[a] == model[b]) != (lvl[a] == lvl[b])]  # fmt: skip
     out: Json = {lane: {} for lane in LANES}
     for lane in LANES:
         for a, b in [*pairs, *((c, REF) for c in cands)]:
-            units = [(k[0], float(e[metric]) - float(es[b][k][metric]))
-                     for k, e in es[a].items()
-                     if k in es[b] and lane in ("all", e["row"]["lane"])]  # fmt: skip
+            units = [(v.run_id, got(es[a], v, metric) - got(es[b], v, metric))
+                     for v in views if lane in ("all", v.lane)]  # fmt: skip
             out[lane][f"{a} - {b}"] = bootstrap(units, seed, n)
     return out
+
+
+def got(arm: dict[Key, Json], v: pss.View, metric: str) -> float:
+    """A view's metric for an arm; a view it never ran is not useful (0)."""
+    e = arm.get((v.run_id, v.turn))
+    return float(e[metric]) if e is not None else 0.0
 
 
 def git(*argv: str) -> str:
@@ -595,11 +633,12 @@ def run_score(
         )
         for lane in LANES:
             mine = [e for e in rows if lane in ("all", e["row"]["lane"])]
-            arm[lane] = summarise(mine, m == REF)
+            n = sum(lane in ("all", v.lane) for v in views)
+            arm[lane] = summarise(mine, m == REF, n)
         doc["arms"][m] = arm
     doc["paired"] = {
-        "useful": paired(es, "useful", seed, resamples),
-        "judged_all_pass": paired(es, "pass", seed, resamples),
+        "useful": paired(es, "useful", seed, resamples, views),
+        "judged_all_pass": paired(es, "pass", seed, resamples, views),
     }
     doc["authority_hits"] = [
         {"arm": m, "run_id": k[0], "turn": k[1], "lane": e["row"]["lane"]} | h

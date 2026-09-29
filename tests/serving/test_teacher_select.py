@@ -236,6 +236,9 @@ def test_d4_numbers() -> None:
     assert check(v, "Noted.\n@slow: they said 77")["D4"] is False
     # Number words are not seen (NUMBER_RULE).
     assert check(v, "So thirteen hundred then?")["D4"] is True
+    # Known numbers come from the user message only: the system text's "1-2", "1.",
+    # "2." never whitelist an invented small number.
+    assert check(v, "They offered $2 off.")["D4"] is False
 
 
 # --- D6 authority_lexical -------------------------------------------------------------
@@ -253,6 +256,20 @@ def test_d6_every_user_phrase_fires(phrase: str) -> None:
     c = check(mk(user_view(lines=("Any news?",))), f"Good news, {phrase}.")
     assert c["D6"] is False
     assert c["authority_hits"][0]["phrase"] == phrase
+
+
+@pytest.mark.parametrize(
+    ("lane", "said"),
+    [
+        ("cp", "No problem, we accept that offer."),
+        ("cp", "No worries at all, we'll take it."),
+        ("cp", "I will check. We accept."),  # the guard is sentence-scoped
+        ("user", "No action needed, your discount has been applied."),
+    ],
+)
+def test_d6_a_bare_no_does_not_guard(lane: str, said: str) -> None:
+    fv = cp_view() if lane == "cp" else user_view(lines=("Any news?",))
+    assert check(mk(fv), said)["D6"] is False
 
 
 def test_d6_case_and_word_boundaries() -> None:
@@ -563,6 +580,21 @@ def test_batches_never_share_a_run() -> None:
         assert all(len({v.run_id for v in b}) == len(b) <= per_batch for b in got)
 
 
+def test_batches_avoid_cross_run_leaks() -> None:
+    """The runs share a persona: a reference sentence (>= 25 characters, whitespace
+    and case normalised) seen in another run's prompt keeps the two views apart."""
+    line = "The account holder is Marcus Bell, and that is all."
+    x = mk(cp_view(), raw=line, run="run-a", turn="t1")
+    y = mk(cp_view(lines=("the account  holder is marcus bell, and that is all.",)),
+           run="run-b", turn="t2")  # fmt: skip
+    z = mk(cp_view(), raw="Short.", run="run-c", turn="t3")
+    for seed in range(5):
+        got = ts.batches([x, y, z], 5, random.Random(seed))
+        assert not any(x in b and y in b for b in got)
+        assert all(ts.visible(b) == 0 for b in got)
+    assert ts.visible([x, y]) == 1 and ts.visible([x, z]) == 0
+
+
 def reference_only(tmp_path: Path, views: list[pss.View]) -> Path:
     rows = [pss.row(REF, v, v.raw, v.reference, []) for v in views]
     return write(tmp_path / "ref.json", {"models": [], "rows": rows})
@@ -690,7 +722,7 @@ def test_score_reads_rows_not_constants(tmp_path: Path, reports: list[Path]) -> 
         assert arm["max_tokens"] == {"values": [2048], "rows_without": 0}
         if label != C:
             assert arm["served_echoes"] == [echo]
-    assert doc["arms"][REF]["max_tokens"] == {"values": [], "rows_without": 2}
+    assert doc["arms"][REF]["max_tokens"] == {"values": [160], "rows_without": 0}
     assert doc["session_max_tokens"] == [160]
     assert "max_tokens override" in doc["request_note"]
     assert doc["views"] == 2 and doc["runs"] == 2
@@ -780,8 +812,9 @@ def test_score_refuses_a_changed_rubric(tmp_path: Path, reports: list[Path]) -> 
 
 
 def test_an_aborted_arm_is_scored_over_its_rows(tmp_path: Path) -> None:
-    """A dead endpoint aborts the probe (rule 6): its partial rows are kept, the views
-    it never called are ``not_run``, outside its denominators, and disclosed."""
+    """A dead endpoint aborts the probe (rule 6): its partial rows are kept; the views
+    it never called are ``not_run``, disclosed, and not useful in the primary rates
+    and the paired differences (a shorter arm never looks better)."""
     doc = report(C)
     doc["aborted"] = "LLMUnavailable: read timeout"
     del doc["rows"][3]  # V2: never called
@@ -791,8 +824,11 @@ def test_an_aborted_arm_is_scored_over_its_rows(tmp_path: Path) -> None:
     out = score(tmp_path, reports)
     c = out["arms"][C]
     assert (c["rows"], c["not_run"], c["aborted"]) == (1, 1, doc["aborted"])
-    assert kn(c["all"]["useful"]) == (0, 1) and c["all"]["errors"] == 1
-    assert out["paired"]["useful"]["all"][f"{C} - {REF}"]["units"] == 1
+    assert kn(c["all"]["useful"]) == (0, 2)  # primary: every view, not run = not useful
+    assert kn(c["all"]["useful_over_rows_run"]) == (0, 1)
+    assert kn(c["all"]["D1"]["all"]) == (0, 2) and c["all"]["not_run"] == 1
+    assert c["all"]["errors"] == 1 and kn(c["user"]["useful"]) == (0, 1)
+    assert out["paired"]["useful"]["all"][f"{C} - {REF}"]["units"] == 2
     del doc["aborted"]
     with pytest.raises(SystemExit, match="rows for 1 of 2"):
         ts.run_export(
@@ -813,6 +849,8 @@ def test_pairs_by_model_and_effort_level() -> None:
         row = {"record": {"model_ref": ref}, "lane": "cp"}
         return {("run-a", "t1"): {"row": row, "useful": True}}
 
+    view = mk(cp_view(), run="run-a", turn="t1")
+
     es = {
         REF: arm("openai/gpt-6-luna", "none"),
         "glm@none": arm("glm-5.3-flash", "none"),
@@ -820,11 +858,81 @@ def test_pairs_by_model_and_effort_level() -> None:
         "gem@minimal": arm("gemini-3.8-flash", "minimal"),
         "gem@medium": arm("gemini-3.8-flash", "medium"),
     }
-    got = set(ts.paired(es, "useful", 0, 10)["all"])
+    got = set(ts.paired(es, "useful", 0, 10, [view])["all"])
     want = {"gem@medium - gem@minimal", "glm@medium - glm@none"}  # effort effect
     want |= {"gem@minimal - glm@none", "gem@medium - glm@medium"}  # one level
     want |= {f"{m} - {REF}" for m in es if m != REF}
     assert got == want
+
+
+def test_paired_resamples_runs_not_views() -> None:
+    """Two runs of two views each: 2 clusters, 4 units."""
+    views = [mk(cp_view(), run=f"run-{r}", turn=f"t{r}{i}") for r in "ab" for i in "12"]
+
+    def arm(effort: str, useful: list[bool]) -> dict[Key, Json]:
+        ref = {"endpoint": "teamrouter", "model_id": "m", "reasoning_effort": effort}
+        row = {"record": {"model_ref": ref}, "lane": "cp"}
+        return {
+            (v.run_id, v.turn): {"row": row, "useful": u}
+            for v, u in zip(views, useful, strict=True)
+        }
+
+    es = {
+        REF: arm("none", [False] * 4),
+        "x@none": arm("none", [True, True] + [False] * 2),
+    }
+    got = ts.paired(es, "useful", 0, 50, views)["all"][f"x@none - {REF}"]
+    assert (got["clusters"], got["units"], got["estimate"]) == (2, 4, 0.5)
+
+
+def multi_report(label: str, views: list[pss.View]) -> Json:
+    rows = [pss.row(REF, v, v.raw, v.reference, []) for v in views]
+    rows += [cand(label, v, f"Sure, noted {i}.") for i, v in enumerate(views)]
+    return {"models": [label], "rows": rows, "max_tokens_override": 2048}
+
+
+def test_output_order_varies_across_views(tmp_path: Path) -> None:
+    views = [
+        mk(cp_view(), raw=f"Okay {i}.", run=f"r{i}", turn=f"t{i}") for i in range(8)
+    ]
+    reports = [write(tmp_path / f"{i}.json", multi_report(m, views))
+               for i, m in enumerate(REFS)]  # fmt: skip
+    key = ts.run_export(reports, views, tmp_path / "o", tmp_path / "k.json", 3)
+    order: dict[str, list[str]] = {}
+    for rid in sorted(key["records"]):
+        order.setdefault(rid[:-1], []).append(key["records"][rid]["arm"])
+    assert len(order) == 8 and all(len(o) == 4 for o in order.values())
+    assert len({o.index(REF) for o in order.values()}) > 1  # the reference moves
+    assert len({tuple(o) for o in order.values()}) > 1
+
+
+def test_score_refuses_labels_of_another_export(
+    tmp_path: Path, reports: list[Path]
+) -> None:
+    key, _ = export(tmp_path, reports)
+    lab = labels(tmp_path, key)
+    with pytest.raises(SystemExit, match="other reports"):
+        ts.run_score(reports[:2], VIEWS, tmp_path / "key-7.json", lab, None, TOK)
+
+
+def test_a_candidate_needs_an_explicit_effort(tmp_path: Path) -> None:
+    doc = report(A)
+    for r in doc["rows"][2:]:
+        r["record"]["model_ref"]["reasoning_effort"] = None
+    with pytest.raises(SystemExit, match="reasoning_effort"):
+        ts.run_export(
+            [write(tmp_path / "r.json", doc)], VIEWS, tmp_path / "o", tmp_path / "k", 1
+        )
+
+
+def test_missing_echoes_and_failed_attempts_are_reported(tmp_path: Path) -> None:
+    doc = report(A)
+    doc["rows"][3]["record"]["served_model_echo"] = None
+    doc["rows"][3]["failed_attempts"] = [{"error": "connect"}]
+    out = score(tmp_path, [write(tmp_path / "r.json", doc)])
+    got = out["arms"][A]["all"]
+    assert (got["missing_echoes"], got["failed_attempts"]) == (1, 1)
+    assert out["arms"][REF]["all"]["missing_echoes"] == 0
 
 
 # --- the pins -------------------------------------------------------------------------

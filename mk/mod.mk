@@ -154,7 +154,7 @@ probe-same-state:
 
 # S1-MOD-10 teacher selection (ADR-0025): offline, no keys, no model call. TS_ARGS, export:
 # --reports <probe json>... --evidence runs --max-views 127 --out-dir <dir outside the
-# repo> --key-out <json outside it> --seed N [--views-per-batch 8]; score: the same
+# repo> --key-out <json outside it> --seed N [--views-per-batch 5]; score: the same
 # --reports/--evidence/--max-views, --key <json> --labels-dir <dir> --out <json> --md <md>
 # [--costs <json>] [--seed 0] [--resamples 10000]. The rubric is the committed
 # $(MOD_DATA)/teacher-select-rubric.md; both refuse another (RUBRIC_SHA).
