@@ -2,7 +2,7 @@
 
     python -m scripts.mod.teacher_select export --reports <probe json>... \
         --evidence runs --max-views 127 --out-dir <dir> --key-out <json outside it> \
-        --seed N [--views-per-batch 8]
+        --seed N [--views-per-batch 5]
     python -m scripts.mod.teacher_select score --reports <probe json>... \
         --evidence runs --max-views 127 --key <json> --labels-dir <dir> \
         [--costs <json>] --out <json> --md <md> [--seed 0] [--resamples 10000]
@@ -107,8 +107,12 @@ NOTES = {
     "D7": "The raw output's pinned-Qwen token count (no special tokens) <= the "
     "recorded sessions' Fast max_tokens (the student's cap). finish_reason 'length' is "
     "a runaway: the candidates' max_tokens is a guard, not the length control.",
-    "paired": "Over the views both arms have; run_id clusters resampled; few clusters, "
-    "wide CI.",
+    "paired": "Every candidate - the reference, the two arms of a model, the models at "
+    "one level (none/minimal/low = low-end; medium); over the views both arms have; "
+    "run_id clusters resampled; few clusters, wide CI.",
+    "judging": "Blind batches, one fresh judge each; a batch never holds two views of "
+    "one run (the reference's speech is in its run's later prompts); errored outputs "
+    "are not judged.",
     "cost": "usd: the arm's actual spend (--costs, per-arm balance deltas), else null, "
     "never 0; usd_per_useful = usd / useful rows (TRAINING §7 cpue sense).",
     "dash": "A '-' cell is null: no denominator, or not known.",
@@ -282,6 +286,24 @@ def fenced(text: str) -> str:
     return f"{fence}text\n{text}\n{fence}"
 
 
+def batches(
+    views: Sequence[pss.View], per_batch: int, rng: random.Random
+) -> list[list[pss.View]]:
+    """Round-robin across runs: a batch never holds two views of one run (a run's
+    later prompts carry the reference's recorded speech), at most ``per_batch``;
+    views in a seeded order, the runs with the most views left first."""
+    order, runs = list(views), dict[str, list[pss.View]]()
+    rng.shuffle(order)
+    for v in order:
+        runs.setdefault(v.run_id, []).append(v)
+    out: list[list[pss.View]] = []
+    while any(runs.values()):
+        pick = sorted((r for r in runs if runs[r]), key=lambda r: -len(runs[r]))
+        out.append([runs[r].pop() for r in pick[:per_batch]])
+        rng.shuffle(out[-1])
+    return out
+
+
 def visible(batch: Sequence[pss.View]) -> int:
     """Views whose recorded (reference) speech appears verbatim in another prompt of
     the batch (a later view of its run): the reference arm's blinding leak."""
@@ -300,7 +322,7 @@ def run_export(
     out_dir: Path,
     key_out: Path,
     seed: int,
-    per_batch: int = 8,
+    per_batch: int = 5,
     rubric: Path = RUBRIC,
 ) -> Json:
     """Blind batches (one Markdown file = one judge prompt, the rubric on top): per
@@ -311,8 +333,10 @@ def run_export(
     if key_out.resolve().is_relative_to(out_dir.resolve()):
         raise SystemExit(f"--key-out {key_out} is inside --out-dir {out_dir}")
     arms, shas, _ = load(reports, views)
-    eid, rng, order = export_id(seed, per_batch, shas), random.Random(seed), list(views)
-    rng.shuffle(order)
+    eid, rng = export_id(seed, per_batch, shas), random.Random(seed)
+    chunks = batches(views, per_batch, rng)
+    if leaks := sum(map(visible, chunks)):
+        raise SystemExit(f"{leaks} views' reference speech is in a batch's prompt")
     key: Json = {"export_id": eid, "seed": seed, "views_per_batch": per_batch}
     key |= {"rubric_sha256": RUBRIC_SHA, "reports_sha256": shas}
     errs = {m: sum(r["error"] is not None for r in a.values()) for m, a in arms.items()}
@@ -320,10 +344,8 @@ def run_export(
     key["not_run"] = {m: len(views) - len(a) for m, a in arms.items()}
     out_dir.mkdir(parents=True, exist_ok=True)
     batch_shas: dict[str, str] = {}
-    leaks = 0
-    for b, start in enumerate(range(0, len(order), per_batch), 1):
-        name, chunk = f"ts-{eid[:8]}-{b:03d}", order[start : start + per_batch]
-        leaks += visible(chunk)
+    for b, chunk in enumerate(chunks, 1):
+        name = f"ts-{eid[:8]}-{b:03d}"
         md, ids = [text, "---", f"# Batch {name}", ""], list[str]()
         for j, v in enumerate(chunk, 1):
             system, user = fp.render_messages(v.view, v.profile)
@@ -660,7 +682,7 @@ def parser() -> argparse.ArgumentParser:
     ex.add_argument("--out-dir", type=Path, required=True)
     ex.add_argument("--key-out", type=Path, required=True, help="outside --out-dir")
     ex.add_argument("--seed", type=int, required=True)
-    ex.add_argument("--views-per-batch", type=pss.at_least_1, default=8)
+    ex.add_argument("--views-per-batch", type=pss.at_least_1, default=5)
     for flag in ("--key", "--labels-dir", "--out", "--md"):
         sc.add_argument(flag, type=Path, required=True)
     sc.add_argument("--costs", type=Path, help="{arm label: USD actual}")

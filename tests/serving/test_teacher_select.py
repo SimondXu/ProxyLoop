@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import random
 import re
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from proxyloop.contract.messages import Guide, GuideMove
 from proxyloop.contract.state import CaseStatus, Line, OfferPublic, PublicFact
 from proxyloop.contract.state import ReadbackSlot as Slot
 from proxyloop.contract.views import FastView, Trigger
+from proxyloop.training import pull_through as pt
 from scripts.mod import probe_same_state as pss
 from scripts.mod import teacher_select as ts
 
@@ -547,6 +550,54 @@ def test_export_refusals(tmp_path: Path, reports: list[Path]) -> None:
         )
     with pytest.raises(SystemExit, match="inside"):
         ts.run_export(reports, VIEWS, tmp_path / "o", tmp_path / "o" / "k.json", 1)
+
+
+def test_batches_never_share_a_run() -> None:
+    views = [mk(cp_view(), run="run-a", turn=f"t{i}") for i in range(3)]
+    views.append(mk(cp_view(), run="run-b", turn="t9"))
+    for per_batch, n in ((5, 3), (1, 4)):
+        got = ts.batches(views, per_batch, random.Random(0))
+        assert len(got) == n and sorted(v.turn for b in got for v in b) == sorted(
+            v.turn for v in views
+        )
+        assert all(len({v.run_id for v in b}) == len(b) <= per_batch for b in got)
+
+
+def reference_only(tmp_path: Path, views: list[pss.View]) -> Path:
+    rows = [pss.row(REF, v, v.raw, v.reference, []) for v in views]
+    return write(tmp_path / "ref.json", {"models": [], "rows": rows})
+
+
+def test_export_refuses_a_reference_leak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If a batch ever held a later prompt of a run carrying the reference's recorded
+    speech, the export writes nothing."""
+    said = "Let me check with my customer."
+    early = mk(cp_view(), raw=said, run="run-a", turn="t1")
+    late = mk(cp_view(lines=(said,)), raw="Okay.", run="run-a", turn="t2")
+    views = [early, late]
+    monkeypatch.setattr(ts, "batches", lambda v, n, rng: [list(v)])  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    out = tmp_path / "o"
+    with pytest.raises(SystemExit, match="reference speech"):
+        ts.run_export([reference_only(tmp_path, views)], views, out, tmp_path / "k", 1)
+    assert not out.exists()
+
+
+RUNS = Path(os.environ.get("PL_TEACHER_RUNS", REPO / "runs"))
+
+
+@pytest.mark.skipif(not RUNS.is_dir(), reason="no train bundles (git-ignored runs/)")
+def test_real_bundles_export_without_a_leak(tmp_path: Path) -> None:
+    """The no-call dry run on the real train bundles: reference rows only."""
+    fps = pt.current_fingerprints()
+    views, _ = pss.collect(pt.load_bundles(RUNS), fps, 127)
+    report = reference_only(tmp_path, views)
+    key = ts.run_export([report], views, tmp_path / "o", tmp_path / "k.json", 7)
+    assert key["reference_visible"] == 0 and key["n_records"] == len(views)
+    for ids in key["batches"].values():
+        runs = [key["records"][i]["run_id"] for i in ids]
+        assert len(set(runs)) == len(runs) <= 5
 
 
 # --- the views and the reports --------------------------------------------------------
