@@ -117,10 +117,12 @@ NOTES = {
     "an aborted part is listed ('aborted_parts') and does not make the arm incomplete "
     "when its parts cover every view. Views with no row: every acceptance line of that "
     "set and arm reads 'incomplete k/N' (k: rows), never pass.",
-    "errors": "An error row is in every denominator its view is in (reported as "
-    "'errors'), with no hold, relay, malformed line, wording or parroting; a required "
-    "hold on it is a miss, D7 a fail. D5 and the Qwen-token p90 are over answered rows."
-    " Guidance: new = trigger 'guidance', persisted = a guide on another trigger.",
+    "errors": "An error row is a measured failure, in every denominator its view is in "
+    "('errors'): it counts as a false hold where a hold is forbidden, a non-partner "
+    "relay on a non-partner trigger, one malformed line (malformed = fact + relay + "
+    "errors), a missed required hold (so no reason fit) and a D7 fail; it adds no "
+    "wording or parroting. D5 and the Qwen-token p90 are over answered rows. Guidance: "
+    "new = trigger 'guidance', persisted = a guide on another trigger.",
     "set_c": "Set C sources (profile_sets): cp views of set A and set B's pool ending "
     "with a partner line, which the template replaces (trigger rep_spoke, the rest as "
     "recorded). Asks and controls: not on hold, guide none or in ASK_GUIDES, those "
@@ -205,16 +207,20 @@ def tally(cs: Sequence[Json]) -> Json:
     out: Json = {"rows": len(cs), "errors": len(cs) - len(ok)}
     for k in ("malformed_fact", "malformed_relay"):
         out[k] = sum(c[k] for c in cs)
-    out["malformed"] = out["malformed_fact"] + out["malformed_relay"]
+    out["malformed"] = out["malformed_fact"] + out["malformed_relay"] + out["errors"]
     forbidden = [c for c in cs if c["label"] == "forbidden"]
-    out["false_holds"] = [sum(c["held"] is not None for c in forbidden), len(forbidden)]
+    held = [c["held"] is not None or c["error"] for c in forbidden]  # NOTES['errors']
+    out["false_holds"] = [sum(held), len(forbidden)]
     required = [c for c in cs if c["label"] == "required"]
     guided = [c for c in cs if c["guided"]]
     for name, rows in (("required", required), ("guided", guided)):
         out[f"{name}_holds"] = [sum(c["held"] is not None for c in rows), len(rows)]
         out[f"{name}_reason_fit"] = [sum(c["reason_fit"] for c in rows), len(rows)]
     other = [c for c in cs if c["non_partner"]]
-    out["non_partner_relays"] = [sum(c["relayed"] for c in other), len(other)]
+    out["non_partner_relays"] = [
+        sum(c["relayed"] or c["error"] for c in other),
+        len(other),
+    ]
     out["d6_hits"] = sum(len(c["d6"]) for c in cs)
     out["wording_hits"] = sum(len(c["wording"]) for c in cs)
     out["parroting"] = sum(bool(c["parroting"]) for c in cs)
@@ -331,7 +337,9 @@ def run_check(
     full = bool(arms_c) and all(cov_c.get(a, {}).get("complete") for a in arms_c)
     doc["tripwire"] = tripwire(doc["hits"], judged, t3 or {}, full) | {"errors": errs}
     doc["t3_prompts"] = prompts
-    doc["acceptance"] = acceptance(doc["sets"], doc["coverage"])
+    plan = sorted({a for x in sets.values() for a in x} - {REF}) if other else ARMS
+    size = {k: len(v) for k, v in views.items()}
+    doc["acceptance"] = acceptance(doc["sets"], doc["coverage"], plan, size)
     return doc | {"manual": MANUAL}
 
 
@@ -391,21 +399,22 @@ def passes(t: Json, got: Any) -> bool:
     return k * b <= a * n if "max_rate" in t else k * b >= a * n
 
 
-def acceptance(sets: dict[str, dict[str, Json]], cov: Cov) -> list[Json]:
-    """Each threshold per matching set and candidate arm: pass, fail, no data or
-    'incomplete k/N' (``NOTES['coverage']``); it decides for GATING_ARMS only, other
-    arms' results are 'info: ...'."""
+def acceptance(
+    sets: dict[str, dict[str, Json]], cov: Cov, arms: Sequence[str], n: dict[str, int]
+) -> list[Json]:
+    """The plan, not the data: each threshold x set (A, B, C for '*') x matching arm
+    of ``arms``: pass, fail, no data or 'incomplete k/N' (``NOTES['coverage']``; an
+    arm with no row: 0/N). GATING_ARMS decide; other arms' results are 'info: ...'."""
     out = list[Json]()
     for t in THRESHOLDS:
-        for name in sorted(sets) if t["set"] == "*" else [t["set"]]:
-            for arm, gs in sorted(sets.get(name, {}).items()):
-                if arm == REF or (t["arms"] != "*" and t["arms"] not in arm):
-                    continue
+        for name in ("A", "B", "C") if t["set"] == "*" else [t["set"]]:
+            for arm in [a for a in arms if t["arms"] == "*" or t["arms"] in a]:
+                gs, c = sets.get(name, {}).get(arm, {}), cov.get(name, {}).get(arm)
                 got: Any = gs.get(t["group"], {}).get(t["metric"])
                 empty = got is None or got == [0, 0]  # counts are never None
                 result = "no data" if empty else "pass" if passes(t, got) else "fail"
-                if not (c := cov[name][arm])["complete"]:
-                    result = f"incomplete {c['rows']}/{c['views']}"
+                if c is None or not c["complete"]:
+                    result = f"incomplete {c['rows'] if c else 0}/{n.get(name, 0)}"
                 result = result if arm in GATING_ARMS else f"info: {result}"
                 out.append({"id": t["id"], "set": name, "arm": arm, "value": got}
                            | {"bound": t, "result": result})  # fmt: skip

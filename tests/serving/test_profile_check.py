@@ -291,18 +291,33 @@ def test_disjoint_parts_with_an_aborted_one_are_complete_with_the_error(
     tmp_path: Path,
 ) -> None:
     doc = parts(tmp_path)
-    cov = doc["coverage"]["A"][pc.GATING_ARMS[1]]
+    arm_ = pc.GATING_ARMS[1]
+    cov = doc["coverage"]["A"][arm_]
     assert (cov["complete"], cov["rows"], cov["answered"], cov["errors"]) == (
         True, 3, 2, 1)  # fmt: skip
     assert cov["aborted_parts"] == ["part1.json: Invalid prompt: flagged"]
     t = doc["sets"]["A"][pc.GATING_ARMS[1]]["lane:cp"]
     assert t["errors"] == 1 and t["required_holds"] == [1, 3]  # the error: a miss
-    got = {r["id"]: r["result"] for r in doc["acceptance"]}
-    assert got["required_A"] == "fail" and got["malformed_A"] == "pass"
+    got = {r["id"]: r["result"] for r in doc["acceptance"] if r["arm"] == arm_}
+    assert got["required_A"] == "fail" and got["malformed_A"] == "pass"  # 1 <= 1
     missing = parts(tmp_path, drop_part2=True)  # view 2 has no row: not run
     cov = missing["coverage"]["A"][pc.GATING_ARMS[1]]
     assert (cov["complete"], cov["not_run"]) == (False, 1)
-    assert {r["result"] for r in missing["acceptance"]} == {"incomplete 2/3"}
+    results = {r["result"] for r in missing["acceptance"] if r["arm"] == arm_}
+    assert results == {"incomplete 2/3", "incomplete 0/0"}  # set A; B and C: no rows
+
+
+def test_one_view_answered_in_two_parts_is_refused(tmp_path: Path) -> None:
+    v = mk(guided(GuideMove.ASK_DISCOUNT))
+    arm = pc.GATING_ARMS[1]
+    reports: list[tuple[str, Path]] = []
+    for name in ("p1", "p2"):
+        doc = {"models": [arm], "rows": [planned(arm, v, "Okay.")]}
+        (tmp_path / f"{name}.json").write_text(json.dumps(doc), "utf-8")
+        reports.append(("A", tmp_path / f"{name}.json"))
+    at = {(v.run_id, v.turn): v}
+    with pytest.raises(SystemExit, match="twice in set A"):
+        pc.run_check(reports, at, {}, TOK, manifests(v))
 
 
 @pytest.mark.parametrize(
@@ -411,14 +426,16 @@ def test_an_error_row_stays_in_every_denominator() -> None:
     t = tally(c, checked(fact, "One moment.\n@hold fact_request"))
     assert (t["rows"], t["errors"], t["D7"]) == (2, 1, [1, 2])
     assert t["required_holds"] == t["guided_reason_fit"] == [1, 2]  # a miss
-    ask = mk(guided(GuideMove.ASK_DISCOUNT))
+    ask = mk(guided(GuideMove.ASK_DISCOUNT))  # a hold is forbidden; rep_spoke
     c = pc.check_row(cand(ARM, ask, "", error=err), ask, None, TOK)
-    assert tally(c)["false_holds"] == [0, 1] and tally(c)["malformed"] == 0
+    t = tally(c)
+    assert (t["false_holds"], t["malformed"], t["malformed_fact"]) == ([1, 1], 1, 0)
+    assert t["non_partner_relays"] == [0, 0]  # a partner trigger: not in that metric
     later = mk(cp_view(guide=Guide(move=GuideMove.ASK_DISCOUNT), trigger="guidance"))
     c = pc.check_row(cand(ARM, later, "", error=err), later, None, TOK)
-    assert tally(c)["non_partner_relays"] == [0, 1] and tally(c)[
-        "D5_relay_expected"
-    ] == [0, 0]
+    t = tally(c)
+    assert (t["non_partner_relays"], t["D5_relay_expected"]) == ([1, 1], [0, 0])
+    assert tally(checked(later.view, "Hello."))["non_partner_relays"] == [0, 1]
 
 
 def test_a_set_c_error_row_is_listed_not_judged(tmp_path: Path) -> None:
@@ -461,7 +478,14 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     sets = {"A": {ds: good, glm: bad, luna: bad, pc.REF: ref}}
     done = {"complete": True, "answered": 64, "views": 64}
     cov = {"A": {a: done for a in sets["A"]}}
-    got = {(r["id"], r["arm"]): r["result"] for r in pc.acceptance(sets, cov)}
+    n = {"A": 64, "B": 120, "C": 55}
+    acc = pc.acceptance(sets, cov, pc.ARMS, n)
+    by = {(r["id"], r["set"], r["arm"]): r["result"] for r in acc}
+    # The plan, not the data: gating Luna has no set B row -> incomplete 0/120.
+    assert by[("named_reason_B", "B", luna)] == "incomplete 0/120"
+    assert by[("parroting", "C", ds)] == "incomplete 0/55"
+    assert by[("malformed_A", "A", pc.ARMS[2])] == "info: incomplete 0/64"
+    got = {(i, a): r for (i, st, a), r in by.items() if st == "A"}
     assert got[("malformed_A", ds)] == "pass"
     assert got[("malformed_A", luna)] == "fail"  # a gating arm decides
     assert got[("malformed_A", glm)] == "info: fail"  # any other arm is informational
@@ -471,7 +495,8 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     assert got[("required_A", ds)] == "no data"
     assert not [k for k in got if k[1] == pc.REF]  # the reference is not a candidate
     sets["A"][ds]["lane:cp"]["false_holds"] = [9, 64]
-    res = [r["result"] for r in pc.acceptance(sets, cov) if r["id"] == "false_holds_A"]
+    acc = pc.acceptance(sets, cov, pc.ARMS, n)
+    res = [r["result"] for r in acc if r["id"] == "false_holds_A"]
     assert res == ["fail"]
 
 
