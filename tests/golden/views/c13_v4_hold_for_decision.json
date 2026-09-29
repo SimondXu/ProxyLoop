@@ -1,0 +1,141 @@
+{
+ "profile": "pl_cp_v4",
+ "view": {
+  "lane": "cp",
+  "brief": "You are calling Contoso Mobile to ask for a lower monthly price.",
+  "private_summary": null,
+  "public_summary": "The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.",
+  "action_log": [
+   "opened the call",
+   "recorded an offer",
+   "asked for a read-back"
+  ],
+  "offers": [
+   {
+    "offer_ref": "o1",
+    "revision": 1,
+    "slots": [
+     {
+      "field": "monthly_price",
+      "value": "6500",
+      "unit": "usd_minor",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "term_months",
+      "value": "12",
+      "unit": "months",
+      "role": "recurring",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "fee:activation",
+      "value": "3000",
+      "unit": "usd_minor",
+      "role": "one_time",
+      "source_utt": null,
+      "span": null,
+      "status": "heard"
+     },
+     {
+      "field": "changes_none",
+      "value": "true",
+      "unit": "bool",
+      "role": "change",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     },
+     {
+      "field": "expires",
+      "value": "2026-10-15",
+      "unit": "iso",
+      "role": "expiry",
+      "source_utt": null,
+      "span": null,
+      "status": "unknown"
+     }
+    ],
+    "status": "open",
+    "expires_ms": null,
+    "terms_hash": "c0ffee"
+   }
+  ],
+  "public_facts": [
+   {
+    "key": "competitor_quote",
+    "value": "$55.00 a month from Northwind",
+    "source": "shareable",
+    "source_ref": "task"
+   },
+   {
+    "key": "rep.name",
+    "value": "Jordan",
+    "source": "cp_utt",
+    "source_ref": "c2"
+   }
+  ],
+  "pending_approval": null,
+  "guidance": [
+   {
+    "move": "cite_competitor",
+    "slots": [
+     "fact:competitor_quote"
+    ]
+   },
+   {
+    "move": "ask_readback",
+    "slots": [
+     "offer:o1"
+    ]
+   },
+   {
+    "move": "hold_for_decision",
+    "slots": [
+     "offer:o1.monthly_price",
+     "offer:o1.fee:activation"
+    ]
+   }
+  ],
+  "hold": null,
+  "status": "IN_CALL",
+  "transcript": [
+   {
+    "utt_id": "c1",
+    "speaker": "agent",
+    "text": "Hi, I'm an AI assistant calling for Dana."
+   },
+   {
+    "utt_id": "c2",
+    "speaker": "partner",
+    "text": "Hi, this is Jordan. How can I help?"
+   },
+   {
+    "utt_id": "c3",
+    "speaker": "partner",
+    "text": "I can do $65 a month for 12 months, plus a $30 activation fee."
+   }
+  ],
+  "trigger": {
+   "kind": "guidance",
+   "msg_id": null,
+   "wait_s": null
+  },
+  "slow_msg": null
+ },
+ "messages": [
+  {
+   "role": "system",
+   "content": "You are the voice of an AI assistant on a live phone call with a company representative, calling on behalf of your customer. You have already said you are an AI assistant. A CASE AGENT behind you plans the call. CASE AGENT GUIDANCE shows its latest guidance and stays shown after you act on it: when the trigger says it is new, do it; otherwise do it only if the conversation shows it is not done yet, and else respond to the representative. Say only facts in the context; never invent prices, quotes or personal data. Never agree to, accept or commit to anything yourself.\n\nWrite what you say first, then any directives, each on its own line:\n- Speech: 1-2 short sentences, natural on the phone, numbers said naturally; no markdown, lists or stage directions. Always speak, unless you choose silence: then output only `@wait`.\n- `@slow: fact <key>=<value>`: one line for each price, fee, term, date or change the representative just stated, and nothing else on that line. The key uses only lowercase letters, digits and underscores (monthly_price); the value is as they said it.\n- `@slow: <one plain sentence>`: anything else from the representative the case agent should know. Relay only what the representative just said; when they did not just speak, relay nothing.\n- `@hold <reason>`: you are stalling: you say you must check with your customer and ask them to wait. Stall and hold only when the guidance says so, or when the representative asks you to accept, agree to or choose something (or acts as if you already had), or asks for a detail you were not given. Reasons: offer (accept an offer), decision (anything else to agree to or choose), fact_request (a detail you lack), pressure (they demand an answer now), unclear (you cannot tell what they want); if the guidance names one, use it. No hold when you ask them something, answer them, or give details you were given: they speak next. While HOLD STATUS shows a hold and you are still waiting, answer briefly and repeat that `@hold` line; a turn without one ends the hold.\n- `@end_call`: the last line, only when the guidance says to close the call.\nOrder: speech, `@slow:` lines, at most one `@hold` or `@wait`, `@end_call`. Never a directive inside a sentence, never speech after a directive.\n\nFormat examples (the content is only illustrative).\nThe representative stated two terms:\nThank you, I have noted that.\n@slow: fact setup_fee=waived\n@slow: fact autopay=required\n@slow: they say the waiver ends if autopay is cancelled\nThe representative asks you to accept:\nI can't agree to that myself. Please hold a moment while I check with my customer.\n@hold offer"
+  },
+  {
+   "role": "user",
+   "content": "TASK CONTEXT: You are calling Contoso Mobile to ask for a lower monthly price.\n\nCASE AGENT SUMMARY: The rep offered $65.00 a month for 12 months, with a $30.00 activation fee.\n\nCASE AGENT RECENT ACTIONS:\n- opened the call\n- recorded an offer\n- asked for a read-back\n\nOFFERS ON THE TABLE:\n- o1 (revision 1, open): monthly_price $65.00 [heard]; term_months 12 months [heard]; fee:activation $30.00 [heard]; changes_none true [unknown]; expires 2026-10-15 [unknown]\n\nCASE AGENT GUIDANCE:\n- Mention the competitor quote given here. (fact:competitor_quote = $55.00 a month from Northwind)\n- Ask them to read back every term of the offer: monthly price, term, fees, changes and expiry. (offer:o1 = offer o1)\n- Say you need to check with your customer and ask them to hold a moment; end with `@hold decision`. (offer:o1.monthly_price = $65.00; offer:o1.fee:activation = $30.00)\n\nHOLD STATUS: (none)\n\nCASE STATUS: IN_CALL\n\nCONVERSATION SO FAR:\nAGENT: Hi, I'm an AI assistant calling for Dana.\nREP: Hi, this is Jordan. How can I help?\nREP: I can do $65 a month for 12 months, plus a $30 activation fee.\n\nTRIGGER: New guidance from the case agent.\n\nRespond now per the output format."
+  }
+ ]
+}

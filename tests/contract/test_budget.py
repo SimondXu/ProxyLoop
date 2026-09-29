@@ -84,38 +84,34 @@ COMMON = {
 SLOW = SlowToFast(msg_id="m", lane="user", type="ASK_USER", text="q" * 400)
 
 
+USER_CARD = {
+    "lane": "user",
+    "private_summary": "p" * base.MAX_PRIVATE_SUMMARY,
+    "pending_approval": CARD,
+    "trigger": Trigger(kind="approval_card"),
+}
+USER_SLOW = USER_CARD | {
+    "trigger": Trigger(kind="slow_msg", msg_id="m"),
+    "slow_msg": SLOW,
+}
+CP_HOLD = {
+    "lane": "cp",
+    "public_facts": FACTS,
+    "guidance": GUIDES,
+    "hold": HoldState(reason="fact_request", since_ms=0),
+    "trigger": Trigger(kind="hold_wait", wait_s=10**6),
+}
+
+
 @pytest.mark.parametrize(
     ("profile", "fields"),
     [
-        (
-            "pl_user_v1",
-            {
-                "lane": "user",
-                "private_summary": "p" * base.MAX_PRIVATE_SUMMARY,
-                "pending_approval": CARD,
-                "trigger": Trigger(kind="approval_card"),
-            },
-        ),
-        (
-            "pl_user_v1",
-            {
-                "lane": "user",
-                "private_summary": "p" * base.MAX_PRIVATE_SUMMARY,
-                "pending_approval": CARD,
-                "trigger": Trigger(kind="slow_msg", msg_id="m"),
-                "slow_msg": SLOW,
-            },
-        ),
-        (
-            "pl_cp_v1",
-            {
-                "lane": "cp",
-                "public_facts": FACTS,
-                "guidance": GUIDES,
-                "hold": HoldState(reason="fact_request", since_ms=0),
-                "trigger": Trigger(kind="hold_wait", wait_s=10**6),
-            },
-        ),
+        ("pl_user_v1", USER_CARD),
+        ("pl_user_v1", USER_SLOW),
+        ("pl_cp_v1", CP_HOLD),
+        ("pl_user_v2", USER_CARD),  # ADR-0026 candidates: the longer system texts
+        ("pl_user_v2", USER_SLOW),
+        ("pl_cp_v4", CP_HOLD),
     ],
 )
 def test_maximal_view_fits_with_the_transcript_absorbing_the_rest(

@@ -33,7 +33,9 @@ from proxyloop.contract.profiles import (
     pl_cp_v1,
     pl_cp_v2,
     pl_cp_v3,
+    pl_cp_v4,
     pl_user_v1,
+    pl_user_v2,
 )
 from proxyloop.contract.state import OfferPublic, ReadbackSlot
 from proxyloop.contract.views import FastView
@@ -52,6 +54,8 @@ PROFILES: Mapping[str, Profile] = MappingProxyType(
             pl_cp_v1.PROFILE,
             pl_cp_v2.PROFILE,
             pl_cp_v3.PROFILE,
+            pl_user_v2.PROFILE,  # candidate, not live (ADR-0026)
+            pl_cp_v4.PROFILE,  # candidate, not live (ADR-0026)
         )
     }
 )
