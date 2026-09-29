@@ -26,3 +26,9 @@ None measured. This is a risk decision, recorded from the main root's log (2026-
 - **Data invalidated:** none. No dataset or adapter has been built from hosted outputs before this decision.
 - **Migration:** S0-MOD-03's label step no longer needs a Qwen@vllm bundle; TRAINING §9 points here. The root runs pull-through (`MODE=full`, G) on the committed Luna bundles.
 - **Risks and what would make us revisit this.** The provider may read its terms differently from the user; the user bears that risk, and this ADR is not legal advice. Revisit if the project's purpose changes (a product, publishing an adapter), if the providers' terms change, or if the user asks.
+
+## Amendment (2026-09-29, user decision)
+- **The teacher for SFT labels is DeepSeek** (TeamRouter `deepseek-flash`, served echo `deepseek-v4-1-flash-260910`; S1-MOD-10). This replaces the pending Sonnet teacher above.
+- **Opus filters and rewrites.** In distillation, Opus subagents filter the teacher's labels (the hard checks and the judged T1–T6) and rewrite the labels they judge wrong. The user explicitly allows Opus-rewritten text as SFT labels and accepts the Anthropic Commercial Terms D.4 risk this ADR already names.
+- **Safeguards:** every row carries provenance `teacher_raw | opus_rewrite` (TRAINING §3); each dataset reports its rewrite share; the no-publish constraint on adapters is unchanged.
+- Unchanged: the rest of this ADR. It is a risk decision, not legal advice.
