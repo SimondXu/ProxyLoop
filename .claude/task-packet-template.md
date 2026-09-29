@@ -2,6 +2,12 @@
 
 Rules for the root: fill every field, and paste the task block from `PLAN.md` **verbatim** (never paraphrase it). Attach `NORTH_STAR.md` in full. Name at most 5 files; the implementer may read code they point to, but gets no other briefing. One packet = one task = one worktree = one PR.
 
+**SELF-CHECK (the dispatcher, before sending)**
+- The owned paths are listed and complete: every file the task must touch is in them.
+- No two instructions contradict each other. Example (S1-ROOT-21): "change tests only if a test pins the value" and "do not change the test" in one packet caused a permission refusal.
+- The dispatcher created the worktree and, once `scripts/root/new_worktree.sh` exists (S1-ROOT-24), wrote its grant with that script.
+- The model choice: the implementer defaults to Sonnet 5.5 at effort high; pass `model: opus` for high-risk tasks (Guard/authority, concurrency/fences, renderer/parser, contract, metrics).
+
 ```text
 TASK PACKET — <TASK-ID>: <title>
 Contract version: v<N> (fingerprints: pl_user_v1=<fp8>, pl_cp_v1=<fp8>)      PLAN.md commit: <sha>

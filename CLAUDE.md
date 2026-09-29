@@ -30,11 +30,11 @@ It never merges. It never edits another lane's paths or a shared file; it asks t
 **Decisions changed.** An ADR, or any change that amends `ARCHITECTURE.md`, the frozen plan decisions (`plan-v3/decisions-v3.md`, outside the repo), a model choice, the budget or the scope, is listed under a "Decisions changed" heading in the main root's next message to the user. A lane lead sends such changes to the main root instead. A model is never swapped on root authority alone: the user decides.
 
 **Agents** (`.claude/agents/`, plus the user-level `principal-architect`):
-- `implementer`: one task, one worktree, owned paths only.
-- `reviewer`: fresh context, read-only, the mandatory fields from PLAN §0.4.
+- `implementer` (Sonnet 5.5, effort high; the dispatcher passes `model: opus` for Guard/authority, concurrency/fences, renderer/parser, contract and metrics tasks): one task, one worktree, owned paths only.
+- `reviewer` (Opus, the cross-model check): fresh context, read-only, the mandatory fields from PLAN §0.4.
 - `architect`: an escalation for the main root only, for a contract or semantics question, or for a bug that survived one diagnosis pass.
-- `principal-architect` (user-level, Opus, effort xhigh): a read-only advisor for hard planning and architecture questions. It is expensive, and the caller keeps the decision.
-- The built-in `Explore` is for quick lookups.
+- `scout` (Sonnet 5.5, effort medium): a read-only locator for broad searches; returns pointers and a coverage manifest, not conclusions. It replaces the built-in `Explore`.
+- `principal-architect` (user-level, Opus, effort xhigh): a read-only advisor for hard planning and architecture questions. It is expensive, and the caller keeps the decision. `test-log-analyzer` (user-level) runs on Sonnet.
 
 **Concurrency.** At most 8 implementers are in flight across all sessions (user decision 2026-09-26). By default the main root keeps 1 (CON tasks, ADRs, PLAN syncs), the model root 2, L-CORE 2, P-WEB 1, P-API 1, P-OBS 1 and P-TOOLS 0; the main root reallocates with the model root's agreement. A lane lead that wants a second implementer asks the main root. Reviewers do not count.
 
@@ -42,7 +42,7 @@ It never merges. It never edits another lane's paths or a shared file; it asks t
 
 **Root-run flags.** L (keys in `.env`), G (Modal GPU) and U (the user) are executed by the main root. Exception (user decision 2026-09-26, envelope rules by the main root): the model root and L-CORE may run L/G themselves **inside a spend envelope** the main root allocates in `log-main.md` (envelopes never overlap and together never exceed the stage budget); per run ≤ $10 for the model root and ≤ $5 for L-CORE; each run's estimate is logged before and its actual cost after, and a lane stops when its envelope is spent. **Inactive until** TeamRouter prices are measured and in the ledger's rate card, the ledger enforces an absolute USD cap, and every Modal run sets a timeout with timeout × rate ≤ the per-run limit. Subagents never run L/G/U. Implementers get `evidence/` bundles via `tests/support/recorded.py`.
 
-**Git.** Once the user approves a stage, the main root may branch, commit, push and open PRs. A lane lead may do the same for its own lane's task branches, but it never merges. Merge authority is granted to the main root (PLAN header, 2026-09-26): it squash-merges PRs that pass review, CI and the reality rule, and it confirms a PR is MERGED (`gh pr view --json state`) before deleting any branch, and never uses `gh pr merge --admin`. A stage close, a publish, a contract change after `semantics-v1`, the unseal, the split draw and anything destructive need the user.
+**Git.** Once the user approves a stage, the main root may branch, commit, push and open PRs. A lane lead may do the same for its own lane's task branches, but it never merges. Merge authority is granted to the main root (PLAN header, 2026-09-26): it squash-merges PRs that pass review, CI and the reality rule, and it confirms a PR is MERGED (`gh pr view --json state`) before deleting any branch, and never uses `gh pr merge --admin`. Once `scripts/root/merge_gate.sh` lands (S1-ROOT-25), the main root merges through it. A stage close, a publish, a contract change after `semantics-v1`, the unseal, the split draw and anything destructive need the user.
 
 **Guardrails.** `.claude/settings.json` denies the common destructive and `.env`-reading commands, and runs `.claude/hooks/block_destructive.py` before every Bash call (AGENTS rule 16 lists what is mechanical and what is advisory).
 
