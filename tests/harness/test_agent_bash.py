@@ -66,6 +66,8 @@ SHARED_GIT_DENIED = [
     "git -C <WT> -C ../../pine commit -m x",
     "git -c core.pager=cat -C <SHARED>/src commit -m x",
     "bash -c 'git -C <SHARED> fetch'",
+    "bash <<'EOF'\ngit -C <SHARED> fetch\nEOF",  # a heredoc a shell runs
+    "sh -s <<EOF\necho hi\ngit -C <SHARED> commit -m x\nEOF",
     "echo hi && git --no-pager -C <SHARED> merge x",
     "cd <SHARED>/pl-wt/stray && git commit -m x",  # a stray worktree is inside
     # git worktree mutations are never a subagent's job, wherever they point
