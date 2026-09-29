@@ -20,8 +20,8 @@ These are the repository rules for every coding agent. Product intent and invari
 | `mk/sys.mk`, `mk/mod.mk` | lanes | lane make targets (the root owns `Makefile`) |
 
 ## Commands
-- Everyday: `make check`, Python only (lint, typecheck, tests including parity P1/P2/P4 and the counterfactual view test, import contracts, docs-check). CI runs `make web-test` (the web build, unit, e2e and wiring tests) and `make shellcheck` in separate jobs.
-- Focused: `make lint`, `make typecheck`, `make test`, `uv run pytest <path> -q`, `make web-test`.
+- Everyday and PR check: `make check-fast`, Python only (lint, typecheck, the parallel test pass including parity P1/P2/P4 and the counterfactual view test, import contracts, docs-check). The full `make check` adds the long property tests and the `serial` wall-clock group; CI runs it on every push to main, and you run it when a change touches concurrency/fences, `tests/concurrency/**` or `serial`-marked tests. CI also runs `make web-test` (the web build, unit, e2e and wiring tests) and `make shellcheck` in separate jobs.
+- Focused: `make lint`, `make typecheck`, `make test-fast`, `make test`, `uv run pytest <path> -q`, `make web-test`.
 - `make test` runs every test in three passes (Makefile): pytest-xdist `-n auto`, the two long property tests `-n 2`, then the `serial` wall-clock group (`tests/conftest.py`) without xdist. A focused `uv run pytest` stays serial unless you add `-n auto`.
 - Offline evidence: `make evidence-check RUN=<dir>` (offline by default); `make replay` (no keys, no GPU).
 - **Root-run** (live keys / GPU / user; the main root, or within their spend envelopes the model root and L-CORE — `CLAUDE.md`): `make smoke-live`, `make demo`, `make llm-smoke`, `make serve-up|serve-down`, `make pull-through`, `make data`, `make relabel`, `make train`, `make curve`, `make eval-*`, `make publish-*`.
@@ -63,7 +63,7 @@ These are the repository rules for every coding agent. Product intent and invari
 ## Definition of done (your part)
 - Your task's acceptance criteria are met, **as tests you ran** (paste the output tails).
 - Model-touching criteria are marked "needs root run" with the exact command. You cannot close them with fakes, and the task stays `provisional` until the root's real bundle passes `make evidence-check RUN=<dir> MODE=claim`.
-- `make check` is green in your worktree.
+- `make check-fast` is green in your worktree (the full `make check` when the change touches concurrency/fences or those tests).
 
 ## Proportionality
 - **Test-first only for high-risk code:** Guard and authority, concurrency and fences, renderer and parser, the contract, metrics. Elsewhere, a thin slice plus a few high-value tests.

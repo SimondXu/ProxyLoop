@@ -40,12 +40,23 @@ state_path = os.path.join(d, "gh_state.json")
 with open(state_path) as f:
     state = json.load(f)
 args = sys.argv[1:]
-assert args[0] == "pr", args
-verb, n = args[1], args[2]
-pr = state["prs"][n]
 
 def opt(name):
     return args[args.index(name) + 1] if name in args else None
+
+if args[0] == "run":
+    if state.get("runs") is None:
+        sys.exit("gh run list unavailable")
+    assert args[1] == "list" and opt("--workflow") == "ci.yml", args
+    assert opt("--branch") == "main", args
+    out = subprocess.run([state["jq"], "-r", opt("--jq")],
+                         input=json.dumps(state["runs"]),
+                         capture_output=True, text=True, check=True).stdout
+    sys.stdout.write(out)
+    sys.exit(0)
+assert args[0] == "pr", args
+verb, n = args[1], args[2]
+pr = state["prs"][n]
 
 def g(*a):
     return subprocess.run([state["git"], "-C", state["origin"], *a], check=True,
@@ -274,6 +285,7 @@ def test_check_green_and_contained_is_ready(gate: Gate) -> None:
     base = gate.main_sha()
     assert r.stdout.strip() == (
         f"PR 7 head={head[:7]} base={base[:7]} checks=GREEN main=CONTAINED ready=yes"
+        " main_ci=unknown"
     )
     assert gate.mutating() == []
 
@@ -290,7 +302,7 @@ def test_check_failed_names_every_failed_context(gate: Gate) -> None:
     gate.add_pr(7, {"a.txt": "pr\n"}, checks=checks)
     r = gate.run("check", "7")
     assert "checks=FAILED:task-id,shellcheck " in last(r)
-    assert last(r).endswith("ready=no")
+    assert " ready=no main_ci=" in last(r)
 
 
 def test_check_disjoint_when_main_moved_on_other_files(gate: Gate) -> None:
@@ -305,6 +317,48 @@ def test_check_overlap_names_the_shared_paths(gate: Gate) -> None:
     gate.advance_main({"a.txt": "main\n", "apps/web/x.ts": "main\n", "b.txt": "m\n"})
     r = gate.run("check", "7")
     assert "main=OVERLAP:a.txt,apps/web/x.ts ready=no" in last(r)
+
+
+MAIN_URL = "https://github.com/o/r/actions/runs/1"
+
+
+def main_ci_run(status: str, conclusion: str | None) -> list[dict[str, Any]]:
+    return [{"status": status, "conclusion": conclusion, "url": MAIN_URL}]
+
+
+@pytest.mark.parametrize(
+    ("runs", "expected"),
+    [
+        (main_ci_run("completed", "success"), "success"),
+        (main_ci_run("in_progress", ""), "pending"),
+        (main_ci_run("completed", "cancelled"), "unknown"),
+        ([], "unknown"),
+        (None, "unknown"),  # gh run list itself fails
+    ],
+    ids=["success", "pending", "cancelled", "no-runs", "gh-fails"],
+)
+def test_check_reports_main_ci_without_a_warning(
+    gate: Gate, runs: list[dict[str, Any]] | None, expected: str
+) -> None:
+    gate.add_pr(7, {"a.txt": "pr\n"})
+    gate.state["runs"] = runs
+    gate.save()
+    r = gate.run("check", "7")
+    assert r.returncode == 0, r.stderr
+    assert last(r).endswith(f"ready=yes main_ci={expected}")
+    assert "WARNING" not in r.stdout
+
+
+def test_check_warns_when_main_ci_is_red_but_stays_ready(gate: Gate) -> None:
+    gate.add_pr(7, {"a.txt": "pr\n"})
+    gate.state["runs"] = main_ci_run("completed", "failure")
+    gate.save()
+    r = gate.run("check", "7")
+    assert r.returncode == 0, r.stderr
+    lines = r.stdout.strip().splitlines()
+    assert lines[-2] == f"WARNING: main's full check is red ({MAIN_URL})"
+    assert lines[-1].endswith("ready=yes main_ci=failure")
+    assert gate.mutating() == []
 
 
 # --- merge -------------------------------------------------------------------------
