@@ -225,6 +225,12 @@ NEEDS = (
 )
 
 
+PRIVATE = (
+    "tenure_years is recorded private and cannot go public: the lever is "
+    "unavailable; do not ask again"
+)
+
+
 def _tenure(h: Host, text: str) -> None:
     """The user states the tenure; Slow records it citing that message."""
     told = h.emit("user.msg", "kernel", {"text": text})
@@ -249,10 +255,14 @@ def test_d_mention_tenure_without_a_public_tenure_is_refused(tmp_path: Path) -> 
 
 def test_d_a_private_tenure_is_still_refused(tmp_path: Path) -> None:
     h = first.verified(tmp_path, 6500, {"max_term_months": 24}, tenure=False)
-    _tenure(h, "I've been with them for 8 years, I think.")  # not the allow-listed form
+    _tenure(h, "My husband has been with them for 8 years.")  # third person
     assert h.bb.private.case_facts["tenure_years"].value == "8"
-    (got,) = h.act(TENURE | {"slots": [SLOT]})
-    assert got == f"guide_fast: {NEEDS}", got
+    for call in (TENURE, TENURE | {"slots": [SLOT]}):  # D2: no ask loop
+        (got,) = h.act(call)
+        assert got == f"guide_fast: mention_tenure: {PRIVATE}", got
+    levers = _line(h, "levers: ")
+    assert f"mention_tenure unavailable (tenure_private: {PRIVATE})" in levers
+    assert "ask_user" not in levers, levers
 
 
 def test_d_with_a_public_tenure_the_slot_is_passed(tmp_path: Path) -> None:
@@ -260,7 +270,10 @@ def test_d_with_a_public_tenure_the_slot_is_passed(tmp_path: Path) -> None:
     auth.tenure_public(h)
     assert h.bb.public.facts["tenure_years"].value == "8"
     (got,) = h.act(TENURE)  # slotless: refused, never repaired (rule 12)
-    assert got == f"guide_fast: {NEEDS}", got
+    assert got == (  # D2: the slot, no ask_user
+        "guide_fast: mention_tenure: add slot fact:tenure_years (it is public): "
+        'guide_fast(mention_tenure, ["fact:tenure_years"])'
+    ), got
     (got,) = h.act(TENURE | {"slots": [SLOT]})
     assert got.startswith("guide_fast: sent"), got
     (msg,) = [e for e in h.of("s2f.msg") if e.payload["lane"] == "cp"][-1:]

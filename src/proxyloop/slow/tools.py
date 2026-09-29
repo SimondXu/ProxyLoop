@@ -41,10 +41,11 @@ _LAST4 = re.compile(r"[0-9]{4}")  # ASCII only: no NFKC, no separators
 _WORD = r"[A-Za-z]+(?:['\u2019-][A-Za-z]+)*"  # O'Brien, Lee-Smith
 _NAME = re.compile(rf"{_WORD}(?: {_WORD}){{0,3}}")  # 1-4 words, single spaces
 _YEARS = re.compile(r"[0-9]{1,2}")
-_TENURE = re.compile(  # #153 rounds 3-4: first person, in context, one space;
-    # S1-SYS-20: "I" starts the message or a sentence ("She said I've..." never)
-    r"(?:^|(?<=[.!?])\s+)I(?:'ve|\u2019ve| have) been (?:with you|a customer) "
-    r"(?:for )?([0-9]{1,2}) [Yy]ears?(?![\w'\u2019-])"
+_TENURE = (  # #153 rounds 3-4: first person, in context, one space;
+    # S1-SYS-20: "I" starts the message or a sentence ("She said I've..." never);
+    # S1-SYS-94 (R6): "with" you, them or the case's company (exact name, any case)
+    r"(?:^|(?<=[.!?])\s+)I(?:'ve|\u2019ve| have) been (?:with (?:you|them{})|a "
+    r"customer) (?:for )?([0-9]{{1,2}}) [Yy]ears?(?![\w'\u2019-])"
 )
 _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
 _NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
@@ -79,8 +80,10 @@ class SlowTools:
         case: CaseRef,
         *,
         transcript: bool = True,  # Slow reads the conversations (ADR-0016)
+        company: str = "",  # the case's company, as the brief names it (R6)
     ) -> None:
         self._host, self._shareable_keys, self._case = host, shareable_keys, case
+        self._company = company
         self._transcript, self._basis = transcript, None  # the step's view
         self.shareable: dict[str, str] = {}  # recorded shareable values (declass)
         self.finished, self._n, self._mandates = False, 0, 0
@@ -418,7 +421,7 @@ class SlowTools:
         msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
         told = users.get(msg_id, "")
         mine = key in self._shareable_keys and told
-        span = _user_span(key, value, told, bb) if mine else None  # user's words
+        span = _user_span(key, value, told, bb, self._company) if mine else None
         hits = [msg_id] if span is not None else []
         leaks = _leaks(key, span, bb) if span is not None else []  # never protected
         shareable = key in self._shareable_keys and hits and not leaks
@@ -447,7 +450,8 @@ class SlowTools:
                 f": only {', '.join(can) or 'no key'} can go public from the user, "
                 "by citing the utt of the user message that contains exactly the "
                 "value (a last4 as 4 digits, a holder name as the user wrote it, "
-                "tenure as 'I've been with you for N years'); other keys stay private"
+                "tenure as 'I've been with you (them, the company) for N years'); "
+                "other keys stay private"
             )
         return Result(True, text, tuple(effects))
 
@@ -462,16 +466,18 @@ def _said(value: str, line: str) -> bool:  # its digits, else its text verbatim
     return digits <= numbers(line) if digits else value.casefold() in line.casefold()
 
 
-def _user_span(key: str, value: str, message: str, bb: st.Blackboard) -> str | None:
+def _user_span(
+    key: str, value: str, message: str, bb: st.Blackboard, company: str = ""
+) -> str | None:
     """I4, the user-message path (#133, S1-SYS-15): the span of the raw
     ``message`` to publish under ``key``, or None. Only a key in ``FORMATS``
     can go public, and only in its format; every other key stays private
     (safety over coverage). ASCII only: no NFKC widening."""
     match = FORMATS.get(key)
-    return None if match is None else match(value, message, bb)
+    return None if match is None else match(value, message, bb, company)
 
 
-def _digits4(value: str, message: str, _: st.Blackboard) -> str | None:
+def _digits4(value: str, message: str, *_: object) -> str | None:
     """Exactly four ASCII digits, a standalone token of the message: after the
     start, whitespace or ``:``, or an opener ``( " “`` that itself follows one
     of them; then at most one closer ``) " ”``, at most one of
@@ -481,7 +487,7 @@ def _digits4(value: str, message: str, _: st.Blackboard) -> str | None:
     return value if re.search(_BEFORE + value + _AFTER, message) else None
 
 
-def _name(value: str, message: str, _: st.Blackboard) -> str | None:
+def _name(value: str, message: str, *_: object) -> str | None:
     """1-4 ASCII words (``O'Brien``, ``Lee-Smith``), no number word, found
     case-insensitively with word bounds; the user's own spelling is published."""
     if not _NAME.fullmatch(value) or len(value) > MAX_NAME_CHARS:
@@ -492,17 +498,19 @@ def _name(value: str, message: str, _: st.Blackboard) -> str | None:
     return found.group() if found and _NAME.fullmatch(found.group()) else None
 
 
-def _years(value: str, message: str, _: st.Blackboard) -> str | None:
+def _years(value: str, message: str, _: object, company: str = "") -> str | None:
     """1-2 ASCII digits in an allow-listed first-person tenure context ("I've
-    been with you for 6 years", "I have been a customer 12 years"), in a
-    message with no age word and no negation."""
+    been with you for 6 years", "I have been a customer 12 years"; "with
+    them" or "with <company>", the case's exact company name in any case,
+    R6), in a message with no age word and no negation."""
     if not _YEARS.fullmatch(value) or _AGE.search(message):
         return None
     if _NEGATION.search(message):  # "I haven't been with you for 6 years"
         return None
     if _NOT_ASCII.search(message):  # no confusable hides an age word
         return None
-    said = {m.group(1) for m in _TENURE.finditer(message)}
+    who = f"|(?i:{re.escape(company)})" if company else ""
+    said = {m.group(1) for m in re.finditer(_TENURE.format(who), message)}
     return value if value in said else None
 
 
@@ -512,7 +520,7 @@ def _number_word(word: str) -> bool:  # "sixty", "sixties", "sixes", "hundreds"
     return bool(stems & NUMBER_WORDS)
 
 
-Match = Callable[[str, str, st.Blackboard], str | None]  # (value, message, bb)
+Match = Callable[[str, str, st.Blackboard, str], str | None]  # + the company
 FORMATS: dict[str, Match] = {  # the one per-key format table (S1-SYS-15)
     "account.last4": _digits4,
     "account.holder_name": _name,

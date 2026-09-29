@@ -35,6 +35,10 @@ TENURE_NEEDS = (  # S1-SYS-94 (reverses n6): FastC never states a tenure it lack
     "needs fact:tenure_years public: ask_user (keys [tenure_years]) for how "
     "long the user has been a customer, then record_fact it citing the user's reply"
 )
+TENURE_PRIVATE = (  # D2: the user's words did not publish it; asking again loops
+    "tenure_years is recorded private and cannot go public: the lever is "
+    "unavailable; do not ask again"
+)
 
 
 def lever_denial(bb: Blackboard, guide: Guide) -> tuple[str, str] | None:
@@ -43,9 +47,10 @@ def lever_denial(bb: Blackboard, guide: Guide) -> tuple[str, str] | None:
     cancellation lever only with the user's public authorisation.
     ``(reason, text)`` of a denial, else None."""
     facts = bb.public.facts
-    tenure = "tenure_years" in facts and "fact:tenure_years" in guide.slots
-    if guide.move == GuideMove.MENTION_TENURE and not tenure:
-        return "tenure_not_public", f"mention_tenure {TENURE_NEEDS}"
+    if guide.move == GuideMove.MENTION_TENURE and (
+        "tenure_years" not in facts or "fact:tenure_years" not in guide.slots
+    ):
+        return _tenure_denial(bb)
     if guide.move == GuideMove.CITE_COMPETITOR:  # a name alone is no quote
         keys = [s[5:] for s in guide.slots if s.startswith("fact:")]
         quotes = [k for k in keys if k in ("competitor_quote", "competitor.price_usd")]
@@ -64,6 +69,19 @@ def lever_denial(bb: Blackboard, guide: Guide) -> tuple[str, str] | None:
             "from the user; it is not, so the lever is denied"
         )
     return None
+
+
+def _tenure_denial(bb: Blackboard) -> tuple[str, str]:
+    """mention_tenure refused (S1-SYS-94 D2): public but not cited, recorded
+    private (no ask loop), or not recorded (ask the user)."""
+    if "tenure_years" in bb.public.facts:
+        return "tenure_slot_missing", (
+            "mention_tenure: add slot fact:tenure_years (it is public): "
+            'guide_fast(mention_tenure, ["fact:tenure_years"])'
+        )
+    if "tenure_years" in bb.private.case_facts:
+        return "tenure_private", f"mention_tenure: {TENURE_PRIVATE}"
+    return "tenure_not_public", f"mention_tenure {TENURE_NEEDS}"
 
 
 HINTS = {  # what Slow can do about a denial; the reason itself is Guard's

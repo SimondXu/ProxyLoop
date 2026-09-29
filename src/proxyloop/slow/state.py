@@ -37,7 +37,7 @@ from proxyloop.guard.declass import numbers, spoken
 from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
-from proxyloop.slow.authority import TENURE_NEEDS, lever_denial
+from proxyloop.slow.authority import TENURE_NEEDS, TENURE_PRIVATE, lever_denial
 from proxyloop.slow.tools import SlowTools
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
@@ -49,6 +49,7 @@ LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_
 WHY = {  # one clause per refusal class (V5)
     "competitor_quote_not_shareable": "no competitor quote the user shared is public",
     "tenure_not_public": TENURE_NEEDS,  # S1-SYS-94: n6 reversed
+    "tenure_private": TENURE_PRIVATE,  # D2: no ask loop
     "cancel_lever_not_authorized": "cancelling cannot be authorised in this build",
     "lever_failed_twice": "failed to reach the rep twice",
 }

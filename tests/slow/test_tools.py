@@ -659,3 +659,40 @@ def test_a_hold_for_decision_renders_as_checking_with_the_customer() -> None:
     )
     rendered = "".join(m.content for m in render_messages(view, "pl_cp_v2"))
     assert "check with your customer (@hold decision)" in rendered
+
+
+# S1-SYS-94 R6 (root decision, I4 review): the object of the first-person
+# tenure widens to "them" and the case's exact company name (any case); the
+# number stays bound to the user's own first-person statement
+COMPANY_TENURE = [
+    ("I've been with them for 6 years", "", "6", "6"),
+    ("I've been with Northwind for 6 years", "Northwind", "6", "6"),
+    ("I've been with Crestline for 8 years", "Crestline", "8", "8"),
+    ("I've been with Northwind Mobile for 6 years.", "Northwind Mobile", "6", "6"),
+    ("Hi. I've been with northwind mobile for 6 years", "Northwind Mobile", "6", "6"),
+    ("I've been with Brightwave for 6 years", "Northwind Mobile", "6", None),
+    ("I've been with Northwind for 6 years", "Northwind Mobile", "6", None),  # exact
+    ("I've been with Crestline for 8 years", "", "8", None),  # no company
+    ("I've been with Northwindx for 6 years", "Northwind", "6", None),
+    ("I haven't been with them for 6 years", "", "6", None),  # negation
+    ("I've never been with Crestline for 8 years", "Crestline", "8", None),
+    ("He has been with them for 6 years", "", "6", None),  # third person
+    ("My wife says I've been with them for 6 years", "", "6", None),
+    ("I've been with them for 6 months", "", "6", None),  # not years
+    ("I've been with them for six years", "", "six", None),
+    ("I've been with them for 36 years, I'm 60 years old", "", "36", None),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("text", "company", "value", "published"), COMPANY_TENURE)
+def test_r6_tenure_with_them_or_the_company_goes_public(
+    text: str, company: str, value: str, published: str | None
+) -> None:
+    bb = _named(text)
+    tools = SlowTools(
+        cast("Kernel", SimpleNamespace(bb=bb)), ALL, CASE, company=company
+    )
+    result = tools.fact(bb, TENURE, value, "u-1")
+    fact = dict(result.effects[0][1])
+    assert (fact["scope"] == "public") == (published is not None), (text, company)
+    assert tools.shareable.get(TENURE) == published
