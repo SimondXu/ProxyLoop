@@ -48,9 +48,10 @@ if args[0] == "run":
     if state.get("runs") is None:
         sys.exit("gh run list unavailable")
     assert args[1] == "list" and opt("--workflow") == "ci.yml", args
-    assert opt("--branch") == "main", args
+    assert opt("--event") == "push" and "--branch" not in args, args
+    runs = [r for r in state["runs"] if r["headSha"] == opt("--commit")]
     out = subprocess.run([state["jq"], "-r", opt("--jq")],
-                         input=json.dumps(state["runs"]),
+                         input=json.dumps(runs[: int(opt("--limit"))]),
                          capture_output=True, text=True, check=True).stdout
     sys.stdout.write(out)
     sys.exit(0)
@@ -322,8 +323,23 @@ def test_check_overlap_names_the_shared_paths(gate: Gate) -> None:
 MAIN_URL = "https://github.com/o/r/actions/runs/1"
 
 
-def main_ci_run(status: str, conclusion: str | None) -> list[dict[str, Any]]:
-    return [{"status": status, "conclusion": conclusion, "url": MAIN_URL}]
+def main_ci_run(
+    status: str, conclusion: str | None, sha: str = "TIP"
+) -> list[dict[str, Any]]:
+    """One ci.yml push run; sha "TIP" means origin/main's current tip."""
+    return [
+        {"status": status, "conclusion": conclusion, "url": MAIN_URL, "headSha": sha}
+    ]
+
+
+def set_runs(gate: Gate, runs: list[dict[str, Any]] | None) -> None:
+    tip = gate.main_sha()
+    gate.state["runs"] = (
+        None
+        if runs is None
+        else [{**r, "headSha": r["headSha"].replace("TIP", tip)} for r in runs]
+    )
+    gate.save()
 
 
 @pytest.mark.parametrize(
@@ -332,17 +348,16 @@ def main_ci_run(status: str, conclusion: str | None) -> list[dict[str, Any]]:
         (main_ci_run("completed", "success"), "success"),
         (main_ci_run("in_progress", ""), "pending"),
         (main_ci_run("completed", "cancelled"), "unknown"),
-        ([], "unknown"),
+        ([], "pending"),  # no run for the tip yet
         (None, "unknown"),  # gh run list itself fails
     ],
-    ids=["success", "pending", "cancelled", "no-runs", "gh-fails"],
+    ids=["success", "pending", "cancelled", "no-run-for-tip", "gh-fails"],
 )
 def test_check_reports_main_ci_without_a_warning(
     gate: Gate, runs: list[dict[str, Any]] | None, expected: str
 ) -> None:
     gate.add_pr(7, {"a.txt": "pr\n"})
-    gate.state["runs"] = runs
-    gate.save()
+    set_runs(gate, runs)
     r = gate.run("check", "7")
     assert r.returncode == 0, r.stderr
     assert last(r).endswith(f"ready=yes main_ci={expected}")
@@ -351,14 +366,41 @@ def test_check_reports_main_ci_without_a_warning(
 
 def test_check_warns_when_main_ci_is_red_but_stays_ready(gate: Gate) -> None:
     gate.add_pr(7, {"a.txt": "pr\n"})
-    gate.state["runs"] = main_ci_run("completed", "failure")
-    gate.save()
+    set_runs(gate, main_ci_run("completed", "failure"))
     r = gate.run("check", "7")
     assert r.returncode == 0, r.stderr
     lines = r.stdout.strip().splitlines()
     assert lines[-2] == f"WARNING: main's full check is red ({MAIN_URL})"
     assert lines[-1].endswith("ready=yes main_ci=failure")
     assert gate.mutating() == []
+
+
+def test_check_ignores_a_stale_failed_run_for_an_older_sha(gate: Gate) -> None:
+    stale = main_ci_run("completed", "failure", sha=gate.base)
+    gate.advance_main({"b.txt": "main\n"})
+    gate.add_pr(7, {"a.txt": "pr\n"})
+    # A stale red run for an older sha, and nothing for the tip yet.
+    set_runs(gate, stale)
+    r = gate.run("check", "7")
+    assert r.returncode == 0, r.stderr
+    assert "WARNING" not in r.stdout
+    assert last(r).endswith("main_ci=pending")
+    # The tip's own green run wins over the older red one, whatever the order.
+    set_runs(gate, main_ci_run("completed", "success") + stale)
+    r = gate.run("check", "7")
+    assert "WARNING" not in r.stdout
+    assert last(r).endswith("main_ci=success")
+    # The tip's own red run warns.
+    set_runs(
+        gate,
+        main_ci_run("completed", "failure")
+        + main_ci_run("completed", "success", gate.base),
+    )
+    r = gate.run("check", "7")
+    assert "WARNING: main's full check is red" in r.stdout
+    assert last(r).endswith("main_ci=failure")
+    call = next(c for c in gate.calls() if c[:2] == ["gh", "run"])
+    assert call[call.index("--commit") + 1] == gate.main_sha()
 
 
 # --- merge -------------------------------------------------------------------------
