@@ -264,6 +264,8 @@ def test_d6_every_user_phrase_fires(phrase: str) -> None:
         ("cp", "No problem, we accept that offer."),
         ("cp", "No worries at all, we'll take it."),
         ("cp", "I will check. We accept."),  # the guard is sentence-scoped
+        ("cp", "Once again, thank you, we accept the offer."),  # "once again": free
+        ("cp", "After all that, we accept."),  # "after all": free
         ("user", "No action needed, your discount has been applied."),
     ],
 )
@@ -295,6 +297,8 @@ def test_d6_case_and_word_boundaries() -> None:
         "I can't say I agree to that.",
         "My customer will need to decide before we accept.",
         "I cannot tell you we will take it.",
+        "There's no way we accept that price.",
+        "No way we'll take it at that price.",
     ],
 )
 def test_d6_cp_guards(said: str) -> None:
@@ -314,6 +318,7 @@ def test_d6_cp_guards(said: str) -> None:
         "You'll be all set once you approve the card.",
         "If the discount has been applied, you will see it.",
         "It will need your approval before it is done.",
+        "There's no sign it has been applied yet.",
     ],
 )
 def test_d6_user_guards(said: str) -> None:
@@ -828,7 +833,10 @@ def test_an_aborted_arm_is_scored_over_its_rows(tmp_path: Path) -> None:
     assert kn(c["all"]["useful_over_rows_run"]) == (0, 1)
     assert kn(c["all"]["D1"]["all"]) == (0, 2) and c["all"]["not_run"] == 1
     assert c["all"]["errors"] == 1 and kn(c["user"]["useful"]) == (0, 1)
-    assert out["paired"]["useful"]["all"][f"{C} - {REF}"]["units"] == 2
+    assert kn(c["all"]["judged_all_pass"]["all"]) == (0, 2)
+    for metric in ("useful", "judged_all_pass"):  # C: 0, 0 (V2 not run); REF: 1, 0
+        pair = out["paired"][metric]["all"][f"{C} - {REF}"]
+        assert (pair["units"], pair["estimate"]) == (2, -0.5), metric
     del doc["aborted"]
     with pytest.raises(SystemExit, match="rows for 1 of 2"):
         ts.run_export(

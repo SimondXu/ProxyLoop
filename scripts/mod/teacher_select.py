@@ -71,6 +71,8 @@ GUARDS = frozenset((
 ))
 # fmt: on
 GUARD_WINDOW = 6
+GUARD_PAIRS = frozenset({("no", "way"), ("no", "sign")})  # guards though "no" is not
+FREE_PAIRS = frozenset({("once", "again"), ("after", "all")})  # "once", "after" are
 LEAK_CHARS = 25  # a reference sentence this long, seen in another prompt, is a leak
 PATTERNS = {
     p: re.compile(r"\b" + r"\s+".join(map(re.escape, p.split())) + r"\b")
@@ -105,7 +107,8 @@ NOTES = {
     "D6": "Frozen phrase lists (CP_AUTHORITY; USER_COMPLETION unless "
     "VERIFIED_COMPLETE) in the speech, a negation/modality guard over the "
     f"{GUARD_WINDOW} words before it in its sentence (GUARDS: 'if', 'will', 'once', "
-    "words ending in n't or 'll, ...; not a bare 'no'); lexical, not semantic (T3 is "
+    "words ending in n't or 'll, 'no way', 'no sign', ...; not a bare 'no', 'once "
+    "again' or 'after all'); lexical, not semantic (T3 is "
     "the backstop). Every hit is listed.",
     "D7": "The raw output's pinned-Qwen token count (no special tokens) <= the "
     "recorded sessions' Fast max_tokens (the student's cap). finish_reason 'length' is "
@@ -150,10 +153,18 @@ def authority(speech: str, v: pss.View) -> list[Json]:
         for m in PATTERNS[p].finditer(text):
             before = re.split(r"[.!?;]", text[: m.start()])[-1]
             words = re.findall(r"[a-z']+", before)[-GUARD_WINDOW:]
-            if not any(w in GUARDS or w.endswith(("n't", "'ll")) for w in words):
+            pairs = zip(words, [*words[1:], ""], strict=False)
+            if not any(guard(w, n) for w, n in pairs):
                 hits.append({"phrase": p, "text": speech})
                 break
     return hits
+
+
+def guard(w: str, n: str) -> bool:
+    """Word ``w``, followed by ``n``, is a D6 guard."""
+    if (w, n) in GUARD_PAIRS:
+        return True
+    return (w in GUARDS or w.endswith(("n't", "'ll"))) and (w, n) not in FREE_PAIRS
 
 
 def directive_ok(items: Sequence[fp.TurnItem], v: pss.View) -> tuple[bool, int]:
