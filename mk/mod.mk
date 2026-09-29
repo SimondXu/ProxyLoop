@@ -152,6 +152,21 @@ benchmark-report:
 probe-same-state:
 	uv run python -m scripts.mod.probe_same_state $(PSS_ARGS)
 
+# S1-MOD-10 teacher selection (ADR-0025): offline, no keys, no model call. TS_ARGS, export:
+# --reports <probe json>... --evidence runs --max-views 127 --out-dir <dir outside the
+# repo> --key-out <json outside it> --seed N [--views-per-batch 5]; score: the same
+# --reports/--evidence/--max-views, --key <json> --labels-dir <dir> --out <json> --md <md>
+# [--costs <json>] [--seed 0] [--resamples 10000]. The rubric is the committed
+# $(MOD_DATA)/teacher-select-rubric.md; both refuse another (RUBRIC_SHA).
+TS_ARGS ?=
+.PHONY: teacher-select-export teacher-select-score
+
+teacher-select-export:
+	uv run python -m scripts.mod.teacher_select export $(TS_ARGS)
+
+teacher-select-score:
+	uv run python -m scripts.mod.teacher_select score $(TS_ARGS)
+
 # S1-MOD-09 (PR1): freeze the world-model selection items from the train bundles under runs/.
 # Offline: no keys, no model call; a sealed test path is refused. CONSTRUCTED (default: the
 # committed constructed items) is copied in, kept apart and flagged; WORLD_SELECT_RUNS is the
