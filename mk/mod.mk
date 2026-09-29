@@ -237,10 +237,11 @@ world-select-gold:
 # select-a: --evidence runs --out <manifest json>; select-b: --evidence runs --seed N --out
 # <manifest json>; build-c: --evidence runs --b-manifest <json> --seed N --out <views json>
 # --manifest-out <json>; check: --evidence runs --report <set>=<probe json>...
-# [--views-file <views json>] [--manifest <set>=<json>] [--t3-labels <jsonl>] --out <json>
-# --md <md>; export-t3: --check <check json> --out <md> (the blind T3 batch of the set C
-# tripwire candidates). The probe calls are probe-same-state's (PSS_ARGS: --profile,
-# --views-manifest, --views-file, --any-fingerprint, --family-*, --seed-missing).
+# --views-file <set C views json> --manifest A=<json> --manifest B=<json>
+# [--t3-labels <jsonl>] [--allow-other-plan] --out <json> --md <md>; export-t3: --check
+# <check json> --out-dir <dir> (blind T3 batches of every answered set C row). The probe
+# calls are probe-same-state's (PSS_ARGS: --profile, --views-manifest, --views-file,
+# --any-fingerprint, --family-*, --seed-missing).
 PC_ARGS ?=
 .PHONY: profile-check-select-a profile-check-select-b profile-check-build-c profile-check \
 	profile-check-export-t3

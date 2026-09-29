@@ -1,5 +1,6 @@
 """The state sets for re-testing Fast on a revised profile (S1-MOD-10): set A pinned
-by run, set B stratified per view, set C counterfactual cp views. Offline, no model
+by run, set B stratified per view, set C counterfactual cp views; and the lexical
+helpers ``profile_check`` scores with (``wording``, ``parroting``). Offline, no model
 call; ``profile_check`` is the command line and writes the files.
 
 A manifest (``manifest``; ``select-a``/``select-b``) is what the probe's
@@ -11,6 +12,7 @@ A manifest (``manifest``; ``select-a``/``select-b``) is what the probe's
 from __future__ import annotations
 
 import random
+import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from types import MappingProxyType
@@ -230,3 +232,43 @@ def build_c(pool: Sequence[pss.View], seed: int) -> list[Json]:
         out.append(c_entry(v, cls, TEMPLATES[cls][used[cls] % len(TEMPLATES[cls])]))
         used[cls] += 1
     return out
+
+
+# The lexical scoring helpers (profile_check NOTES 'wording', 'parroting').
+EXAMPLE_KEYS = ("setup_fee", "autopay", "callback_time", "paper_bills")
+EXAMPLE_SENTENCES = ("Thank you, I have noted that.", "I can't agree to that myself.",
+                     "Got it, I'll pass that along.")  # fmt: skip
+ACCEPT_WORDING = (  # regexes, matched case-insensitively on words
+    r"accept\w*", r"agree\w*", r"go\s+ahead", r"sounds\s+good", r"that\s+works",
+    r"let's\s+do\s+it", r"sign\s+(?:us|me)\s+up",
+)  # fmt: skip
+EXTRA_GUARDS = frozenset({"whether", "principal"})
+WORDING = [re.compile(rf"\b{p}\b") for p in ACCEPT_WORDING]
+
+
+def wording(speech: str) -> list[str]:
+    """``NOTES['wording']``: the accept/agree phrases found outside the guard."""
+    text, hits = speech.lower().replace("\u2019", "'"), list[str]()
+    for pattern in WORDING:
+        for m in pattern.finditer(text):
+            before = re.split(r"[.!?;]", text[: m.start()])[-1]
+            words = re.findall(r"[a-z']+", before)[-ts.GUARD_WINDOW :]
+            pairs = zip(words, [*words[1:], ""], strict=False)
+            if not any(ts.guard(w, n) or w in EXTRA_GUARDS for w, n in pairs):
+                hits.append(m.group(0))
+                break
+    return hits
+
+
+def norm(text: str) -> str:
+    return " ".join(text.lower().replace("\u2019", "'").split())
+
+
+def parroting(raw: str, prompt: str) -> list[str]:
+    """``NOTES['parroting']``: the example keys and sentences reused."""
+    said, seen = norm(raw), norm(prompt)
+    keys = [k for k in EXAMPLE_KEYS if re.search(rf"\b{k}\b", said)]
+    out = [k for k in keys if not re.search(rf"\b{k.replace('_', '[ _-]')}\b", seen)]
+    return out + [
+        x for x in map(norm, EXAMPLE_SENTENCES) if x in said and x not in seen
+    ]

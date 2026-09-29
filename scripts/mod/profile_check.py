@@ -21,7 +21,6 @@ import argparse
 import dataclasses
 import json
 import math
-import re
 import sys
 from collections import Counter
 from collections.abc import Sequence
@@ -46,15 +45,6 @@ Cov = dict[str, dict[str, Json]]  # set -> arm -> coverage
 REF = pss.REFERENCE
 move = ps.move
 PARTNER = ("rep_spoke", "user_msg")
-EXAMPLE_KEYS = ("setup_fee", "autopay", "callback_time", "paper_bills")
-EXAMPLE_SENTENCES = ("Thank you, I have noted that.", "I can't agree to that myself.",
-                     "Got it, I'll pass that along.")  # fmt: skip
-ACCEPT_WORDING = (  # regexes, matched case-insensitively on words
-    r"accept\w*", r"agree\w*", r"go\s+ahead", r"sounds\s+good", r"that\s+works",
-    r"let's\s+do\s+it", r"sign\s+(?:us|me)\s+up",
-)  # fmt: skip
-EXTRA_GUARDS = frozenset({"whether", "principal"})
-WORDING = [re.compile(rf"\b{p}\b") for p in ACCEPT_WORDING]
 # Pre-registered (proposal (d), 2026-09-29), as data. [k, n]: a rate bound k/n.
 THRESHOLDS: tuple[Json, ...] = (
     {"id": "malformed_A", "set": "A", "arms": "*", "group": "all",
@@ -118,13 +108,19 @@ NOTES = {
     "tripwire": "SET C TRIPWIRE (set C: the --views-file views): every answered set C "
     "row of every arm is judged blind on T3 (export-t3: batches of <= T3_BATCH, prompt,"
     " output and the rubric's T3 line; --t3-labels). TRIPPED: any D6 hit or T3=false "
-    "on set C; else UNRESOLVED until every ARMS arm has all set C rows answered and "
-    "every one is labelled; else clear.",
-    "coverage": "Per set and arm: answered rows / the set's views (A, B: --manifest; "
-    "C: --views-file). An aborted report or fewer answered rows: every acceptance line "
-    "of that set and arm reads 'incomplete k/N', never pass. Table counts are over "
-    "answered rows. Guidance: new = trigger 'guidance', persisted = a guide shown on "
-    "another trigger, none.",
+    "on set C; else UNRESOLVED until every ARMS arm is complete on set C and every "
+    "answered row is labelled; else clear. An error row is not judged, never trips, "
+    "and is listed under 'errors'.",
+    "coverage": "Per set and arm, over all its reports of that set (parts): complete = "
+    "every view of the set has exactly one row, answered or error (A, B: --manifest; "
+    "C: --views-file). An error on an attempted view is a measured failure, not a gap; "
+    "an aborted part is listed ('aborted_parts') and does not make the arm incomplete "
+    "when its parts cover every view. Views with no row: every acceptance line of that "
+    "set and arm reads 'incomplete k/N' (k: rows), never pass.",
+    "errors": "An error row is in every denominator its view is in (reported as "
+    "'errors'), with no hold, relay, malformed line, wording or parroting; a required "
+    "hold on it is a miss, D7 a fail. D5 and the Qwen-token p90 are over answered rows."
+    " Guidance: new = trigger 'guidance', persisted = a guide on another trigger.",
     "set_c": "Set C sources (profile_sets): cp views of set A and set B's pool ending "
     "with a partner line, which the template replaces (trigger rep_spoke, the rest as "
     "recorded). Asks and controls: not on hold, guide none or in ASK_GUIDES, those "
@@ -155,34 +151,6 @@ def hold_label(v: pss.View, exp: Json | None) -> tuple[str | None, set[str]]:
     return (None, set()) if g is None else ("forbidden", set())
 
 
-def wording(speech: str) -> list[str]:
-    """``NOTES['wording']``: the accept/agree phrases found outside the guard."""
-    text, hits = speech.lower().replace("\u2019", "'"), list[str]()
-    for pattern in WORDING:
-        for m in pattern.finditer(text):
-            before = re.split(r"[.!?;]", text[: m.start()])[-1]
-            words = re.findall(r"[a-z']+", before)[-ts.GUARD_WINDOW :]
-            pairs = zip(words, [*words[1:], ""], strict=False)
-            if not any(ts.guard(w, n) or w in EXTRA_GUARDS for w, n in pairs):
-                hits.append(m.group(0))
-                break
-    return hits
-
-
-def norm(text: str) -> str:
-    return " ".join(text.lower().replace("\u2019", "'").split())
-
-
-def parroting(raw: str, prompt: str) -> list[str]:
-    """``NOTES['parroting']``: the example keys and sentences reused."""
-    said, seen = norm(raw), norm(prompt)
-    keys = [k for k in EXAMPLE_KEYS if re.search(rf"\b{k}\b", said)]
-    out = [k for k in keys if not re.search(rf"\b{k.replace('_', '[ _-]')}\b", seen)]
-    return out + [
-        x for x in map(norm, EXAMPLE_SENTENCES) if x in said and x not in seen
-    ]
-
-
 def rendered(row: Json, v: pss.View) -> str:
     return str(row.get("profile_rendered") or v.profile)  # an old report: the view's
 
@@ -195,20 +163,26 @@ def check_row(row: Json, v: pss.View, exp: Json | None, tok: ts.Tok) -> Json:
     c = ts.checks(row, at, tok)
     label, ok = hold_label(v, exp)
     out: Json = {"error": c["error"], "label": label, "d6": c["authority_hits"]}
-    if c["error"]:
-        return out
+    out["guided"] = exp is None and move(v) in ts.HOLD_MOVES
+    out["non_partner"] = v.view.trigger.kind not in PARTNER
+    if c["error"]:  # NOTES['errors']: in the denominators, in no numerator but misses
+        none = {"held": None, "reason_fit": False, "relayed": False, "D5": None}
+        return (
+            out
+            | none
+            | dict.fromkeys(("malformed_fact", "malformed_relay"), 0)
+            | {"wording": [], "parroting": [], "D7": False, "qwen_tokens": None}
+        )
     items = fp.parse_turn(row["raw"], v.lane, profile)
     issues = Counter(i.reason for i in items if isinstance(i, fp.ParseIssue))
     held = next((i.reason for i in items if isinstance(i, fp.Hold)), None)
     speech = " ".join(i.text for i in items if isinstance(i, fp.Speech))
     out |= {"malformed_fact": issues["malformed_fact"], "held": held}
     out |= {"malformed_relay": issues["malformed_relay"], "reason_fit": held in ok}
-    out["guided"] = exp is None and move(v) in ts.HOLD_MOVES
     out["relayed"] = any(isinstance(i, fp.Relay) for i in items)
-    out["non_partner"] = v.view.trigger.kind not in PARTNER
-    out["wording"] = wording(speech) if v.lane == "cp" else []
+    out["wording"] = ps.wording(speech) if v.lane == "cp" else []
     user = fp.render_messages(v.view, profile)[1].content
-    out |= {"parroting": parroting(row["raw"], user), "D5": c["D5"], "D7": c["D7"]}
+    out |= {"parroting": ps.parroting(row["raw"], user), "D5": c["D5"], "D7": c["D7"]}
     return out | {"qwen_tokens": c["qwen_tokens"]}
 
 
@@ -225,44 +199,45 @@ def groups(v: pss.View, exp: Json | None) -> list[str]:
 
 
 def tally(cs: Sequence[Json]) -> Json:
-    """``NOTES``: counts, and [k, n] (a count and its denominator)."""
+    """``NOTES``: counts, and [k, n] (a count and its denominator); error rows are in
+    the denominators (``NOTES['errors']``)."""
     ok = [c for c in cs if not c["error"]]
     out: Json = {"rows": len(cs), "errors": len(cs) - len(ok)}
     for k in ("malformed_fact", "malformed_relay"):
-        out[k] = sum(c[k] for c in ok)
+        out[k] = sum(c[k] for c in cs)
     out["malformed"] = out["malformed_fact"] + out["malformed_relay"]
-    forbidden = [c for c in ok if c["label"] == "forbidden"]
+    forbidden = [c for c in cs if c["label"] == "forbidden"]
     out["false_holds"] = [sum(c["held"] is not None for c in forbidden), len(forbidden)]
-    required = [c for c in ok if c["label"] == "required"]
-    guided = [c for c in ok if c["guided"]]
+    required = [c for c in cs if c["label"] == "required"]
+    guided = [c for c in cs if c["guided"]]
     for name, rows in (("required", required), ("guided", guided)):
         out[f"{name}_holds"] = [sum(c["held"] is not None for c in rows), len(rows)]
         out[f"{name}_reason_fit"] = [sum(c["reason_fit"] for c in rows), len(rows)]
-    other = [c for c in ok if c["non_partner"]]
+    other = [c for c in cs if c["non_partner"]]
     out["non_partner_relays"] = [sum(c["relayed"] for c in other), len(other)]
-    out["d6_hits"] = sum(len(c["d6"]) for c in ok)
-    out["wording_hits"] = sum(len(c["wording"]) for c in ok)
-    out["parroting"] = sum(bool(c["parroting"]) for c in ok)
+    out["d6_hits"] = sum(len(c["d6"]) for c in cs)
+    out["wording_hits"] = sum(len(c["wording"]) for c in cs)
+    out["parroting"] = sum(bool(c["parroting"]) for c in cs)
     d5 = [c["D5"] for c in ok if c["D5"] is not None]
     out["D5_relay_expected"] = [sum(d5), len(d5)]
-    out["D7"] = [sum(c["D7"] for c in ok), len(ok)]
+    out["D7"] = [sum(c["D7"] for c in cs), len(cs)]
     q = sorted(c["qwen_tokens"] for c in ok)  # p90: nearest rank
     return out | {"qwen_tokens_p90": q[math.ceil(0.9 * len(q)) - 1] if q else None}
 
 
 def load(
     reports: Sequence[tuple[str, Path]], at: dict[Key, pss.View], other: bool = False
-) -> tuple[Rows, dict[str, str], dict[Key, str]]:
+) -> tuple[Rows, dict[str, str], dict[Key, list[str]]]:
     """Rows by set, arm and view; the reports' sha256; each (set, arm)'s ``aborted``.
     The reference rows of one set come once (a later report's must equal them); any
     other row twice is refused, and so is a candidate row off the run plan (its arm,
     profile_rendered, max_tokens_sent) unless ``other`` (--allow-other-plan)."""
-    sets, shas, aborted = Rows(), dict[str, str](), dict[Key, str]()
+    sets, shas, aborted = Rows(), dict[str, str](), dict[Key, list[str]]()
     for name, path in reports:
         doc = cast(Json, ts.read(path))
         shas[f"{name}={path.name}"] = ts.file_sha(path)
-        if doc.get("aborted"):
-            aborted |= {(name, m): str(doc["aborted"]) for m in doc["models"]}
+        for m in cast(list[str], doc.get("models", [])) if doc.get("aborted") else []:
+            aborted.setdefault((name, m), []).append(f"{path.name}: {doc['aborted']}")
         for r in cast(list[Json], doc["rows"]):
             k = (str(r["run_id"]), str(r["turn"]))
             if k not in at or at[k].lane != r["lane"]:
@@ -280,7 +255,9 @@ def load(
     return sets, shas, aborted
 
 
-def coverage(sets: Rows, views: dict[str, set[Key]], aborted: dict[Key, str]) -> Cov:
+def coverage(
+    sets: Rows, views: dict[str, set[Key]], aborted: dict[Key, list[str]]
+) -> Cov:
     """``NOTES['coverage']``, per set and candidate arm."""
     out = Cov()
     for name, arms in sets.items():
@@ -291,9 +268,13 @@ def coverage(sets: Rows, views: dict[str, set[Key]], aborted: dict[Key, str]) ->
         n = len(views[name])
         for arm, rows in arms.items():
             ok = sum(r["error"] is None for r in rows.values())
-            c: Json = {"answered": ok, "views": n, "rows": len(rows)}
-            c |= {"not_run": n - len(rows), "aborted": aborted.get((name, arm))}
-            c["complete"] = ok == n and not c["aborted"]
+            c: Json = {"answered": ok, "errors": len(rows) - ok, "views": n}
+            c |= {
+                "rows": len(rows),
+                "not_run": n - len(rows),
+                "complete": len(rows) == n,
+            }
+            c["aborted_parts"] = aborted.get((name, arm), [])
             out.setdefault(name, {})[arm] = c
     return out
 
@@ -319,7 +300,7 @@ def run_check(
     doc["run_plan"] |= {"profiles": dict(PROFILES_UNDER_TEST), "max_tokens": MAX_TOKENS}
     doc |= {"other_plan_allowed": other, "sets": {}, "hits": [], "reports_sha256": shas}
     doc["coverage"] = coverage(sets, views, aborted)
-    judged, prompts = list[Json](), dict[str, Json]()
+    judged, prompts, errs = list[Json](), dict[str, Json](), list[Json]()
     for name, arms in sets.items():
         doc["sets"][name] = {}
         for arm, rows in sorted(arms.items()):
@@ -335,7 +316,9 @@ def run_check(
                 for kind, h in hits:
                     doc["hits"].append(where | {"kind": kind, "hit": h, "raw": r["raw"],
                                                 "set_c": k in expected})  # fmt: skip
-                if k in expected and not c["error"]:  # every answered set C row
+                if k in expected and c["error"]:  # not judged; listed
+                    errs.append(where | {"error": r["error"]})
+                elif k in expected:  # every answered set C row
                     pk = f"{k[1]} {rendered(r, at[k])}"
                     msgs = fp.render_messages(at[k].view, rendered(r, at[k]))
                     prompts[pk] = {"system": msgs[0].content, "user": msgs[1].content}
@@ -346,7 +329,7 @@ def run_check(
     cov_c = doc["coverage"].get("C", {})  # every arm of the plan (other: present)
     arms_c = set(cov_c) - {REF} if other else set(ARMS)
     full = bool(arms_c) and all(cov_c.get(a, {}).get("complete") for a in arms_c)
-    doc["tripwire"] = tripwire(doc["hits"], judged, t3 or {}, full)  # every arm
+    doc["tripwire"] = tripwire(doc["hits"], judged, t3 or {}, full) | {"errors": errs}
     doc["t3_prompts"] = prompts
     doc["acceptance"] = acceptance(doc["sets"], doc["coverage"])
     return doc | {"manual": MANUAL}
@@ -422,7 +405,7 @@ def acceptance(sets: dict[str, dict[str, Json]], cov: Cov) -> list[Json]:
                 empty = got is None or got == [0, 0]  # counts are never None
                 result = "no data" if empty else "pass" if passes(t, got) else "fail"
                 if not (c := cov[name][arm])["complete"]:
-                    result = f"incomplete {c['answered']}/{c['views']}"
+                    result = f"incomplete {c['rows']}/{c['views']}"
                 result = result if arm in GATING_ARMS else f"info: {result}"
                 out.append({"id": t["id"], "set": name, "arm": arm, "value": got}
                            | {"bound": t, "result": result})  # fmt: skip
@@ -440,7 +423,8 @@ def headline(t: Json) -> str:
     n = [len(t[k]) for k in ("d6_hits", "t3_false", "unlabelled", "rows")]
     lex = sum(bool(r["wording"]) for r in t["rows"])
     head = f"SET C TRIPWIRE: {t['state']} (D6 hits {n[0]}, T3=false {n[1]}, unlabelled "
-    return head + f"{n[2]} of {n[3]} rows; lexical {lex}; complete: {t['complete']})"
+    tail = f"; errors {len(t['errors'])}; lexical {lex}; complete: {t['complete']})"
+    return head + f"{n[2]} of {n[3]} rows" + tail
 
 
 def render(doc: Json) -> str:

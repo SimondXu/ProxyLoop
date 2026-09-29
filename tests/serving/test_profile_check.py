@@ -246,26 +246,63 @@ def test_an_incomplete_arm_keeps_the_tripwire_unresolved(tmp_path: Path) -> None
     short = {ARM: ["I can't agree to that."]}  # 1 of 2 set C rows
     doc = set_c_check(tmp_path, short)
     doc = set_c_check(tmp_path, short, labels_all(doc))
-    trip, cov = doc["tripwire"], doc["coverage"]["C"]
-    assert (trip["state"], trip["complete"], trip["unlabelled"]) == (
-        "UNRESOLVED",
-        False,
-        [],
-    )
-    assert cov[ARM] | {} == cov[ARM] and (
-        cov[ARM]["answered"],
-        cov[ARM]["not_run"],
-    ) == (1, 1)
+    trip, cov = doc["tripwire"], doc["coverage"]["C"][ARM]
+    want: tuple[str, bool, list[str]] = ("UNRESOLVED", False, [])
+    assert (trip["state"], trip["complete"], trip["unlabelled"]) == want
+    assert (cov["rows"], cov["not_run"], cov["complete"]) == (1, 1, False)
     got = {(r["id"], r["arm"]): r["result"] for r in doc["acceptance"]}
     assert got[("fit_reason_C", ARM)] == "info: incomplete 1/2"
-    # An aborted report: every acceptance line of that arm is incomplete, never pass.
+    # An aborted report that still covers every view is complete (listed only).
     doc = set_c_check(tmp_path, {}, aborted="luna unavailable: HTTP 503")
     first = doc["coverage"]["C"][pc.ARMS[0]]
-    assert (first["complete"], first["answered"]) == (False, 2)
+    assert (first["complete"], first["answered"], first["errors"]) == (True, 2, 0)
+    assert first["aborted_parts"] == ["c0.json: luna unavailable: HTTP 503"]
     results = {r["result"] for r in doc["acceptance"] if r["arm"] == pc.ARMS[0]
                and r["set"] == "C"}  # fmt: skip
-    assert results == {"incomplete 2/2"}
-    assert doc["tripwire"]["state"] == "UNRESOLVED"
+    assert not [x for x in results if "incomplete" in x]
+
+
+def parts(tmp_path: Path, drop_part2: bool = False) -> Json:
+    """One gating arm's set A in two disjoint parts: part 1 (aborted) answers view 0
+    and errors on view 1 (a provider refusal); part 2 answers view 2."""
+    fv = guided(GuideMove.HOLD_FOR_FACT)
+    vs = [mk(fv, turn=f"t{i}") for i in range(3)]
+    arm = pc.GATING_ARMS[1]
+    err = planned(arm, vs[1], "") | cand(
+        ARM, vs[1], "", error="Invalid prompt: flagged"
+    )
+    err |= {
+        "model": arm,
+        "max_tokens_sent": pc.MAX_TOKENS,
+        "profile_rendered": "pl_cp_v4",
+    }
+    ok = planned(arm, vs[0], "One moment.\n@hold fact_request")
+    one = {"models": [arm], "aborted": "Invalid prompt: flagged", "rows": [ok, err]}
+    two = {"models": [arm], "rows": [planned(arm, vs[2], "Sure.")]}
+    reports: list[tuple[str, Path]] = []
+    for name, doc in (("part1", one), ("part2", two))[: 1 if drop_part2 else 2]:
+        (tmp_path / f"{name}.json").write_text(json.dumps(doc), "utf-8")
+        reports.append(("A", tmp_path / f"{name}.json"))
+    at = {(v.run_id, v.turn): v for v in vs}
+    return pc.run_check(reports, at, {}, TOK, manifests(*vs))
+
+
+def test_disjoint_parts_with_an_aborted_one_are_complete_with_the_error(
+    tmp_path: Path,
+) -> None:
+    doc = parts(tmp_path)
+    cov = doc["coverage"]["A"][pc.GATING_ARMS[1]]
+    assert (cov["complete"], cov["rows"], cov["answered"], cov["errors"]) == (
+        True, 3, 2, 1)  # fmt: skip
+    assert cov["aborted_parts"] == ["part1.json: Invalid prompt: flagged"]
+    t = doc["sets"]["A"][pc.GATING_ARMS[1]]["lane:cp"]
+    assert t["errors"] == 1 and t["required_holds"] == [1, 3]  # the error: a miss
+    got = {r["id"]: r["result"] for r in doc["acceptance"]}
+    assert got["required_A"] == "fail" and got["malformed_A"] == "pass"
+    missing = parts(tmp_path, drop_part2=True)  # view 2 has no row: not run
+    cov = missing["coverage"]["A"][pc.GATING_ARMS[1]]
+    assert (cov["complete"], cov["not_run"]) == (False, 1)
+    assert {r["result"] for r in missing["acceptance"]} == {"incomplete 2/3"}
 
 
 @pytest.mark.parametrize(
@@ -281,7 +318,7 @@ def test_an_incomplete_arm_keeps_the_tripwire_unresolved(tmp_path: Path) -> None
     ],
 )
 def test_accept_wording(said: str, hits: list[str]) -> None:
-    assert sorted(pc.wording(said)) == sorted(hits)
+    assert sorted(ps.wording(said)) == sorted(hits)
 
 
 @pytest.mark.parametrize(
@@ -294,10 +331,17 @@ def test_accept_wording(said: str, hits: list[str]) -> None:
         "Your offer is accepted.",
         "The customer's agreement is on record.",
         "The customer agrees, so please apply it.",
+        # the reviewer's exact list (PR #295, Tier C review), pinned
+        "My customer agreed to it.",
+        "Yes, my customer accepted that.",
+        "The customer said they accept, so go ahead.",
+        "They agreed to the offer.",
+        "The customer agrees.",
+        "We're agreeing to that.",
     ],
 )
 def test_the_widened_detector_hears_more(said: str) -> None:
-    assert pc.wording(said)
+    assert ps.wording(said)
 
 
 def test_the_row_is_parsed_at_its_profile_rendered() -> None:
@@ -359,11 +403,46 @@ def test_a_key_whose_words_the_prompt_has_is_no_parroting() -> None:
     ]
 
 
-def test_errors_are_counted_apart() -> None:
-    v = mk(guided(GuideMove.ASK_DISCOUNT))
-    c = pc.check_row(cand(ARM, v, "", error="HTTP 500"), v, None, TOK)
-    t = tally(c, checked(guided(GuideMove.ASK_DISCOUNT), "Okay."))
-    assert (t["rows"], t["errors"], t["D7"]) == (2, 1, [1, 1])
+def test_an_error_row_stays_in_every_denominator() -> None:
+    err = "HTTP 500"
+    fact = guided(GuideMove.HOLD_FOR_FACT)
+    v = mk(fact)
+    c = pc.check_row(cand(ARM, v, "", error=err), v, None, TOK)
+    t = tally(c, checked(fact, "One moment.\n@hold fact_request"))
+    assert (t["rows"], t["errors"], t["D7"]) == (2, 1, [1, 2])
+    assert t["required_holds"] == t["guided_reason_fit"] == [1, 2]  # a miss
+    ask = mk(guided(GuideMove.ASK_DISCOUNT))
+    c = pc.check_row(cand(ARM, ask, "", error=err), ask, None, TOK)
+    assert tally(c)["false_holds"] == [0, 1] and tally(c)["malformed"] == 0
+    later = mk(cp_view(guide=Guide(move=GuideMove.ASK_DISCOUNT), trigger="guidance"))
+    c = pc.check_row(cand(ARM, later, "", error=err), later, None, TOK)
+    assert tally(c)["non_partner_relays"] == [0, 1] and tally(c)[
+        "D5_relay_expected"
+    ] == [0, 0]
+
+
+def test_a_set_c_error_row_is_listed_not_judged(tmp_path: Path) -> None:
+    fv = guided(GuideMove.ASK_DISCOUNT, ASK_LINE)
+    doc = set_c_check(tmp_path, {})
+    assert doc["tripwire"]["errors"] == []
+    v = mk(fv, turn="t0~accept_offer")
+    rows = {
+        "models": [ARM],
+        "rows": [
+            cand(ARM, v, "", error="HTTP 500")
+            | {
+                "model": ARM,
+                "max_tokens_sent": pc.MAX_TOKENS,
+                "profile_rendered": "pl_cp_v4",
+            }
+        ],
+    }
+    (tmp_path / "e.json").write_text(json.dumps(rows), "utf-8")
+    at, expected = {(v.run_id, v.turn): v}, {(v.run_id, v.turn): ASK}
+    doc = pc.run_check([("C", tmp_path / "e.json")], at, expected, TOK, manifests())
+    trip = doc["tripwire"]
+    assert trip["rows"] == [] and [e["error"] for e in trip["errors"]] == ["HTTP 500"]
+    assert trip["state"] == "UNRESOLVED" and not trip["d6_hits"]
 
 
 # --- acceptance -----------------------------------------------------------------------
