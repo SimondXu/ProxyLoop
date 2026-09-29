@@ -34,6 +34,7 @@ Json = dict[str, Any]
 Key = tuple[str, str]
 REPO = Path(__file__).resolve().parents[2]
 ADR = REPO / "docs/decisions/0025-teacher-selection-method.md"
+AMENDMENT = REPO / "docs/decisions/0026-contract-fast-profile-semantic-rewrite.md"
 SAMPLING = Sampling(temperature=0.3, top_p=0.9, max_tokens=160)
 REAL = AdapterKind.REAL_HTTP
 LUNA = ModelRef(
@@ -1186,13 +1187,18 @@ def test_rubric_sha_is_pinned() -> None:
     assert sha(ts.RUBRIC) == ts.RUBRIC_SHA
 
 
-@pytest.mark.skip(
-    reason="re-pinned by the main root in the ADR-0026 amendment (S1-CON-11)"
-)
 def test_adr_pins_the_instruments() -> None:
+    amendment = AMENDMENT.read_text("utf-8")
+    for name in (
+        "profile_check",
+        "profile_sets",
+        "probe_same_state",
+        "teacher_select",
+    ):
+        pins = re.findall(rf"{name}\.py` sha256 `([0-9a-f]{{64}})`", amendment)
+        assert len(pins) == 1, name
+        assert pins[0] == sha(REPO / f"scripts/mod/{name}.py"), name
     text = ADR.read_text("utf-8")
-    module = re.search(r"teacher_select\.py` sha256 `([0-9a-f]{64})`", text)
     rubric = re.search(r"teacher-select-rubric\.md` sha256 `([0-9a-f]{64})`", text)
-    assert module is not None and rubric is not None
-    assert module.group(1) == sha(REPO / "scripts/mod/teacher_select.py")
+    assert rubric is not None
     assert rubric.group(1) == sha(ts.RUBRIC) == ts.RUBRIC_SHA
