@@ -317,6 +317,21 @@ def test_any_finish_reason_with_done_succeeds(monkeypatch: Any, reason: str) -> 
     assert record.finish_reason == reason and record.error is None
 
 
+def test_finish_and_done_without_usage_succeed(monkeypatch: Any) -> None:
+    chunks = chat_chunks(GEMINI, ["Sure."])[:-1]  # drop the usage chunk
+    records: list[LLMCallRecord] = []
+    llm = client(monkeypatch, GEMINI, Recorder(stream_response(sse(*chunks))), records)
+
+    async def run() -> list[object]:
+        return [item async for item in llm.stream_text(HOSTED)]
+
+    *deltas, record = asyncio.run(run())
+    assert deltas == ["Sure."] and records == [record]
+    assert isinstance(record, LLMCallRecord)
+    assert record.error is None and record.finish_reason == "stop"
+    assert record.usage is None
+
+
 def test_echoed_model_change_mid_stream_is_an_error(monkeypatch: Any) -> None:
     chunks = completion_chunks(QWEN, ["Hello", " there."])
     chunks[1]["model"] = "Qwen3.5-9B-live"
