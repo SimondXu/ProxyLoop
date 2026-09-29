@@ -283,6 +283,8 @@ class SlowTools:
         if mine is None:
             return no(f"{key} is not recorded: record_fact it from the user's message")
         r = self.fact(bb, key, mine.value, mine.source_ref)
+        if not r.ok:
+            return r
         if r.effects[0][1]["scope"] != "public":
             why = r.text.removeprefix("recorded private").lstrip(":, ")
             return no(f"{key} stays private" + (f": {why}" if why else ""))
@@ -403,11 +405,18 @@ class SlowTools:
     def fact(self, bb: st.Blackboard, key: str, value: str, ref: object) -> Result:
         """Public iff the rep said it in ``ref``, or shareable and said by the user
         in the ``user.msg`` that ``ref`` names, directly or through the user-lane
-        relay it cites (a relay is Fast's claim, never the source; I4)."""
-        line = _partner(bb, "cp").get(str(ref), "")
+        relay it cites (a relay is Fast's claim, never the source; I4). A ``ref``
+        naming none of them is refused (S1-SYS-94: 8433bd cited no line)."""
+        rep, users = _partner(bb, "cp"), _partner(bb, "user")
         relayed = {r.msg_id: r.utt_ref for r in bb.f2s_pending if r.lane == "user"}
+        if str(ref) not in rep.keys() | users.keys() | relayed.keys():
+            return no(
+                f"utt_ref {ref!r} names no rep line, user message or user relay: "
+                "cite the utt id of the line the fact came from"
+            )
+        line = rep.get(str(ref), "")
         msg_id = relayed.get(str(ref)) or str(ref)  # the user's own message
-        told = _partner(bb, "user").get(msg_id, "")
+        told = users.get(msg_id, "")
         mine = key in self._shareable_keys and told
         span = _user_span(key, value, told, bb) if mine else None  # user's words
         hits = [msg_id] if span is not None else []

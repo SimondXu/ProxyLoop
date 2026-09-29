@@ -484,9 +484,11 @@ def test_levers_need_the_users_facts(tmp_path: Path) -> None:
 def test_a_shared_fact_follows_the_record_fact_rule(tmp_path: Path) -> None:
     h = Host(tmp_path)
     said = h.emit("user.msg", "kernel", {"text": "I'm Marcus Bell, 5190."})
-    record = {"tool": "record_fact", "key": "account.last4", "utt_ref": "nope"}
+    # S1-SYS-94: cite a message without it (a ref naming no line is refused)
+    other = h.root.event_id
+    record = {"tool": "record_fact", "key": "account.last4", "utt_ref": other}
     out = h.act(
-        record | {"value": "5190"},  # no message cited: private
+        record | {"value": "5190"},  # not the message that says it: private
         {"tool": "share_fact", "key": "account.holder_name"},
         {"tool": "share_fact", "key": "tenure_years"},
         {"tool": "share_fact", "key": "account.last4"},

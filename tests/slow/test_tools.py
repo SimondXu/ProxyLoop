@@ -91,16 +91,17 @@ def test_a_relay_alone_never_makes_a_fact_public() -> None:  # review M1, #133
     tools = SlowTools(
         cast("Kernel", SimpleNamespace(bb=bb)), frozenset({"tenure_years"}), CASE
     )
-    ((_, fact),) = tools.fact(bb, "tenure_years", "85", None).effects
+    ((_, fact),) = tools.fact(bb, "tenure_years", "85", "e1").effects
     assert fact["scope"] == "private"
     assert declassify("current price 85", bb, tools.shareable)
     typed = note.model_copy(
         update={"facts": (("tenure_years", "6"),), "type": "USER_UPDATE"}
     )
     bb = BB.model_copy(update={"f2s_pending": (typed,)})
-    for ref in (None, "e1"):  # FastU's typed claim is not the user's words
-        ((_, fact),) = tools.fact(bb, "tenure_years", "6", ref).effects
-        assert fact["scope"] == "private", ref
+    # FastU's typed claim is not the user's words (S1-SYS-94: citing nothing
+    # is refused, test_backstops)
+    ((_, fact),) = tools.fact(bb, "tenure_years", "6", "e1").effects
+    assert fact["scope"] == "private"
 
 
 def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> None:
@@ -120,8 +121,8 @@ def test_a_cited_relay_counts_only_through_the_user_message_it_points_to() -> No
     bb = bb.model_copy(update={"f2s_pending": relays})
     ((_, fact),) = tools.fact(bb, "account.last4", "9999", "e0").effects
     assert fact["scope"] == "private"
-    ((_, fact),) = tools.fact(bb, "account.last4", "4821", "e2").effects
-    assert fact["scope"] == "private"
+    cp = tools.fact(bb, "account.last4", "4821", "e2")  # names no line (S1-SYS-94)
+    assert (cp.ok, cp.effects) == (False, ())
     for ref in ("e0", "e1", "u-7"):  # the relay's message says 4821
         ((_, fact),) = tools.fact(bb, "account.last4", "4821", ref).effects
         assert (fact["scope"], fact["source_ref"]) == ("public", "u-7"), ref
@@ -174,10 +175,7 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
     bb, tools = _told()
     cases = [
         ("account.last4", "4822", "u-7"),  # not what the user said
-        ("account.last4", "4822", "u-8"),  # the agent's line, not the user's
         ("account.last4", "4821", "cp-3"),  # a rep line without it
-        ("account.last4", "4821", None),  # nothing cited
-        ("account.last4", "4821", "u-99"),  # no such message
         ("plan.current_price_usd", "4821", "u-7"),  # said, but not shareable
     ]
     for key, value, ref in cases:
@@ -185,6 +183,9 @@ def test_a_value_not_in_the_cited_user_message_stays_private() -> None:
         ((_, fact),) = result.effects
         assert (fact["scope"], fact["source"]) == ("private", "user"), (key, ref)
         assert ("citing the utt" in result.text) == (key in KEYS)
+    for ref in ("u-8", None, "u-99"):  # the agent's line, nothing, no such line
+        result = tools.fact(bb, "account.last4", "4821", ref)
+        assert (result.ok, result.effects) == (False, ()), ref  # S1-SYS-94
     assert tools.shareable == {}
 
 
