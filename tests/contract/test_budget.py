@@ -6,6 +6,7 @@ import pytest
 
 from proxyloop.contract import base
 from proxyloop.contract.messages import Guide, GuideMove, SlowToFast
+from proxyloop.contract.profiles import pl_cp_v4
 from proxyloop.contract.protocol import (
     CONTEXT_BUDGET_CHARS,
     OMITTED_LINES,
@@ -123,6 +124,19 @@ def test_maximal_view_fits_with_the_transcript_absorbing_the_rest(
     assert OMITTED_LINES in user.content
     assert "s" * base.MAX_PUBLIC_TEXT in user.content  # bounded fields survive
     assert user.content.count("(revision 999, withdrawn)") == base.MAX_OFFERS
+
+
+@pytest.mark.parametrize("move", sorted(pl_cp_v4.PROFILE.moves))
+def test_pl_cp_v4_maximal_view_fits_for_every_move_text(move: str) -> None:
+    guides = tuple(
+        Guide(move=GuideMove(move), slots=tuple(f"fact:{k}" for k in KEYS[i::3]))
+        for i in range(base.MAX_GUIDES)
+    )
+    view = FastView.model_validate(COMMON | CP_HOLD | {"guidance": guides})
+    system, user = render_messages(view, "pl_cp_v4")
+    assert len(system.content) + len(user.content) <= CONTEXT_BUDGET_CHARS
+    assert OMITTED_LINES in user.content
+    assert "s" * base.MAX_PUBLIC_TEXT in user.content  # bounded fields survive
 
 
 def test_bounds_are_enforced() -> None:
