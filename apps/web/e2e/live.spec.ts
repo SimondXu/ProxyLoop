@@ -857,8 +857,10 @@ test("approval card: the hold line counts up from FastC's chan.hold while the ca
 });
 
 /**
- * Every element of the approval card, in document order: its tag, every attribute (name=value), and every computed
- * style property of the element, its ::before and its ::after (content included); plus the rows' and the bar's text.
+ * The approval card twice, in document order: as rendered (`shown`: every element but a closed <details>'s content),
+ * then with every <details> open (`look`: every element). Each element: its tag, every attribute (name=value), and
+ * every computed style property of the element, its ::before and its ::after (content included); plus the rows' and
+ * the bar's text.
  */
 async function cardLook(browser: Browser, baseURL: string | undefined, priceMinor: string) {
   const context = await browser.newContext({ baseURL, reducedMotion: "reduce" });
@@ -882,21 +884,40 @@ async function cardLook(browser: Browser, baseURL: string | undefined, priceMino
   const card = page.getByRole("article", { name: "Approval ap-1" });
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
   await expect(card.locator(".pl-lbar-l")).toHaveCount(2);
-  await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
-  const look = await card.evaluate((root) => {
-    const all = (s: CSSStyleDeclaration) => Object.fromEntries(Array.from(s, (p) => [p, s.getPropertyValue(p)]));
-    return [root, ...root.querySelectorAll("*")].map((el) => ({
-      el: `${el.tagName.toLowerCase()}.${el.getAttribute("class") ?? ""}`,
-      attrs: Object.fromEntries(Array.from(el.attributes, (a) => [a.name, a.value])),
-      self: all(getComputedStyle(el)),
-      before: all(getComputedStyle(el, "::before")),
-      after: all(getComputedStyle(el, "::after")),
-    }));
-  });
+  const settled = () => card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+  const snapshot = (rendered: boolean) =>
+    card.evaluate((root, rendered) => {
+      const all = (s: CSSStyleDeclaration) => Object.fromEntries(Array.from(s, (p) => [p, s.getPropertyValue(p)]));
+      // A closed <details> skips its content's layout (::details-content is content-visibility: hidden), so a size
+      // read there is not the card's: 0px or the laid-out size, by the tab's style history (the CI flake on
+      // div.pl-quote's block-size). As rendered, keep every element but that content; the <details> and its summary
+      // stay (their attributes, `open` included).
+      const laidOut = (el: Element) => {
+        const d = el.closest("details");
+        return !d || d.open || el === d || el.closest("summary")?.parentElement === d;
+      };
+      return [root, ...root.querySelectorAll("*")]
+        .filter((el) => !rendered || laidOut(el))
+        .map((el) => ({
+          el: `${el.tagName.toLowerCase()}.${el.getAttribute("class") ?? ""}`,
+          attrs: Object.fromEntries(Array.from(el.attributes, (a) => [a.name, a.value])),
+          self: all(getComputedStyle(el)),
+          before: all(getComputedStyle(el, "::before")),
+          after: all(getComputedStyle(el, "::after")),
+        }));
+    }, rendered);
+  await settled();
+  const shown = await snapshot(true);
+  // Then open every <details> in the card, checked, so the whole card is laid out and compared in one defined state.
+  await card.locator("details").evaluateAll((ds) => ds.forEach((d) => ((d as HTMLDetailsElement).open = true)));
+  await expect(card.locator("details")).not.toHaveCount(0);
+  await expect(card.locator("details:not([open])")).toHaveCount(0);
+  await settled();
+  const look = await snapshot(false);
   const rows = await card.getByRole("list", { name: "Read-back progress" }).getByRole("listitem").allInnerTexts();
   const bar = await card.locator(".pl-lbar-l").allInnerTexts();
   await context.close();
-  return { look, rows: rows.map((r) => r.replace(/\s+/g, " ").trim()), bar };
+  return { shown, look, rows: rows.map((r) => r.replace(/\s+/g, " ").trim()), bar };
 }
 
 type Look = Awaited<ReturnType<typeof cardLook>>["look"];
@@ -940,7 +961,9 @@ test("root ruling (a): an offer over, under or equal to the bound looks the same
   expect(over.look.length).toBeGreaterThan(40);
   expect(Object.keys(over.look[0]?.self ?? {}).length).toBeGreaterThan(200); // every computed property, not a chosen few
   // Every attribute and every computed property of every element, its ::before and ::after: identical, but where the bar moves.
-  expect(lookDiff(over.look, under.look)).toEqual([]);
+  expect(lookDiff(over.shown, under.shown)).toEqual([]); // as rendered
+  expect(lookDiff(over.shown, equal.shown)).toEqual([]);
+  expect(lookDiff(over.look, under.look)).toEqual([]); // every <details> open
   expect(lookDiff(over.look, equal.look)).toEqual([]);
   // The text differs only in the amounts themselves.
   const rows = (price: string) => [
