@@ -9,7 +9,8 @@
         [--no-reference]
 
 Inputs: same-state probe reports (``probe_same_state``); an arm is its label (the full
-``<endpoint>:<model>@<effort>`` spec); views re-collected (``pss.collect``), matched
+``<endpoint>:<model>@<effort>`` spec); views re-collected (``views_of``: --evidence
+[--views-manifest] or --views-file with --no-reference; both commands), matched
 by (run_id, turn) and checked (``load``). ``checks``: every row, the reference's too.
 ``export``: blind judge batches; ``score``: the report. ``NOTES`` define the metrics.
 """
@@ -34,8 +35,11 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from proxyloop.contract import protocol as fp
-from proxyloop.contract.base import canonical_json, sha256_text
+from proxyloop.contract.base import Lane, canonical_json, sha256_text
+from proxyloop.contract.bundle import Bundle
+from proxyloop.contract.config import Sampling
 from proxyloop.contract.state import CaseStatus
+from proxyloop.contract.views import FastView
 from proxyloop.kernel.lanes import load_tokenizer
 from proxyloop.training import pull_through as pt
 from scripts.mod import probe_same_state as pss
@@ -257,10 +261,11 @@ def checks(row: Json, v: pss.View, tok: Tok) -> Json:
 
 
 def load(
-    paths: Sequence[Path], views: Sequence[pss.View]
+    paths: Sequence[Path], views: Sequence[pss.View], no_reference: bool = False
 ) -> tuple[Arms, dict[str, str], dict[str, str | None]]:
     """The arms' rows by view (refusals: the module docstring), the reports' sha256
-    by file name, and each arm's report's ``aborted`` text."""
+    by file name, and each arm's report's ``aborted`` text; ``no_reference``: without
+    the recorded reference arm (a views file has none)."""
     at = {(v.run_id, v.turn): v for v in views}
     arms: Arms = {}
     shas: dict[str, str] = {}
@@ -292,6 +297,8 @@ def load(
                 want = override if override is not None else at[k].sampling.max_tokens
                 if r["max_tokens_sent"] != want:
                     raise SystemExit(f"{p}: {m}: max_tokens_sent is not {want}")
+    if no_reference:
+        del arms[REF]
     for m, rows in arms.items():
         if rows.keys() != at.keys() and not (aborted[m] and rows.keys() < at.keys()):
             raise SystemExit(f"arm {m}: rows for {len(rows)} of {len(at)} views")
@@ -396,9 +403,7 @@ def run_export(
     text = rubric_text(rubric)
     if key_out.resolve().is_relative_to(out_dir.resolve()):
         raise SystemExit(f"--key-out {key_out} is inside --out-dir {out_dir}")
-    arms, shas, _ = load(reports, views)
-    if no_reference:
-        del arms[REF]
+    arms, shas, _ = load(reports, views, no_reference)
     eid, rng = export_id(seed, per_batch, shas, no_reference), random.Random(seed)
     outs = {k: [(m, a[k]) for m, a in sorted(arms.items())
                 if k in a and a[k]["error"] is None]
@@ -665,9 +670,7 @@ def run_score(
     and judged all-pass, the D6 hits, the inputs' sha256 and the git sha;
     ``no_reference``: without the recorded reference arm (as its export)."""
     rubric_text(rubric)
-    arms, shas, aborted = load(reports, views)
-    if no_reference:
-        del arms[REF]
+    arms, shas, aborted = load(reports, views, no_reference)
     key = cast(Json, read(key_path))
     if (eid := key["export_id"]) != export_id(
         key["seed"], key["views_per_batch"], shas, no_reference
@@ -787,13 +790,56 @@ def render(doc: Json) -> str:
     return "\n".join(out if doc["authority_hits"] else [*out, "- none"]) + "\n"
 
 
+def manifest_views(bundles: Sequence[Bundle], doc: Json) -> list[pss.View]:
+    """A manifest's views ({"views": [{"run_id", "turn", ...}]}) in its order, from
+    the train bundles on any fingerprint (rows carry profile_rendered)."""
+    want = [(str(x["run_id"]), str(x["turn"])) for x in cast(list[Json], doc["views"])]
+    at = {(v.run_id, v.turn): v for b in bundles
+          for v in pss.collect([b], b.manifest.fingerprints, 10**9)[0]}  # fmt: skip
+    if len(set(want)) != len(want):
+        raise SystemExit("--views-manifest lists a view twice")
+    if lost := [k for k in want if k not in at]:
+        raise SystemExit(f"--views-manifest: {len(lost)} views not found: {lost[:3]}")
+    return [at[k] for k in want]
+
+
+def read_views(path: Path) -> list[pss.View]:
+    """A ``profile_check build-c`` views file: no recorded answer (``raw`` empty)."""
+    out = list[pss.View]()
+    for x in cast(list[Json], read(path)["views"]):
+        lane: Lane = "user" if x["lane"] == "user" else "cp"
+        args = (x["run_id"], x["turn"], lane, x["profile"])
+        args += (FastView.model_validate(x["view"]), Sampling(**x["sampling"]))
+        args += (int(x["seed"]), pss.Rec.model_validate(x["source_call"]), "")
+        out.append(pss.View(*args))
+    return out
+
+
+def views_of(a: argparse.Namespace) -> tuple[list[pss.View], Json]:
+    """A --views-file's views (--no-reference only), a --views-manifest's, or the
+    newest train bundles' (``pss.collect``); cut at --max-views; and the funnel."""
+    if a.views_file:
+        if not a.no_reference or a.views_manifest:
+            raise SystemExit("--views-file: no reference (--no-reference), no manifest")
+        sha = {"views_file_sha256": file_sha(a.views_file)}
+        return read_views(a.views_file)[: a.max_views], sha
+    bundles = pt.load_bundles(a.evidence)
+    if not a.views_manifest:
+        return pss.collect(bundles, pt.current_fingerprints(), a.max_views)
+    views = manifest_views(bundles, cast(Json, read(a.views_manifest)))
+    return views[: a.max_views], {"views_manifest_sha256": file_sha(a.views_manifest)}
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m scripts.mod.teacher_select")
     sub = ap.add_subparsers(dest="cmd", required=True)
     ex, sc = sub.add_parser("export"), sub.add_parser("score")
     for p in (ex, sc):
         p.add_argument("--reports", type=Path, nargs="+", required=True)
-        p.add_argument("--evidence", type=Path, required=True, help="train bundles")
+        src = p.add_mutually_exclusive_group(required=True)
+        src.add_argument("--evidence", type=Path, help="train bundles")
+        src.add_argument("--views-file", type=Path, help="profile_check build-c's")
+        p.add_argument("--views-manifest", type=Path, help="exactly its views")
         p.add_argument("--max-views", type=pss.at_least_1, required=True)
         p.add_argument("--rubric", type=Path, default=RUBRIC)
     ex.add_argument("--out-dir", type=Path, required=True)
@@ -812,9 +858,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     a = parser().parse_args(argv)
-    views, funnel = pss.collect(
-        pt.load_bundles(a.evidence), pt.current_fingerprints(), a.max_views
-    )
+    views, funnel = views_of(a)
     if a.cmd == "export":
         key = run_export(
             a.reports, views, a.out_dir, a.key_out, a.seed, a.views_per_batch, a.rubric,

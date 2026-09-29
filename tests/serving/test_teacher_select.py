@@ -12,6 +12,7 @@ import os
 import random
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -1097,6 +1098,76 @@ def test_pairs_across_prompts_are_flagged(tmp_path: Path) -> None:
     md = ts.render(doc)
     assert md.count("different prompts") == 2 * len(ts.LANES) * 3
     assert "different_prompts" in ts.NOTES["profile"]
+
+
+# --- the view sources (--views-manifest, --views-file) --------------------------------
+
+
+def test_views_manifest_takes_exactly_its_views(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its order, any fingerprint (each bundle collected on its own), extra keys
+    ignored; a missing or repeated view is refused, and a report row outside it."""
+    stale = [mk(cp_view(), run="old", turn=f"t{i}") for i in range(2)]
+    fresh = [mk(cp_view(), run="new", turn="t9")]
+    bundles = [
+        SimpleNamespace(manifest=SimpleNamespace(fingerprints={"cp": "stale"})),
+        SimpleNamespace(manifest=SimpleNamespace(fingerprints={"cp": "now"})),
+    ]
+    by_fp = {"stale": stale, "now": fresh}
+
+    def collect(bs: list[Any], fps: dict[str, str], cap: int) -> tuple[Any, Json]:
+        assert len(bs) == 1 and fps is bs[0].manifest.fingerprints
+        return by_fp[fps["cp"]], {}
+
+    monkeypatch.setattr(ts.pss, "collect", collect)
+    listed = [("new", "t9"), ("old", "t1")]
+    doc = {"views": [{"run_id": r, "turn": t, "lane": "cp", "guide": None}
+                     for r, t in listed]}  # fmt: skip
+    got = ts.manifest_views(bundles, doc)  # pyright: ignore[reportArgumentType]
+    assert [(v.run_id, v.turn) for v in got] == listed
+    for bad, match in (([*listed, listed[0]], "twice"), ([("old", "t7")], "not found")):
+        views = {"views": [{"run_id": r, "turn": t} for r, t in bad]}
+        with pytest.raises(SystemExit, match=match):
+            ts.manifest_views(bundles, views)  # pyright: ignore[reportArgumentType]
+    path = write(tmp_path / "r.json", multi_report(A, [*stale, *fresh]))
+    with pytest.raises(SystemExit, match="no view"):
+        ts.run_export([path], got, tmp_path / "o", tmp_path / "k.json", 1)
+
+
+def views_file(path: Path, views: list[pss.View]) -> Path:
+    """A ``profile_check build-c`` views file (extra keys as it writes them)."""
+    rows = [
+        {"run_id": v.run_id, "turn": v.turn, "lane": v.lane, "profile": v.profile,
+         "view": v.view.model_dump(mode="json"), "sampling": v.sampling.model_dump(),
+         "seed": v.seed, "source_call": v.reference.model_dump(mode="json"),
+         "seed_source": "recorded", "class": "control"}
+        for v in views
+    ]  # fmt: skip
+    return write(path, {"views": rows})
+
+
+def test_views_file_is_judged_without_a_reference(tmp_path: Path) -> None:
+    """Set C: views with no recorded answer; only with --no-reference."""
+    vf = views_file(tmp_path / "views.json", VIEWS)
+    got = ts.read_views(vf)
+    assert [(v.run_id, v.turn, v.view, v.raw) for v in got] == [
+        (v.run_id, v.turn, v.view, "") for v in VIEWS
+    ]
+    doc = rendered(report(A), arms=(A,))
+    doc["rows"] = [r for r in doc["rows"] if r["model"] != REF]
+    path = write(tmp_path / "r.json", doc)
+    key = ts.run_export([path], got, tmp_path / "o", tmp_path / "k.json", 1,
+                        no_reference=True)  # fmt: skip
+    assert {m["arm"] for m in key["records"].values()} == {A}
+    with pytest.raises(SystemExit, match="rows for 0 of 2"):
+        ts.run_export([path], got, tmp_path / "o2", tmp_path / "k2.json", 1)
+    argv = ["export", "--reports", str(path), "--views-file", str(vf)]
+    argv += ["--max-views", "1", "--out-dir", "o", "--key-out", "k", "--seed", "1"]
+    with pytest.raises(SystemExit, match="no-reference"):
+        ts.views_of(ts.parser().parse_args(argv))
+    views, funnel = ts.views_of(ts.parser().parse_args([*argv, "--no-reference"]))
+    assert len(views) == 1 and funnel == {"views_file_sha256": ts.file_sha(vf)}
 
 
 # --- the pins -------------------------------------------------------------------------
