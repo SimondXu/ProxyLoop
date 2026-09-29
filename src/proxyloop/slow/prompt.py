@@ -225,7 +225,7 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "not stated: decline_offer, then guide_fast(ask_final_offer). When the close "
     "line says finish(no_deal) would verify, tell_user the terms offered and why "
     "none was taken, and finish(no_deal, summary) in the same act; while it says "
-    "blocked, act on its reasons.",
+    "blocked or not yet, act on its reasons.",
 }
 
 
@@ -406,9 +406,11 @@ def status_bar(
     def fact(key: str, value: str, scope: str) -> str:
         return f"{key}={json.dumps(value, ensure_ascii=True)} [{scope}]"
 
+    public = {f.key for f in view.public_facts}  # S1-SYS-94: no stale duplicate
+    private = [f for f in view.case_facts if f.key not in public]
     facts = "; ".join(
         [fact(f.key, f.value, "public") for f in view.public_facts]
-        + [fact(f.key, f.value, "private") for f in view.case_facts]
+        + [fact(f.key, f.value, "private") for f in private]
     )
     m = view.mandate
     mandate = "none" if m is None else f"{m.mandate_id} {m.status} (epoch {m.epoch})"
@@ -428,11 +430,18 @@ def status_bar(
         if hold is None
         else f"{hold.reason} for {(now_ms - hold.since_ms) // 1000} s"
     )
+    earlier: list[state.Stated] = []  # S1-SYS-94: rep lines no record carries
+    if more is not None and more.close.kind == "full" and not more.stop:
+        earlier = state.stated(view, more.close.reply, more.carried)
+    none = "none recorded" if earlier else "none"
+    offers = "; ".join(map(offer, view.offers)) or none
+    if earlier:
+        offers += f"; {state.stated_note(earlier)}"
     lines = [
         "[STATUS]",
         f"case: {view.status.value}; epoch {view.epoch}; mandate: {mandate}; "
         f"fences raised: {len(view.fences)}",
-        f"offers: {'; '.join(map(offer, view.offers)) or 'none'}",
+        f"offers: {offers}",
         f"approvals: {', '.join(approvals) or 'none'}",
         f"facts: {facts or 'none'}",
         f"hold: {held}; strikes: {view.cp_strikes}",
@@ -442,5 +451,5 @@ def status_bar(
     if more is not None:  # F-m: the closing reply as Slow's view holds it
         said = state.closing_said(view, more.close.reply)
         amounts = state.unrecorded(view.offers, said)
-        lines += more.lines(hints.needs_lever(view, now_ms), amounts)
+        lines += more.lines(hints.needs_lever(view, now_ms), amounts, earlier)
     return "\n".join(lines)

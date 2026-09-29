@@ -130,11 +130,27 @@ def test_f10_info_only_finish_is_allowed_only_in_the_call(tmp_path: Path) -> Non
 def _head(kind: state.Kind) -> str:
     mode = SlowViewMode.TRANSCRIPT
     host = SimpleNamespace(cfg=SimpleNamespace(slow_view=mode))
-    host.task = SimpleNamespace(id="case-1", mode=kind)
+    firm = SimpleNamespace(company="Northwind Mobile")  # R6 (S1-SYS-94)
+    host.task = SimpleNamespace(id="case-1", mode=kind, counterparty=firm)
     client = RepeatingLLM(fake("slow"), ["unused"], ManualClock())
     keys = frozenset({"competitor.price_usd", "tenure_years"})
     loop = SlowLoop(cast("Kernel", host), client, "brief", keys)
     return cast(str, cast(Any, loop)._head)
+
+
+def test_r6_the_company_counts_only_as_the_brief_names_it() -> None:
+    """S1-SYS-94 R6: SlowTools gets the case's company only if Slow's brief
+    names it (case-insensitive); otherwise "with <company>" never publishes."""
+    for brief, want in (
+        ("Lower the account holder's northwind mobile bill.", "Northwind Mobile"),
+        ("Lower the account holder's bill.", ""),
+    ):
+        host = SimpleNamespace(cfg=SimpleNamespace(slow_view=SlowViewMode.TRANSCRIPT))
+        firm = SimpleNamespace(company="Northwind Mobile")
+        host.task = SimpleNamespace(id="case-1", mode="full", counterparty=firm)
+        client = RepeatingLLM(fake("slow"), ["unused"], ManualClock())
+        loop = SlowLoop(cast("Kernel", host), client, brief, frozenset())
+        assert cast(Any, loop.tools)._company == want
 
 
 @pytest.mark.parametrize("kind", ["info_only", "full"])
@@ -211,20 +227,22 @@ def _denied(h: Host) -> list[str]:
 
 def test_f12_levers_lists_only_what_guide_fast_would_refuse(tmp_path: Path) -> None:
     """0a921a/f828f1/84f731: cite_competitor without a shared quote, mention_tenure
-    citing a private tenure, an unauthorised cancel_lever. Each class on the
-    line is the one the real guide_fast refusal carries."""
+    without a public tenure (none, or a private one: S1-SYS-94), an
+    unauthorised cancel_lever. Each class on the line is the one the real
+    guide_fast refusal carries."""
     h = Host(tmp_path)
     h.call()
     got = dict(state.unavailable(h.bb))
     assert got == {
         "cite_competitor": "competitor_quote_not_shareable",
+        "mention_tenure": "tenure_not_public",
         "cancel_lever": "cancel_lever_not_authorized",
     }
-    said = h.emit("user.msg", "kernel", {"text": "I've been with you for 6 years."})
+    said = h.emit("user.msg", "kernel", {"text": "My wife has been with you 6 years."})
     fact = {"key": "tenure_years", "value": "6", "utt_ref": said.event_id}
-    h.act({"tool": "record_fact", **fact})  # not a shareable key here: private
+    h.act({"tool": "record_fact", **fact})  # third person: private
     got = dict(state.unavailable(h.bb))
-    assert got["mention_tenure"] == "guide_slot_not_public"
+    assert got["mention_tenure"] == "tenure_private"  # D2: no ask loop
     tries = [
         {"tool": "guide_fast", "move": m, "slots": s}
         for m, s in (

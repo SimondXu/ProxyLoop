@@ -103,10 +103,18 @@ def _tenure_answered(h: Host) -> None:
 
 def _verified(tmp_path: Path, cap: int = 6500, **bounds: int) -> Host:
     """identify: every trajectory's first step. The mandate granted in the
-    intake (``cap`` and ``bounds``), the last 4 public, the call open, the
-    identify heard, and the rep has answered since."""
+    intake (``cap`` and ``bounds``), the last 4 and the tenure public
+    (S1-SYS-94: mention_tenure needs it), the call open, the identify heard,
+    and the rep has answered since."""
+    return verified(tmp_path, cap, bounds, tenure=True)
+
+
+def verified(tmp_path: Path, cap: int, bounds: dict[str, int], tenure: bool) -> Host:
+    """``_verified``, with the tenure public only if ``tenure``."""
     h = Host(tmp_path)
     _mandate(h, cap, **bounds)
+    if tenure:
+        auth.tenure_public(h)
     said = h.emit("user.msg", "kernel", {"text": "My last 4 are 4821."})
     record = {"tool": "record_fact", "key": "account.last4", "value": "4821"}
     h.act(record | {"utt_ref": said.event_id})
@@ -126,7 +134,9 @@ VERIFIED = (
     "the rep still asks for a fact, the identify rules apply"
 )
 ANSWERED = "identify: heard by the rep, who has answered since"
-NOT_YET = f"levers: after the first offer: mention_tenure; {REFUSED}"
+NOT_YET = (
+    f"levers: after the first offer: mention_tenure with fact:tenure_years; {REFUSED}"
+)
 
 
 @pytest.mark.parametrize("mode", list(SlowViewMode), ids=str)
@@ -142,6 +152,7 @@ def test_1_verified_no_offer_the_one_step_is_ask_discount(
 def test_1_before_the_identify_is_answered_no_ask_discount(tmp_path: Path) -> None:
     h = Host(tmp_path)
     _mandate(h, 6500)
+    auth.tenure_public(h)
     said = h.emit("user.msg", "kernel", {"text": "My last 4 are 4821."})
     record = {"tool": "record_fact", "key": "account.last4", "value": "4821"}
     h.act(record | {"utt_ref": said.event_id})
@@ -184,7 +195,9 @@ def test_1_the_first_offer_ends_the_discount_step_and_frees_the_levers(
     bar = _bar(h).splitlines()
     assert ANSWERED in bar, bar
     assert not [x for x in bar if "ask_discount" in x or "request: " in x], bar
-    assert f"levers: available: mention_tenure; {REFUSED}" in bar, bar
+    assert (
+        f"levers: available: mention_tenure with fact:tenure_years; {REFUSED}" in bar
+    ), bar
 
 
 def test_1_the_system_prompt_opens_with_the_discount_ask() -> None:
@@ -214,10 +227,11 @@ def test_2_first_offer_outside_with_a_lever_free_is_mention_tenure(
     _offer(h, "save-1", 78, 24)
     offers = _line(h, "offers: ")
     assert offers.endswith(
-        f"{prompt.OUTSIDE_MANDATE} → first one lever: guide_fast(mention_tenure); "
+        f"{prompt.OUTSIDE_MANDATE} → first one lever: "
+        'guide_fast(mention_tenure, ["fact:tenure_years"]); '
         "ask_readback only once none is left"
     ), offers
-    assert _steps(h) == {"guide_fast(mention_tenure)"}
+    assert _steps(h) == {'guide_fast(mention_tenure, ["fact:tenure_years"])'}
 
 
 # (3) a second offer inside the mandate while the first is outside

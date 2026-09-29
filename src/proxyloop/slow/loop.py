@@ -37,7 +37,10 @@ class SlowLoop:
         self._host, self._client, self._brief = host, client, brief
         self._mode = host.cfg.slow_view
         reads = self._mode is SlowViewMode.TRANSCRIPT
-        self.tools = SlowTools(host, keys, case_ref(host.task.id), transcript=reads)
+        firm = host.task.counterparty.company  # R6: only as the brief names it
+        firm = firm if firm.casefold() in brief.casefold() else ""
+        case = case_ref(host.task.id)
+        self.tools = SlowTools(host, keys, case, transcript=reads, company=firm)
         self._cursor = transcript.Cursor()
         self._kind: state.Kind = host.task.mode  # task data, not the view (V3)
         public = ", ".join(sorted(keys & FORMATS.keys())) or "none"  # 21988c

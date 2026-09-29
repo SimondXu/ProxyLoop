@@ -9,8 +9,8 @@ Slow's own GUIDEs and their fates (``slow.heard``, S1-SYS-66): state, not
 transcript text, as is the identify line: the identify's delivery (S1-SYS-74).
 The stop line (S1-SYS-83) reads the case status, the released accepts and
 the cause of the current NEEDS_REPLAN on the bus (as ``sent`` reads fates):
-state, never transcript text. The close line's unrecorded amounts read only
-what Slow's view holds of the closing reply: its line as heard
+state, never transcript text. The unrecorded amounts (F-m, S1-SYS-94) read
+only what Slow's view holds of each rep line: its line as heard
 (``transcript``) and the cp relays citing it (both modes).
 """
 
@@ -20,7 +20,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, cast
 
 from proxyloop.contract.events import Event
 from proxyloop.contract.messages import Guide, GuideMove
@@ -33,11 +33,12 @@ from proxyloop.contract.state import (
 )
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
-from proxyloop.guard.declass import spoken
+from proxyloop.guard.declass import numbers, spoken
 from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
 from proxyloop.guard.status import status_change
 from proxyloop.guard.verify import verify_no_deal
-from proxyloop.slow.tools import SlowTools, lever_denial, public_guide
+from proxyloop.slow.authority import TENURE_NEEDS, TENURE_PRIVATE, lever_denial
+from proxyloop.slow.tools import SlowTools
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
 STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
@@ -45,11 +46,11 @@ UNNAMED_FEE = (
     "for a fee the rep stated without naming it: its amount, as an unnamed fee"
 )
 LEVERS = (GuideMove.CITE_COMPETITOR, GuideMove.MENTION_TENURE, GuideMove.CANCEL_LEVER)
-TENURE = "tenure_years"  # the one lever fact a user can make public (FORMATS)
 WHY = {  # one clause per refusal class (V5)
     "competitor_quote_not_shareable": "no competitor quote the user shared is public",
+    "tenure_not_public": TENURE_NEEDS,  # S1-SYS-94: n6 reversed
+    "tenure_private": TENURE_PRIVATE,  # D2: no ask loop
     "cancel_lever_not_authorized": "cancelling cannot be authorised in this build",
-    "guide_slot_not_public": f"{TENURE} is private; the move works without it",
     "lever_failed_twice": "failed to reach the rep twice",
 }
 DIES = 2  # a lever whose guide died this often is unavailable (root, §0.5a)
@@ -100,9 +101,16 @@ class Close:
     def outcome(self) -> str:
         return "info_only" if self.kind == "info_only" else "no_deal"
 
-    def line(self, unrecorded: Sequence[str] = (), stopped: bool = False) -> str:
+    def line(
+        self,
+        unrecorded: Sequence[str] = (),
+        stopped: bool = False,
+        earlier: Sequence[Stated] = (),
+    ) -> str:
         """``unrecorded``: amounts the closing reply states that no recorded
-        offer carries (F-m); ``stopped``: the stop line has the step (F-i)."""
+        offer carries (F-m); ``stopped``: the stop line has the step (F-i);
+        ``earlier``: the other rep lines' unrecorded amounts (S1-SYS-94),
+        which keep a full close from "would verify"."""
         asked = "final offer asked" if self.asked else "final offer not asked"
         if self.pending:  # M1: queued or playing; asking again would repeat it
             asked = (
@@ -115,7 +123,10 @@ class Close:
                 f"finish({self.outcome}) does not apply"
             )
         said = f"the rep's closing reply {self.reply}" if self.reply else ""
-        if not self.reasons:
+        if not self.reasons and self.kind == "full" and earlier:  # S1-SYS-94
+            said_at = ", ".join(f"{utt}'s {' and '.join(a)}" for utt, a in earlier)
+            can = f"not yet: missing a record of {said_at} (offers line)"
+        elif not self.reasons:
             can = "allowed" if self.kind == "info_only" else "would verify"
         else:
             can = f"blocked: {', '.join(self.reasons)}"
@@ -188,43 +199,77 @@ def stopped(bb: Blackboard, events: Sequence[Event]) -> bool:
     )
 
 
-def closing_said(view: SlowView, reply: str | None) -> list[str]:
-    """What Slow's view holds of the rep's closing reply ``reply``: its line
+def rep_said(view: SlowView) -> dict[str, list[str]]:
+    """What Slow's view holds of each rep line, by utt id in order: its line
     as heard (``transcript`` mode only) and every cp relay citing it."""
-    if reply is None:
-        return []
-    heard = view.transcripts.get("cp", ())
-    said = [x.text for x in heard if x.utt_id == reply and x.speaker == "partner"]
-    relays = [r for r in view.relays if r.lane == "cp" and r.utt_ref == reply]
-    return said + [" ".join((r.text, *(v for _, v in r.facts))) for r in relays]
+    out: dict[str, list[str]] = {}
+    for x in view.transcripts.get("cp", ()):
+        if x.speaker == "partner":
+            out.setdefault(x.utt_id, []).append(x.text)
+    for r in view.relays:
+        if r.lane == "cp" and r.utt_ref is not None:
+            relayed = " ".join((r.text, *(v for _, v in r.facts)))
+            out.setdefault(r.utt_ref, []).append(relayed)
+    return out
 
 
-def unrecorded(offers: Iterable[OfferPublic], said: Iterable[str]) -> tuple[str, ...]:
+def closing_said(view: SlowView, reply: str | None) -> list[str]:
+    """What Slow's view holds of the rep's closing reply ``reply``."""
+    return [] if reply is None else rep_said(view).get(reply, [])
+
+
+def unrecorded(
+    offers: Iterable[OfferPublic], said: Iterable[str], also: Iterable[Decimal] = ()
+) -> tuple[str, ...]:
     """F-m: the money amounts ``said`` states (Guard's ``spoken``, the one
-    money extraction) that no recorded offer's money slot carries, but $0.
-    A fact's value is not left out (rev-269b N-1): an offer at the user's
-    limit or at a competitor's price is still an offer; the close line says
-    it conditionally."""
+    money extraction) that no recorded offer's money slot carries (nor
+    ``also``), but $0. For the closing reply a fact's value is not left out
+    (rev-269b N-1): an offer at the user's limit or at a competitor's price
+    is still an offer; the close line says it conditionally."""
     carried = {
         Decimal(s.value) / 100 for o in offers for s in o.slots if s.unit == "usd_minor"
     }
     amounts = {n for text in said for n in spoken(text, "usd_minor")}
-    return tuple(f"${n}" for n in sorted(amounts - carried - {Decimal(0)}))
+    left = amounts - carried - set(also) - {Decimal(0)}
+    return tuple(f"${n}" for n in sorted(left))
+
+
+Stated = tuple[str, tuple[str, ...]]  # a rep line's utt id, its unrecorded amounts
+
+
+def stated(
+    view: SlowView, reply: str | None, carried: Iterable[Decimal]
+) -> list[Stated]:
+    """S1-SYS-94: each rep line but the closing reply ``reply`` (F-m's own)
+    with amounts that no revision Slow ever recorded carries (``carried``,
+    ``Bar.carried``) and no recorded fact's value does: Slow records a
+    non-offer amount as a fact citing its line (8433bd: an offer said, never
+    recorded, and the close line said "would verify")."""
+    facts = (*view.public_facts, *view.case_facts)
+    also = {*carried, *(n for f in facts for n in numbers(f.value))}
+    said = [(u, unrecorded((), t, also)) for u, t in rep_said(view).items()]
+    return [(u, a) for u, a in said if a and u != reply]
+
+
+def stated_note(earlier: Sequence[Stated]) -> str:
+    """The offers line's note on ``stated``'s lines (S1-SYS-94)."""
+    lines = " and ".join(f"{u} states {', '.join(a)}" for u, a in earlier)
+    if len(earlier) == 1:
+        then = "record_offer it if it is an offer, else record_fact it citing that line"
+    else:
+        then = "record_offer each that is an offer, else record_fact it citing its line"
+    return f"{lines}, which no recorded offer carries: {then}"
 
 
 def unavailable(bb: Blackboard) -> tuple[tuple[str, str], ...]:
     """V5: (lever move, refusal class) for each lever ``guide_fast`` would
-    refuse now: ``lever_denial`` over each public fact as its slot, and
-    ``mention_tenure`` citing a tenure the user gave that stays private."""
+    refuse now: ``lever_denial`` over each public fact as its slot."""
     out: list[tuple[str, str]] = []
     slots = [(f"fact:{k}",) for k in sorted(bb.public.facts)] or [()]
     for move in LEVERS:
         denials = [lever_denial(bb, Guide(move=move, slots=s)) for s in slots]
         if all(denials) and (first := denials[0]) is not None:
             out.append((move.value, first[0]))
-    tenure = Guide(move=GuideMove.MENTION_TENURE, slots=(f"fact:{TENURE}",))
-    if TENURE in bb.private.case_facts and not public_guide(bb, tenure):
-        out.append((tenure.move.value, "guide_slot_not_public"))
     return tuple(out)
 
 
@@ -302,9 +347,9 @@ def lever_slots(bb: Blackboard) -> dict[str, str]:
 
 
 def _gone(levers: Sequence[tuple[str, str]]) -> set[str]:
-    """The moves ``guide_fast`` refuses whole (n6: a private tenure slot
-    leaves the move itself usable)."""
-    return {m for m, c in levers if c != "guide_slot_not_public"}
+    """The moves ``guide_fast`` refuses (S1-SYS-94: n6's slotless tenure is
+    refused too)."""
+    return {m for m, _ in levers}
 
 
 def free_levers(
@@ -326,9 +371,8 @@ def levers_line(
     unavailable lever is only that, whatever was sent. ``label``: how the
     free ones are listed ("available" is a next step; ``Bar.lines``)."""
 
-    def what(move: str, code: str) -> str:  # n6: only the slot is unavailable
-        slot = f" with fact:{TENURE}" if code == "guide_slot_not_public" else ""
-        return f"{move}{slot} unavailable ({code}: {WHY.get(code, code)})"
+    def what(move: str, code: str) -> str:
+        return f"{move} unavailable ({code}: {WHY.get(code, code)})"
 
     sends, slots = sends or {}, slots or {}
     usable = [m.value for m in LEVERS if m.value not in _gone(levers)]
@@ -425,6 +469,8 @@ class Bar:
     offered: bool = True  # an offer was recorded (S1-SYS-82 F-a)
     discount: Sent | None = None  # the ask_discount's delivery (S1-SYS-82)
     stop: bool = False  # the user's stop replanned the case (S1-SYS-83)
+    # the amounts of every revision Slow recorded (S1-SYS-94)
+    carried: frozenset[Decimal] = frozenset[Decimal]()
 
     @property
     def free(self) -> tuple[str, ...]:  # the levers to try, in order
@@ -479,14 +525,19 @@ class Bar:
             f"the user{told}" + (then if self.close.kind == "full" else "")
         )
 
-    def lines(self, outside: bool = True, unrecorded: Sequence[str] = ()) -> list[str]:
+    def lines(
+        self,
+        outside: bool = True,
+        unrecorded: Sequence[str] = (),
+        earlier: Sequence[Stated] = (),
+    ) -> list[str]:
         """The free levers are "available" (a next step) once the discount
         ask was answered without an offer (round 4) or, after an offer,
         while ``outside``: an open offer outside the mandate has no better
         offer before it (round 3); otherwise "after the first offer" or "for
         an offer outside the mandate" (S1-SYS-82). After the user's stop,
         the stop line is the one step (S1-SYS-83). ``unrecorded``: the
-        close line's F-m amounts."""
+        close line's F-m amounts; ``earlier``: the other rep lines'."""
         label = "available" if outside else "for an offer outside the mandate"
         if not self.offered:
             opened = self.discount == "answered"  # round 5: conditional
@@ -496,7 +547,7 @@ class Bar:
         levers = levers_line(self.levers, self.sends, self.slots, label)
         ident = identify_line(self.identify)
         ask = request_line(self.identify, self.offered, self.discount)
-        close = self.close.line(unrecorded, self.stop)
+        close = self.close.line(unrecorded, self.stop, earlier)
         head = [STOP] if self.stop else []
         return [*head, close, levers, *(x for x in (ident, ask) if x)]
 
@@ -514,7 +565,14 @@ def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     offered = bool(bb.public.offers)
     asked = identify_sent(bb, tools, GuideMove.ASK_DISCOUNT)
     events = tools._host.bus.events  # pyright: ignore[reportPrivateUsage]
+    carried = frozenset(
+        Decimal(str(s["value"])) / 100
+        for e in events
+        if e.type == "offer.recorded"
+        for s in cast(list[dict[str, object]], e.payload["slots"])
+        if s["unit"] == "usd_minor"
+    )
     return Bar(
         shut, unavailable(bb), readbacks, sends, slots, ident, offered, asked,
-        stopped(bb, events),
+        stopped(bb, events), carried,
     )  # fmt: skip

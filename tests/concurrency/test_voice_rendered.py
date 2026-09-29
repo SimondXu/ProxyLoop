@@ -19,7 +19,6 @@ from proxyloop.slow import heard
 
 FINAL = {"tool": "guide_fast", "move": "ask_final_offer"}
 DISCOUNT = {"tool": "guide_fast", "move": "ask_discount"}
-TENURE = {"tool": "guide_fast", "move": "mention_tenure"}
 
 
 def _guides(sim: Sim) -> list[str]:
@@ -104,14 +103,14 @@ def test_s2_a_superseded_final_ask_is_not_asked_and_not_pending(
     arun(case())
 
 
-def test_s3_a_superseded_lever_is_never_voiced(tmp_path: Path) -> None:
-    """S3: mention_tenure (A), then ask_discount (B): the lever is never voiced
+def test_s3_a_superseded_discount_ask_is_never_voiced(tmp_path: Path) -> None:
+    """S3: ask_discount (A), then ask_final_offer (B): the ask is never voiced
     and its fate is dead (available again), never heard."""
 
     async def case() -> None:
         sim = Sim(tmp_path)
         await sim.start()
-        a, b = await _two_guides(sim, TENURE, DISCOUNT)
+        a, b = await _two_guides(sim, DISCOUNT, FINAL)
         _voices_only(sim, a, b)
         await sim.stop()
 

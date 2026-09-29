@@ -31,7 +31,10 @@ from proxyloop.slow.tools import SlowTools, case_ref
 if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
-KEYS = frozenset({"account.holder_name", "account.last4", "competitor.price_usd"})
+KEYS = frozenset(
+    {"account.holder_name", "account.last4", "competitor.price_usd", "tenure_years"}
+)
+COMPANY = "Crestline Wireless"  # the case's company (R6, S1-SYS-94)
 TERMS = (
     "It is $69 a month on a 24-month term, no fees, no other changes, "
     "and the offer does not expire."
@@ -73,7 +76,8 @@ class Host:
         self.calls, self.counts = Calls(self.bus), Counter[str]()
         self.ended: list[str] = []
         self.delivered: Event | None = None  # the accept line as heard
-        self.tools = SlowTools(cast("Kernel", self), KEYS, case_ref("case-1"))
+        case = case_ref("case-1")
+        self.tools = SlowTools(cast("Kernel", self), KEYS, case, company=COMPANY)
         self.root = self.emit("user.msg", "kernel", {"text": "Lower my bill."})
 
     @property
@@ -166,6 +170,16 @@ def _confirmed(tmp_path: Path) -> Host:
     offer = h.bb.public.offers["save-2"]
     assert {s.status for s in offer.slots} == {"confirmed"} and offer.terms_hash
     return h
+
+
+def tenure_public(h: Host, said: str = "I've been with them for 8 years.") -> None:
+    """S1-SYS-94: the user states the tenure as SimUsers do ("with them", R6)
+    and Slow records it citing that message: fact:tenure_years is public,
+    the slot mention_tenure needs."""
+    told = h.emit("user.msg", "kernel", {"text": said})
+    fact = {"tool": "record_fact", "key": "tenure_years", "value": "8"}
+    (got,) = h.act(fact | {"utt_ref": told.event_id})
+    assert got == "record_fact: recorded public", got
 
 
 def _granted(h: Host) -> None:
@@ -484,11 +498,13 @@ def test_levers_need_the_users_facts(tmp_path: Path) -> None:
 def test_a_shared_fact_follows_the_record_fact_rule(tmp_path: Path) -> None:
     h = Host(tmp_path)
     said = h.emit("user.msg", "kernel", {"text": "I'm Marcus Bell, 5190."})
-    record = {"tool": "record_fact", "key": "account.last4", "utt_ref": "nope"}
+    # S1-SYS-94: cite a message without it (a ref naming no line is refused)
+    other = h.root.event_id
+    record = {"tool": "record_fact", "key": "account.last4", "utt_ref": other}
     out = h.act(
-        record | {"value": "5190"},  # no message cited: private
+        record | {"value": "5190"},  # not the message that says it: private
         {"tool": "share_fact", "key": "account.holder_name"},
-        {"tool": "share_fact", "key": "tenure_years"},
+        {"tool": "share_fact", "key": "plan.current_price_usd"},
         {"tool": "share_fact", "key": "account.last4"},
     )
     assert "account.holder_name is not recorded" in out[1]

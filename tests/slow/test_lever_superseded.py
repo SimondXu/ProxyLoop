@@ -23,7 +23,7 @@ _cut = neg._cut  # pyright: ignore[reportPrivateUsage]
 FAILED, TENURE = neg.FAILED, neg.TENURE
 FINAL = {"tool": "guide_fast", "move": "ask_final_offer"}
 DISCOUNT = {"tool": "guide_fast", "move": "ask_discount"}
-AVAILABLE = "available: mention_tenure"
+AVAILABLE = "available: mention_tenure with fact:tenure_years"
 
 
 def _superseded(h: Host) -> None:

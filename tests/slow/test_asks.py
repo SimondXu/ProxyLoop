@@ -53,14 +53,14 @@ def test_a1_a_pending_key_is_not_asked_again_and_keyless_asks_are_counted(
     first, again, other, keyless, twice = h.act(
         ask | {"keys": [H, L4]},
         ask | {"keys": [H]},
-        ask | {"keys": ["tenure_years"]},  # not a shareable key here
+        ask | {"keys": ["plan.current_price_usd"]},  # not a shareable key
         ask,
         ask | {"keys": []},
     )
     assert first.startswith("ask_user: sent") and keyless.startswith("ask_user: sent")
     assert "already asked, waiting for the user: account.holder_name" in again
     assert _codes(h)[1] == ("ask_user", False, None)  # Guard's refusal: no code
-    assert other.startswith("ask_user: invalid arguments: keys: tenure_years")
+    assert other.startswith("ask_user: invalid arguments: keys: plan.current_price_usd")
     assert twice.startswith("ask_user: sent")
     assert h.counts["keyless_ask"] == 2 and h.calls.needs.keyless == 2
     assert len(h.of("s2f.msg")) == 3  # one per successful ask
