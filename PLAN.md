@@ -22,7 +22,7 @@ Legend:
 - **One task = one PR = one implementer, in its own git worktree.**
   - The root creates the worktree with `git worktree add ../pl-wt/<ID> -b task/<id-lowercase> origin/main`.
   - The implementer works only there and commits on the task branch. It never pushes, merges, rebases `main` or touches another worktree.
-  - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
+  - The root verifies (CI on the PR head via `scripts/root/merge_gate.sh check`, plus the task's verification as reported), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer for Tier B/C tasks (§0.4) (for Tier A it reads the diff itself), reconciles the findings, squash-merges, then removes the worktree and branch.
 - **The packet** is `.claude/task-packet-template.md` filled with: the task block from this file verbatim, plus `NORTH_STAR.md`, plus ≤ 5 named files, the verification commands and the escalation triggers.
 - **Concurrency:** ≤ 8 implementers in flight across all sessions, with disjoint owned paths (user decision 2026-09-26). By default the main root keeps 1, the model root 2, L-CORE 2, P-WEB 1, P-API 1, P-OBS 1 and P-TOOLS 0 (`CLAUDE.md`). A lane lead that wants a second implementer asks the main root. Reviewers do not count.
 - **Merge at gate** (user decision 2026-09-26): early work, meaning S1 pure tasks and product-lane work, is coded and reviewed now but merged only after S0-ROOT-05's real bundles are committed.
@@ -42,7 +42,7 @@ Legend:
   - It becomes `done` only when a named real run exercises it (for example S0-ROOT-05 flips S0-SYS-03…06).
 - **Failure → fixture:** every failure class a live run exposes gets a named detector (S1-SYS-42) and, where deterministic, a regression fixture that replays the recorded model output through the current code (no model call, no second runner) (root decision under §0.5a, 2026-09-27).
 - **Process defaults** (root decisions under §0.5a, 2026-09-28; the user raised no objection):
-  - review tiers: multi-round reviews only for I6 code; other PRs get one round (§0.4);
+  - review tiers: Tiers A/B/C in §0.4;
   - batched merges: 2–3 approved PRs with disjoint files are merged locally onto `main` in one batch worktree, and one full `make check` (plus `make web-test` when web paths are touched) on the batch is its merged-state check; each PR head is verified unchanged, and `main`'s tree must equal the tested batch tree;
   - a daily ROOT sync of this file;
   - parallel smokes;
@@ -80,16 +80,21 @@ Legend:
 6. After `semantics-v1` (S3-ROOT-01), a fingerprint change also invalidates every dataset built under the old fingerprint. That requires the user's go (§0.6).
 
 ### 0.4 Reviewer (fresh-context Claude subagent, `.claude/agents/reviewer.md`): mandatory fields in the review
-1. The `make check` output tail (run by the reviewer) and the task's verification output as it was actually run.
+1. The CI result on the reviewed head (the required checks `check`, `task-id`, `web`, `shellcheck`) and the task's verification output as the implementer ran it. The reviewer runs focused tests and its adversarial cases itself; it runs `make check` only when CI is unavailable or red for an unclear reason.
 2. **"Could this pass with every model stubbed? Could it pass with the model endpoint dead? Why not?"**
-3. At least one defect, **or** the adversarial cases tried (listed). Every finding is tagged **blocker**, **major** or **nit**.
+3. At least one defect, **or** the adversarial cases tried (listed). Every finding is tagged **blocker**, **major**, **minor** or **nit** (minor and nit go to §0.9).
 4. NORTH_STAR invariants touched, and whether they hold.
 5. Owned paths: is the diff inside the task's paths? Is the contract untouched, or is there an ADR?
 6. "Does this add a second path for eval, data, serving or rendering? A fallback? Anything on the TTFS path? A process doc?"
 7. **Anti-absorption:** "Does this make base Qwen look better without changing semantics (parser leniency, retries, templates, Fast-specific kernel help)?"
 8. The reality statement: `real_http` vs `recorded_replay` vs `test_fake` vs `baseline`, and where each is used.
 
-**Fixes and rounds.** Only blocker and major findings must be fixed before merge. Nits go to the follow-up list (§0.9) and never trigger another round. An S task gets at most one review round unless a blocker is found; wording-only fixes never trigger re-review. Multi-round reviews are kept for I6 code (root decision under §0.5a, 2026-09-28).
+**Review tiers** (root decision under §0.5a, user-approved 2026-09-29). Only blocker and major findings must be fixed before merge.
+- **Tier A** — docs, config, PLAN, data-only or harness text (no `src/` logic, no test logic): no fresh reviewer; the root reads the diff.
+- **Tier B** — ordinary code: one review round. The lane lead (or the root) checks blocker and major fixes against the finding; there is no delta review unless a blocker was found. Minor and nit never trigger a round.
+- **Tier C** — Guard/authority, concurrency/fences, renderer/parser, contract, metrics/grading, I6 code: multi-round review, and mutation testing is allowed.
+- **UI tests** assert behaviour and honesty (allow-lists, no web-side verdicts, accessible names), not pixel or computed-style matrices.
+- **Merging:** CI on the PR head is authoritative, and the root merges with `scripts/root/merge_gate.sh`. A head whose files are disjoint from what `main` changed merges without update-branch; batch only when needed. There is no per-PR CI-watcher agent: the root checks CI with `merge_gate.sh check` when a PR is handed off, and uses at most one watcher for several PRs when it must wait.
 
 ### 0.5 Root-run tasks and the reality rule
 - **L, G and U work is executed by the root** (or CI), never by an implementer. Implementers get recorded bundles from `evidence/` through `tests/support/recorded.py`, and fakes from `tests/support/fakes.py`.

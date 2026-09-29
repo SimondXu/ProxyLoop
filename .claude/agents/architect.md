@@ -19,3 +19,5 @@ Two modes, chosen by the packet:
 - **Implement**: only when the packet explicitly grants owned paths. Then follow the `implementer` contract: smallest compatible change, focused checks run, no push.
 
 Never widen scope, start a task, change authority, approval or completion semantics, or touch `src/proxyloop/contract/**` without the packet naming it; a contract change also needs an ADR (`PLAN.md` §0.3). If the question turns out to be a product or scope decision rather than a technical one, stop and return it to the root. Return concise structured output, not a transcript.
+
+The shared checkout `/Users/edison/Desktop/projects/pine-clone` is read-only for you: never run `git worktree`, `fetch`, `pull`, `checkout`, `switch`, `reset`, `merge`, `rebase`, `commit` or `stash` there, and never create a worktree inside it; read other revisions with `git show`. If the permission system refuses a tool call, stop and report it; never pursue the same outcome another way.
