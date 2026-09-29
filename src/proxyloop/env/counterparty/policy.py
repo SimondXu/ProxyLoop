@@ -22,7 +22,12 @@ included, as a real rep's system would; that is the trap the agent must avoid
 by asking for a read-back first. An accept is by name only if the heard text
 says the offer's ref or its monthly price. An ambiguous accept (neither, or a
 price that is not the offer's) makes the rep read every term back and ask for
-confirmation; a plain "yes" then commits.
+confirmation; a plain "yes" then commits. With ``offer_ref`` null (S1-SYS-88),
+an accept names the one open offer, among those listed to the Ear for its
+block (ADR-0021), whose price or ref it says; none or several read the latest
+back. In CONFIRM it commits the pending offer unless it names another listed
+open offer: then that one is read back if it is the only other, else the
+pending one again.
 """
 
 from __future__ import annotations
@@ -157,16 +162,26 @@ class Policy:
 
         self._free_since = t_ms if free else None
 
-    def step(self, act: EarAct, utt_id: str, heard: str, t_ms: int) -> list[Decision]:
+    def step(
+        self,
+        act: EarAct,
+        utt_id: str,
+        heard: str,
+        t_ms: int,
+        *,
+        listed: frozenset[str] = frozenset(),
+    ) -> list[Decision]:
         """The reaction to one heard utterance, after any expiries. The rep
-        answers, so it takes the floor."""
+        answers, so it takes the floor. ``listed``: the offers the Ear was
+        shown for this utterance's block, the only ones an accept with
+        ``offer_ref`` null can name by price or ref (none by default)."""
 
         if self.done:
             return []
         out = self._expire(t_ms)
         self._free_since, self._hold_since = None, None
         before, strikes = self.state, self.strikes
-        intent, commit = self._react(act, utt_id, heard, t_ms)
+        intent, commit = self._react(act, utt_id, heard, t_ms, listed)
         struck = self.strikes > strikes
         if before != "IDENTIFY" and act.act != "hold_request":  # progress
             self._hold_clock = None
@@ -197,7 +212,7 @@ class Policy:
         return [*out, Decision(before, self.state, intent, self._rung(), strike=True)]
 
     def _react(
-        self, act: EarAct, utt_id: str, heard: str, t_ms: int
+        self, act: EarAct, utt_id: str, heard: str, t_ms: int, listed: frozenset[str]
     ) -> tuple[PublicIntent, Commit | None]:
         a = act.act
         if a == "ask_supervisor":
@@ -233,7 +248,7 @@ class Policy:
         if a in LEVERS:
             return self._lever(a, t_ms), None
         if a == "accept":
-            return self._accept(act, utt_id, heard)
+            return self._accept(act, utt_id, heard, listed)
         if a == "ask_readback":
             offer = self.offers.get(act.offer_ref or self._latest() or "")
             if offer is None or offer.status != "open":
@@ -262,11 +277,13 @@ class Policy:
         )
 
     def _accept(
-        self, act: EarAct, utt_id: str, heard: str
+        self, act: EarAct, utt_id: str, heard: str, listed: frozenset[str]
     ) -> tuple[PublicIntent, Commit | None]:
         offer = self.offers.get(act.offer_ref or "")
         named = offer is not None and self._named(offer.spec, heard)
-        if not named and self.state == "CONFIRM" and self._pending is not None:
+        if act.offer_ref is None:
+            offer, named = self._unreferenced(heard, listed)
+        elif not named and self.state == "CONFIRM" and self._pending is not None:
             offer, named = self.offers[self._pending], True  # "yes" to the read-back
         elif not named:
             offer = offer or self.offers.get(self._latest() or "")
@@ -297,6 +314,26 @@ class Policy:
         return intent, Commit(
             spec.offer_ref, confirmation, self.ledger.lookup(confirmation)
         )
+
+    def _unreferenced(
+        self, heard: str, listed: frozenset[str]
+    ) -> tuple[_Offer | None, bool]:
+        """The offer an accept with ``offer_ref`` null is for, and whether it
+        is named: by the listed open offers whose price or ref is heard."""
+        cands = [
+            o
+            for ref, o in self.offers.items()
+            if ref in listed and o.status == "open" and self._named(o.spec, heard)
+        ]
+        pending = self.offers.get(self._pending or "")
+        if self.state == "CONFIRM" and pending is not None:
+            others = [o for o in cands if o is not pending]
+            if not others:  # "yes" to the read-back
+                return pending, True
+            return (others[0] if len(others) == 1 else pending), False
+        if len(cands) == 1:
+            return cands[0], True
+        return self.offers.get(self._latest() or ""), False
 
     def _terms(self, kind: IntentKind, spec: OfferSpec) -> PublicIntent:
         return PublicIntent(

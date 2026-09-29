@@ -440,6 +440,20 @@ def test_t5_an_accept_of_an_offer_unlocked_in_the_same_block_is_read_back(
     assert turns[5].end == "closed"
 
 
+def test_a_queued_accept_saying_a_listed_offers_price_commits(tmp_path: Path) -> None:
+    """S1-SYS-88 beside T5: loyal-1 was made before the block, so the Ear
+    listed it; an accept with offer_ref null that says its price commits it."""
+    line: Line = (
+        "Yes, we accept these terms: $75 a month for 12 months.",
+        {"act": "accept"},
+    )
+    play = Play(tmp_path, [ID, DISCOUNT, OTHER, line], alone=2)
+    turns = play.run()
+    (commit,) = play.of("rep.commit_heard")
+    assert commit.payload == {"utt_id": play.utt(3), "offer_ref": "loyal-1"}
+    assert play.rep.policy.state == "CONFIRMED" and turns[-1].end == "closed"
+
+
 def test_d2_an_accept_in_the_block_that_makes_the_first_offer_is_clarified(
     tmp_path: Path,
 ) -> None:
