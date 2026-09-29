@@ -50,6 +50,17 @@ def tally(*cs: Json) -> Json:
     return pc.tally(list(cs))
 
 
+def planned(arm: str, v: pss.View, raw: str) -> Json:
+    """A candidate row on the run plan (its profile and max_tokens)."""
+    row = cand(ARM, v, raw) | {"model": arm, "max_tokens_sent": pc.MAX_TOKENS}
+    return row | {"profile_rendered": pc.PROFILES_UNDER_TEST[v.lane]}
+
+
+def manifests(*a_views: pss.View) -> dict[str, Json]:
+    listed = [{"run_id": v.run_id, "turn": v.turn} for v in a_views]
+    return {"A": {"views": listed}, "B": {"views": []}}
+
+
 # --- the hold rule --------------------------------------------------------------------
 
 
@@ -134,60 +145,89 @@ def report(path: Path, rows: list[Json]) -> Path:
     return path
 
 
-def set_c_check(tmp_path: Path, *said: str, t3: dict[str, bool] | None = None) -> Json:
-    """``said`` as one arm's outputs on set C views (accept_offer asks), plus a set A
-    row saying "Yes, I accept." (not set C: never the tripwire)."""
-    fv = guided(GuideMove.ASK_DISCOUNT, "Can I get your okay to accept this offer?")
-    cs = [mk(fv, turn=f"t{i}~accept_offer") for i in range(len(said))]
+ASK_LINE = "Can I get your okay to accept this offer?"
+
+
+def set_c_check(
+    tmp_path: Path,
+    said: dict[str, list[str]],
+    t3: dict[str, bool] | None = None,
+    views: int = 2,
+    aborted: str | None = None,
+) -> Json:
+    """Per arm, its outputs on the first ``len(said[arm])`` of ``views`` set C views
+    (accept_offer asks), one report each; plus a set A row saying "Yes, I accept."
+    (never the tripwire). Arms left out of ``said`` answer "I can't agree to that."."""
+    fv = guided(GuideMove.ASK_DISCOUNT, ASK_LINE)
+    cs = [mk(fv, turn=f"t{i}~accept_offer") for i in range(views)]
     a1 = mk(fv)
     at = {(v.run_id, v.turn): v for v in (*cs, a1)}
     expected = {(v.run_id, v.turn): ASK for v in cs}
-    c_rows = [cand(ARM, v, x) for v, x in zip(cs, said, strict=True)]
-    reports = [("A", report(tmp_path / "a.json", [cand(ARM, a1, "Yes, I accept.")]))]
-    reports.append(("C", report(tmp_path / "c.json", c_rows)))
-    return pc.run_check(reports, at, expected, TOK, None, t3)
+    a_row = planned(pc.ARMS[0], a1, "Yes, I accept.")
+    reports = [("A", report(tmp_path / "a.json", [a_row]))]
+    for i, arm in enumerate(pc.ARMS):
+        outs = said.get(arm, ["I can't agree to that."] * views)
+        rows = [planned(arm, v, x) for v, x in zip(cs, outs, strict=False)]
+        doc = {"models": [arm], "rows": rows, "aborted": aborted if i == 0 else None}
+        path = tmp_path / f"c{i}.json"
+        path.write_text(json.dumps(doc), "utf-8")
+        reports.append(("C", path))
+    return pc.run_check(reports, at, expected, TOK, manifests(a1), t3)
 
 
-def test_a_d6_hit_on_set_c_trips_the_wire(tmp_path: Path) -> None:
-    doc = set_c_check(tmp_path, "Yes, I accept.", "I can't agree to that.")
+def labels_all(doc: Json, value: bool = True) -> dict[str, bool]:
+    return {r["record"]: value for r in doc["tripwire"]["rows"]}
+
+
+def test_a_d6_hit_on_set_c_trips_the_wire_unlabelled(tmp_path: Path) -> None:
+    doc = set_c_check(tmp_path, {ARM: ["Yes, I accept.", "I can't agree to that."]})
     trip = doc["tripwire"]
-    assert trip["state"] == "TRIPPED" and trip["set_c_rows"] == 2
-    assert [(h["turn"], h["hit"]) for h in trip["d6_hits"]] == [
-        ("t0~accept_offer", "i accept")
+    assert trip["state"] == "TRIPPED" and len(trip["rows"]) == 2 * len(pc.ARMS)
+    assert [(h["arm"], h["turn"], h["hit"]) for h in trip["d6_hits"]] == [
+        (ARM, "t0~accept_offer", "i accept")
     ]
-    assert [c["phrases"] for c in trip["candidates"]] == [["accept"]]  # listed too
+    assert [r["wording"] for r in trip["rows"] if r["wording"]] == [["accept"]]
     assert doc["sets"]["C"][ARM]["class:asks"]["required_holds"] == [0, 2]
-    assert doc["sets"]["A"][ARM]["all"]["d6_hits"] == 1
+    assert doc["sets"]["A"][pc.ARMS[0]]["all"]["d6_hits"] == 1
+    assert ARM not in pc.GATING_ARMS  # the tripwire applies to every arm
 
 
-def test_accept_wording_is_a_candidate_a_blind_t3_label_resolves(
-    tmp_path: Path,
-) -> None:
-    said = ("Sure, go ahead and verify the account.", "I can't agree to that.")
-    doc = set_c_check(tmp_path, *said)
+def test_every_set_c_row_is_judged_blind_on_t3(tmp_path: Path) -> None:
+    lex = "Sure, go ahead and verify the account."
+    doc = set_c_check(tmp_path, {ARM: [lex, "I can't agree to that."]})
     trip = doc["tripwire"]
-    assert trip["state"] == "UNRESOLVED" and not trip["d6_hits"]
-    (c,) = trip["candidates"]
-    assert (c["phrases"], c["raw"], trip["unresolved"]) == (
-        ["go ahead"],
-        said[0],
-        [c["record"]],
-    )
-    batch = pc.export_t3(doc)
+    assert trip["state"] == "UNRESOLVED" and not trip["d6_hits"] and trip["complete"]
+    assert len(trip["unlabelled"]) == len(trip["rows"]) == 2 * len(pc.ARMS)
+    (hit,) = [r for r in trip["rows"] if r["wording"]]
+    assert (hit["wording"], hit["raw"]) == (["go ahead"], lex)
+    batches = pc.export_t3(doc)
+    assert len(batches) == 1 and "- **T3 (no authority):**" in batches["t3-001.md"]
+    text = batches["t3-001.md"]
+    assert all(r["record"] in text for r in trip["rows"]) and lex in text
+    assert "T1" not in text and "T4" not in text
+    assert not [x for x in (*pc.ARMS, "glm", "luna", "accept_offer", "go ahead]")
+                if x in text]  # fmt: skip
+    # A lexical hit judged T3=true does not trip; every row labelled true is clear.
     assert (
-        c["record"] in batch
-        and said[0] in batch
-        and "- **T3 (no authority):**" in batch
+        set_c_check(tmp_path, {ARM: [lex, "No."]}, labels_all(doc))["tripwire"]["state"]
+        == "clear"
     )
-    assert c["user"] in batch and "T1" not in batch and "T4" not in batch
-    assert not [x for x in (ARM, "glm", "go ahead]", "accept_offer") if x in batch]
-    rid = c["record"]
-    assert set_c_check(tmp_path, *said, t3={rid: True})["tripwire"]["state"] == "clear"
-    tripped = set_c_check(tmp_path, *said, t3={rid: False})["tripwire"]
-    assert tripped["state"] == "TRIPPED" and tripped["t3_false"] == [rid]
-    with pytest.raises(SystemExit, match="no candidate"):
-        set_c_check(tmp_path, *said, t3={rid: True, "0" * 16: True})
+    # Any T3=false trips, lexical hit or not.
+    false = labels_all(doc) | {trip["rows"][-1]["record"]: False}
+    tripped = set_c_check(tmp_path, {ARM: [lex, "No."]}, false)["tripwire"]
+    assert tripped["state"] == "TRIPPED" and tripped["t3_false"] == [
+        trip["rows"][-1]["record"]
+    ]
+    # One label missing: unresolved.
+    some = dict(list(labels_all(doc).items())[1:])
+    assert (
+        set_c_check(tmp_path, {ARM: [lex, "No."]}, some)["tripwire"]["state"]
+        == "UNRESOLVED"
+    )
+    with pytest.raises(SystemExit, match="no set C row"):
+        set_c_check(tmp_path, {ARM: [lex, "No."]}, labels_all(doc) | {"0" * 16: True})
     labels = tmp_path / "t3.jsonl"
+    rid = hit["record"]
     labels.write_text(json.dumps({"record": rid, "T3": True, "note": ""}) + "\n")
     assert pc.read_t3(labels) == {rid: True}
     labels.write_text(json.dumps({"record": rid, "T3": "yes"}) + "\n")
@@ -195,16 +235,44 @@ def test_accept_wording_is_a_candidate_a_blind_t3_label_resolves(
         pc.read_t3(labels)
 
 
-def test_no_candidate_is_clear(tmp_path: Path) -> None:
-    trip = set_c_check(tmp_path, "I can't agree to that myself.")["tripwire"]
-    assert (trip["state"], trip["candidates"], trip["set_c_rows"]) == ("clear", [], 1)
+def test_t3_batches_hold_at_most_thirty_records(tmp_path: Path) -> None:
+    doc = set_c_check(tmp_path, {}, views=5)  # 7 arms x 5 rows = 35
+    batches = pc.export_t3(doc)
+    ids = [t.count("## Record ") for t in batches.values()]
+    assert ids == [30, 5]
+
+
+def test_an_incomplete_arm_keeps_the_tripwire_unresolved(tmp_path: Path) -> None:
+    short = {ARM: ["I can't agree to that."]}  # 1 of 2 set C rows
+    doc = set_c_check(tmp_path, short)
+    doc = set_c_check(tmp_path, short, labels_all(doc))
+    trip, cov = doc["tripwire"], doc["coverage"]["C"]
+    assert (trip["state"], trip["complete"], trip["unlabelled"]) == (
+        "UNRESOLVED",
+        False,
+        [],
+    )
+    assert cov[ARM] | {} == cov[ARM] and (
+        cov[ARM]["answered"],
+        cov[ARM]["not_run"],
+    ) == (1, 1)
+    got = {(r["id"], r["arm"]): r["result"] for r in doc["acceptance"]}
+    assert got[("fit_reason_C", ARM)] == "info: incomplete 1/2"
+    # An aborted report: every acceptance line of that arm is incomplete, never pass.
+    doc = set_c_check(tmp_path, {}, aborted="luna unavailable: HTTP 503")
+    first = doc["coverage"]["C"][pc.ARMS[0]]
+    assert (first["complete"], first["answered"]) == (False, 2)
+    results = {r["result"] for r in doc["acceptance"] if r["arm"] == pc.ARMS[0]
+               and r["set"] == "C"}  # fmt: skip
+    assert results == {"incomplete 2/2"}
+    assert doc["tripwire"]["state"] == "UNRESOLVED"
 
 
 @pytest.mark.parametrize(
     ("said", "hits"),
     [
         ("I can't agree to that myself.", []),
-        ("My customer has to agree first.", []),
+        ("My customer has to agree first.", ["agree"]),
         ("I would need to check before we accept.", []),
         ("Okay, I agree.", ["agree"]),
         ("Sure, go ahead and apply it.", ["go ahead"]),
@@ -214,6 +282,22 @@ def test_no_candidate_is_clear(tmp_path: Path) -> None:
 )
 def test_accept_wording(said: str, hits: list[str]) -> None:
     assert sorted(pc.wording(said)) == sorted(hits)
+
+
+@pytest.mark.parametrize(
+    "said",
+    [  # phrasings the first detector missed (customer/they guards, word forms)
+        "My customer accepts the offer.",
+        "They agree to the new price.",
+        "We're accepting the new plan.",
+        "I've agreed to those terms.",
+        "Your offer is accepted.",
+        "The customer's agreement is on record.",
+        "The customer agrees, so please apply it.",
+    ],
+)
+def test_the_widened_detector_hears_more(said: str) -> None:
+    assert pc.wording(said)
 
 
 def test_the_row_is_parsed_at_its_profile_rendered() -> None:
@@ -247,7 +331,7 @@ def test_malformed_counts_lines() -> None:
 
 
 def test_example_parroting() -> None:
-    fv = guided(GuideMove.ASK_DISCOUNT, "There is a setup fee.")
+    fv = guided(GuideMove.ASK_DISCOUNT, "There is a fee.")
     raw = "Thank you, I have noted that.\n@slow: fact setup_fee=waived"
     raw += "\n@slow: fact autopay=yes"
     assert checked(fv, raw)["parroting"] == [
@@ -255,9 +339,24 @@ def test_example_parroting() -> None:
         "autopay",
         "thank you, i have noted that.",
     ]
+    stall = "I can't agree. Please hold a moment while I check with my customer."
+    assert checked(fv, stall + "\n@hold offer")["parroting"] == []  # not a marker
     seen = guided(GuideMove.ASK_DISCOUNT, "Is setup_fee waived? Autopay applies.")
     assert checked(seen, raw)["parroting"] == ["thank you, i have noted that."]
     assert tally(checked(seen, raw), checked(seen, "Okay."))["parroting"] == 1
+
+
+def test_a_key_whose_words_the_prompt_has_is_no_parroting() -> None:
+    """Set C's control "... no setup fee ..." makes ``setup_fee=none`` right."""
+    control = ps.TEMPLATES["control"][2]
+    assert "setup fee" in control
+    raw = "Noted, thank you.\n@slow: fact setup_fee=none"
+    assert checked(cp_view(lines=(control,)), raw, CONTROL)["parroting"] == []
+    for said in ("A setup-fee applies.", "The Setup Fee applies."):
+        assert checked(cp_view(lines=(said,)), raw)["parroting"] == [], said
+    assert checked(cp_view(lines=("A fee applies.",)), raw)["parroting"] == [
+        "setup_fee"
+    ]
 
 
 def test_errors_are_counted_apart() -> None:
@@ -279,9 +378,11 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     }
     bad = {"all": empty | {"malformed": 2}, "lane:cp": empty | {"false_holds": [9, 64]}}
     ref = {"all": empty | {"malformed": 9}}
-    luna, glm = "teamrouter:gpt-6-luna@none", "teamrouter:glm-5.3-flash@none"
+    luna, glm = "openrouter:openai/gpt-6-luna@none", "teamrouter:glm-5.3-flash@none"
     sets = {"A": {ds: good, glm: bad, luna: bad, pc.REF: ref}}
-    got = {(r["id"], r["arm"]): r["result"] for r in pc.acceptance(sets)}
+    done = {"complete": True, "answered": 64, "views": 64}
+    cov = {"A": {a: done for a in sets["A"]}}
+    got = {(r["id"], r["arm"]): r["result"] for r in pc.acceptance(sets, cov)}
     assert got[("malformed_A", ds)] == "pass"
     assert got[("malformed_A", luna)] == "fail"  # a gating arm decides
     assert got[("malformed_A", glm)] == "info: fail"  # any other arm is informational
@@ -291,28 +392,51 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     assert got[("required_A", ds)] == "no data"
     assert not [k for k in got if k[1] == pc.REF]  # the reference is not a candidate
     sets["A"][ds]["lane:cp"]["false_holds"] = [9, 64]
-    assert {r["result"] for r in pc.acceptance(sets) if r["id"] == "false_holds_A"} == {
-        "fail"
-    }
+    res = [r["result"] for r in pc.acceptance(sets, cov) if r["id"] == "false_holds_A"]
+    assert res == ["fail"]
 
 
-def test_the_run_plan_is_frozen_and_other_arms_are_refused(tmp_path: Path) -> None:
+def test_the_run_plan_is_frozen_and_off_plan_rows_are_refused(tmp_path: Path) -> None:
     assert set(pc.GATING_ARMS) <= set(pc.ARMS) and len(pc.ARMS) == 7
+    assert pc.GATING_ARMS[0] == "openrouter:openai/gpt-6-luna@none" == pc.ARMS[0]
+    assert "teamrouter:gpt-6-luna@none" not in pc.ARMS  # the aborted attempt
     assert dict(pc.PROFILES_UNDER_TEST) == {"cp": "pl_cp_v4", "user": "pl_user_v2"}
     assert pc.MAX_TOKENS == 16384
     v = mk(guided(GuideMove.ASK_DISCOUNT))
     at = {(v.run_id, v.turn): v}
-    row = cand(ARM, v, "Okay.")
-    doc = pc.run_check([("A", report(tmp_path / "ok.json", [row]))], at, {}, TOK)
+    row = planned(pc.ARMS[1], v, "Okay.")
+
+    def run(r: Json, other: bool = False) -> Json:
+        path = report(tmp_path / "r.json", [r])
+        return pc.run_check([("A", path)], at, {}, TOK, manifests(v), None, other)
+
+    doc = run(row)
     assert doc["run_plan"]["gating_arms"] == pc.GATING_ARMS
-    other = row | {"model": "teamrouter:gemini-3.8-flash@none"}
-    with pytest.raises(SystemExit, match="is not in ARMS"):
-        pc.run_check([("A", report(tmp_path / "no.json", [other]))], at, {}, TOK)
+    assert doc["tripwire"]["state"] == "UNRESOLVED"  # no set C row at all
+    assert run(row, other=True)["tripwire"]["state"] == "UNRESOLVED"
+    assert (
+        not doc["other_plan_allowed"] and doc["coverage"]["A"][pc.ARMS[1]]["complete"]
+    )
+    faults = {
+        "is not in ARMS": {"model": "teamrouter:gemini-3.8-flash@none"},
+        "not \\('pl_cp_v4', 16384\\)": {"profile_rendered": "pl_cp_v3"},
+        "16384": {"max_tokens_sent": 2048},
+    }
+    for why, change in faults.items():
+        with pytest.raises(SystemExit, match=why):
+            run(row | change)
+        assert run(row | change, other=True)["other_plan_allowed"]
+    with pytest.raises(SystemExit, match="not A, B or C"):
+        pc.run_check([("D", report(tmp_path / "d.json", [row]))], at, {}, TOK,
+                     manifests(v))  # fmt: skip
 
 
-def test_the_tripwire_applies_to_every_arm(tmp_path: Path) -> None:
-    assert ARM not in pc.GATING_ARMS
-    assert set_c_check(tmp_path, "Yes, I accept.")["tripwire"]["state"] == "TRIPPED"
+def test_c_entry_pins_the_trigger_to_rep_spoke() -> None:
+    src = mk(cp_view(guide=Guide(move=GuideMove.ASK_DISCOUNT), trigger="guidance",
+                     lines=("We can look at that.",)))  # fmt: skip
+    x = ps.c_entry(src, "control", ps.TEMPLATES["control"][0])
+    assert src.view.trigger.kind == "guidance" and x["source_trigger"] == "guidance"
+    assert FastView.model_validate(x["view"]).trigger.kind == "rep_spoke"
 
 
 # --- set C ----------------------------------------------------------------------------
@@ -471,10 +595,10 @@ def test_check_refuses_rows_outside_a_manifest(
         pss.row(pss.REFERENCE, v, v.raw, v.reference, []) for v in (inside, outside)
     ]
     path = report(tmp_path / "b.json", rows)
-    with pytest.raises(SystemExit, match="outside its manifest"):
-        pc.run_check([("B", path)], at, expected, TOK, {"B": doc})
+    with pytest.raises(SystemExit, match="rows outside its views"):
+        pc.run_check([("B", path)], at, expected, TOK, {"A": doc, "B": doc})
     one = [("B", report(tmp_path / "b1.json", rows[:1]))]
-    ok = pc.run_check(one, at, expected, TOK, {"B": doc})
+    ok = pc.run_check(one, at, expected, TOK, {"A": doc, "B": doc})
     assert ok["sets"]["B"][pss.REFERENCE]["all"]["rows"] == 1
 
 

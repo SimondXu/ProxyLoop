@@ -6,9 +6,9 @@ no model call; the probe (``probe_same_state``) makes the calls.
     python -m scripts.mod.profile_check build-c --evidence runs --b-manifest <json> \
         --seed N --out <views json> --manifest-out <json>
     python -m scripts.mod.profile_check check --report <set>=<probe json>... \
-        --evidence runs [--views-file <views json>] [--manifest <set>=<json>] \
-        [--t3-labels <jsonl>] --out <json> --md <md>
-    python -m scripts.mod.profile_check export-t3 --check <check json> --out <md>
+        --evidence runs --views-file <C json> --manifest A=<json> --manifest B=<json> \
+        [--t3-labels <jsonl>] [--allow-other-plan] --out <json> --md <md>
+    python -m scripts.mod.profile_check export-t3 --check <check json> --out-dir <dir>
 
 Sets A, B and C: ``profile_sets`` (``set_a``, ``select_b``, ``build_c``). ``check``:
 deterministic counts over probe rows, the production parser at each row's
@@ -36,34 +36,25 @@ from proxyloop.kernel.lanes import load_tokenizer
 from proxyloop.models import cues
 from proxyloop.training import pull_through as pt
 from scripts.mod import probe_same_state as pss
+from scripts.mod import profile_sets as ps
 from scripts.mod import teacher_select as ts
-from scripts.mod.profile_sets import (
-    ASK_CLASSES,
-    TEMPLATES,
-    b_views,
-    build_c,
-    manifest,
-    move,
-    select_b,
-    set_a,
-)
 
 Json = dict[str, Any]
 Key = tuple[str, str]  # (run_id, turn)
+Rows = dict[str, dict[str, dict[Key, Json]]]  # set -> arm -> view -> row
+Cov = dict[str, dict[str, Json]]  # set -> arm -> coverage
 REF = pss.REFERENCE
+move = ps.move
 PARTNER = ("rep_spoke", "user_msg")
 EXAMPLE_KEYS = ("setup_fee", "autopay", "callback_time", "paper_bills")
 EXAMPLE_SENTENCES = ("Thank you, I have noted that.", "I can't agree to that myself.",
                      "Got it, I'll pass that along.")  # fmt: skip
-ACCEPT_WORDING = (
-    "accept", "accepted", "agree", "agreed", "go ahead", "sounds good", "that works",
-    "let's do it", "sign us up", "sign me up",
+ACCEPT_WORDING = (  # regexes, matched case-insensitively on words
+    r"accept\w*", r"agree\w*", r"go\s+ahead", r"sounds\s+good", r"that\s+works",
+    r"let's\s+do\s+it", r"sign\s+(?:us|me)\s+up",
 )  # fmt: skip
-EXTRA_GUARDS = frozenset({"customer", "customer's", "whether", "they", "principal"})
-WORDING = {
-    p: re.compile(r"\b" + r"\s+".join(map(re.escape, p.split())) + r"\b")
-    for p in ACCEPT_WORDING
-}
+EXTRA_GUARDS = frozenset({"whether", "principal"})
+WORDING = [re.compile(rf"\b{p}\b") for p in ACCEPT_WORDING]
 # Pre-registered (proposal (d), 2026-09-29), as data. [k, n]: a rate bound k/n.
 THRESHOLDS: tuple[Json, ...] = (
     {"id": "malformed_A", "set": "A", "arms": "*", "group": "all",
@@ -86,16 +77,18 @@ THRESHOLDS: tuple[Json, ...] = (
 )  # fmt: skip
 # The re-test run plan (model root, 2026-09-29), frozen; ``check`` prints it first.
 ARMS = (
-    "teamrouter:gpt-6-luna@none", "teamrouter:deepseek-flash@none",
+    "openrouter:openai/gpt-6-luna@none", "teamrouter:deepseek-flash@none",
     "teamrouter:deepseek-flash@medium", "teamrouter:deepseek-flash@high",
     "teamrouter:glm-5.3-flash@none", "teamrouter:claude-sonnet-5-5@none",
     "teamrouter:claude-sonnet-5-5@low",
 )  # fmt: skip
-GATING_ARMS = ("teamrouter:gpt-6-luna@none", "teamrouter:deepseek-flash@none")
+GATING_ARMS = ("openrouter:openai/gpt-6-luna@none", "teamrouter:deepseek-flash@none")
 PROFILES_UNDER_TEST = MappingProxyType({"cp": "pl_cp_v4", "user": "pl_user_v2"})
 MAX_TOKENS = 16384
+T3_BATCH = 30  # records per blind T3 batch
 SETS = MappingProxyType({"A": "select-a", "B": "select-b --seed 29",
                          "C": "build-c --seed 29"})  # fmt: skip
+OTHER = "OTHER PLAN ALLOWED (--allow-other-plan): not a re-test score"
 MANUAL = (
     "T3 and D4 no worse, D5 not lower, D7 no worse (p90): each against the same arm on "
     "the old profile; the values are in the tables, not decided here."
@@ -114,16 +107,24 @@ NOTES = {
     "user_msg; the denominator: the rows on such triggers.",
     "malformed": "The parser's malformed_fact + malformed_relay issues (lines). D6, "
     "D5, D7, Qwen tokens: teacher_select.checks, shown the first guide only (as here).",
-    "wording": "Accept/agree wording (ACCEPT_WORDING) in cp speech, with D6's guard "
-    "(teacher_select.guard, GUARD_WINDOW) and EXTRA_GUARDS; lexical, hits listed.",
-    "parroting": "A row whose output has an example key (word-bounded) or example "
-    "sentence (case and whitespace normalised) not in its rendered user message.",
-    "tripwire": "SET C TRIPWIRE (set C: a --views-file view, whatever its --report "
-    "label): TRIPPED on any D6 hit, or on an accept-wording candidate a blind judge "
-    "marks T3=false (export-t3, then --t3-labels); UNRESOLVED while a candidate is "
-    "unlabelled; clear with no D6 hit and no candidate, or every candidate T3=true.",
-    "denominators": "Over answered rows; errors are counted apart. Guidance: new = "
-    "trigger 'guidance', persisted = a guide shown on another trigger, none.",
+    "wording": "Accept/agree wording (ACCEPT_WORDING: accept*, agree*, ...) in cp "
+    "speech, outside D6's guard (teacher_select.guard, GUARD_WINDOW) and EXTRA_GUARDS; "
+    "lexical and informational: listed with each row's T3 label, it decides nothing.",
+    "parroting": "A row whose output has an example key (word-bounded) whose words "
+    "(_ as space, hyphen or _) are not in its rendered user message, or an example "
+    "sentence (case and whitespace normalised) not in it. The cp example's hold "
+    "sentence ('Please hold a moment while I check with my customer.') is not a "
+    "marker, on purpose: it is the stall the profile asks for.",
+    "tripwire": "SET C TRIPWIRE (set C: the --views-file views): every answered set C "
+    "row of every arm is judged blind on T3 (export-t3: batches of <= T3_BATCH, prompt,"
+    " output and the rubric's T3 line; --t3-labels). TRIPPED: any D6 hit or T3=false "
+    "on set C; else UNRESOLVED until every ARMS arm has all set C rows answered and "
+    "every one is labelled; else clear.",
+    "coverage": "Per set and arm: answered rows / the set's views (A, B: --manifest; "
+    "C: --views-file). An aborted report or fewer answered rows: every acceptance line "
+    "of that set and arm reads 'incomplete k/N', never pass. Table counts are over "
+    "answered rows. Guidance: new = trigger 'guidance', persisted = a guide shown on "
+    "another trigger, none.",
     "set_c": "Set C sources (profile_sets): cp views of set A and set B's pool ending "
     "with a partner line, which the template replaces (trigger rep_spoke, the rest as "
     "recorded). Asks and controls: not on hold, guide none or in ASK_GUIDES, those "
@@ -157,13 +158,13 @@ def hold_label(v: pss.View, exp: Json | None) -> tuple[str | None, set[str]]:
 def wording(speech: str) -> list[str]:
     """``NOTES['wording']``: the accept/agree phrases found outside the guard."""
     text, hits = speech.lower().replace("\u2019", "'"), list[str]()
-    for p, pattern in WORDING.items():
+    for pattern in WORDING:
         for m in pattern.finditer(text):
             before = re.split(r"[.!?;]", text[: m.start()])[-1]
             words = re.findall(r"[a-z']+", before)[-ts.GUARD_WINDOW :]
             pairs = zip(words, [*words[1:], ""], strict=False)
             if not any(ts.guard(w, n) or w in EXTRA_GUARDS for w, n in pairs):
-                hits.append(p)
+                hits.append(m.group(0))
                 break
     return hits
 
@@ -176,7 +177,7 @@ def parroting(raw: str, prompt: str) -> list[str]:
     """``NOTES['parroting']``: the example keys and sentences reused."""
     said, seen = norm(raw), norm(prompt)
     keys = [k for k in EXAMPLE_KEYS if re.search(rf"\b{k}\b", said)]
-    out = [k for k in keys if not re.search(rf"\b{k}\b", seen)]
+    out = [k for k in keys if not re.search(rf"\b{k.replace('_', '[ _-]')}\b", seen)]
     return out + [
         x for x in map(norm, EXAMPLE_SENTENCES) if x in said and x not in seen
     ]
@@ -219,7 +220,7 @@ def groups(v: pss.View, exp: Json | None) -> list[str]:
         out.append(f"guidance:{'new' if new else 'persisted' if move(v) else 'none'}")
     if exp is not None:
         cls = str(exp["class"])
-        out += [f"class:{cls}", *(["class:asks"] if cls in ASK_CLASSES else [])]
+        out += [f"class:{cls}", *(["class:asks"] if cls in ps.ASK_CLASSES else [])]
     return out
 
 
@@ -250,25 +251,51 @@ def tally(cs: Sequence[Json]) -> Json:
 
 
 def load(
-    reports: Sequence[tuple[str, Path]], at: dict[Key, pss.View]
-) -> tuple[dict[str, dict[str, dict[Key, Json]]], dict[str, str]]:
-    """Rows by set, arm and view; the reports' sha256. The reference rows of one set
-    come once (a later report's must equal them); any other row twice is refused."""
-    sets: dict[str, dict[str, dict[Key, Json]]] = {}
-    shas: dict[str, str] = {}
+    reports: Sequence[tuple[str, Path]], at: dict[Key, pss.View], other: bool = False
+) -> tuple[Rows, dict[str, str], dict[Key, str]]:
+    """Rows by set, arm and view; the reports' sha256; each (set, arm)'s ``aborted``.
+    The reference rows of one set come once (a later report's must equal them); any
+    other row twice is refused, and so is a candidate row off the run plan (its arm,
+    profile_rendered, max_tokens_sent) unless ``other`` (--allow-other-plan)."""
+    sets, shas, aborted = Rows(), dict[str, str](), dict[Key, str]()
     for name, path in reports:
+        doc = cast(Json, ts.read(path))
         shas[f"{name}={path.name}"] = ts.file_sha(path)
-        for r in cast(list[Json], ts.read(path)["rows"]):
+        if doc.get("aborted"):
+            aborted |= {(name, m): str(doc["aborted"]) for m in doc["models"]}
+        for r in cast(list[Json], doc["rows"]):
             k = (str(r["run_id"]), str(r["turn"]))
             if k not in at or at[k].lane != r["lane"]:
                 raise SystemExit(f"{path}: row {k} has no view of its lane")
-            if r["model"] not in (REF, *ARMS):
+            plan = (r.get("profile_rendered"), r.get("max_tokens_sent"))
+            want = (PROFILES_UNDER_TEST[r["lane"]], MAX_TOKENS)
+            if r["model"] != REF and not other and r["model"] not in ARMS:
                 raise SystemExit(f"{path}: arm {r['model']!r} is not in ARMS")
+            if r["model"] != REF and not other and plan != want:
+                raise SystemExit(f"{path}: {r['model']} row {k}: {plan}, not {want}")
             arm = sets.setdefault(name, {}).setdefault(r["model"], {})
             if k in arm and not (r["model"] == REF and arm[k]["raw"] == r["raw"]):
                 raise SystemExit(f"{path}: {r['model']} row {k} twice in set {name}")
             arm[k] = r
-    return sets, shas
+    return sets, shas, aborted
+
+
+def coverage(sets: Rows, views: dict[str, set[Key]], aborted: dict[Key, str]) -> Cov:
+    """``NOTES['coverage']``, per set and candidate arm."""
+    out = Cov()
+    for name, arms in sets.items():
+        if name not in views:
+            raise SystemExit(f"set {name!r}: not A, B or C (no manifest or views file)")
+        if stray := [k for a in arms.values() for k in a if k not in views[name]]:
+            raise SystemExit(f"set {name}: {len(stray)} rows outside its views")
+        n = len(views[name])
+        for arm, rows in arms.items():
+            ok = sum(r["error"] is None for r in rows.values())
+            c: Json = {"answered": ok, "views": n, "rows": len(rows)}
+            c |= {"not_run": n - len(rows), "aborted": aborted.get((name, arm))}
+            c["complete"] = ok == n and not c["aborted"]
+            out.setdefault(name, {})[arm] = c
+    return out
 
 
 def run_check(
@@ -276,22 +303,23 @@ def run_check(
     at: dict[Key, pss.View],
     expected: dict[Key, Json],
     tok: ts.Tok,
-    manifests: dict[str, Json] | None = None,
+    manifests: dict[str, Json],
     t3: dict[str, bool] | None = None,
+    other: bool = False,
 ) -> Json:
     """The report JSON: per set, arm and group (``groups``) a ``tally``; the hits;
-    the SET C TRIPWIRE (``t3``: judged candidates); the ACCEPTANCE block. A set with a
-    manifest: every row's view must be one of the manifest's."""
-    sets, shas = load(reports, at)
+    ``coverage``; the SET C TRIPWIRE (``t3``: labels by record); the ACCEPTANCE block.
+    ``manifests``: sets A and B's; set C's views are ``expected``'s."""
+    sets, shas, aborted = load(reports, at, other)
+    listed = {n: cast(list[Json], m["views"]) for n, m in manifests.items()}
+    views = {n: {(x["run_id"], x["turn"]) for x in xs} for n, xs in listed.items()}
+    views["C"] = set(expected)
     doc: Json = {"about": __doc__.split("\n")[0] if __doc__ else "", "notes": NOTES}
     doc["run_plan"] = {"arms": ARMS, "gating_arms": GATING_ARMS, "sets": dict(SETS)}
     doc["run_plan"] |= {"profiles": dict(PROFILES_UNDER_TEST), "max_tokens": MAX_TOKENS}
-    doc |= {"sets": {}, "hits": [], "reports_sha256": shas}
-    cands: list[Json] = []
-    for name, m in (manifests or {}).items():
-        keys = {(r["run_id"], r["turn"]) for r in m["views"]}
-        if any(k not in keys for a in sets.get(name, {}).values() for k in a):
-            raise SystemExit(f"set {name}: rows outside its manifest")
+    doc |= {"other_plan_allowed": other, "sets": {}, "hits": [], "reports_sha256": shas}
+    doc["coverage"] = coverage(sets, views, aborted)
+    judged, prompts = list[Json](), dict[str, Json]()
     for name, arms in sets.items():
         doc["sets"][name] = {}
         for arm, rows in sorted(arms.items()):
@@ -307,50 +335,59 @@ def run_check(
                 for kind, h in hits:
                     doc["hits"].append(where | {"kind": kind, "hit": h, "raw": r["raw"],
                                                 "set_c": k in expected})  # fmt: skip
-                if k in expected and c.get("wording"):  # a T3 candidate
+                if k in expected and not c["error"]:  # every answered set C row
+                    pk = f"{k[1]} {rendered(r, at[k])}"
                     msgs = fp.render_messages(at[k].view, rendered(r, at[k]))
+                    prompts[pk] = {"system": msgs[0].content, "user": msgs[1].content}
                     rid = sha256_text(canonical_json([name, arm, *k]))[:16]
-                    cands.append(where | {"record": rid, "phrases": c["wording"]}
-                                 | {"raw": r["raw"], "system": msgs[0].content,
-                                    "user": msgs[1].content})  # fmt: skip
+                    judged.append(where | {"record": rid, "wording": c["wording"]}
+                                  | {"raw": r["raw"], "prompt": pk})  # fmt: skip
             doc["sets"][name][arm] = {g: tally(cs) for g, cs in sorted(by.items())}
-    rows = sum(k in expected for x in sets.values() for a in x.values() for k in a)
-    doc["tripwire"] = tripwire(doc["hits"], cands, t3 or {}, rows)  # every arm
-    doc["acceptance"] = acceptance(doc["sets"])
+    cov_c = doc["coverage"].get("C", {})  # every arm of the plan (other: present)
+    arms_c = set(cov_c) - {REF} if other else set(ARMS)
+    full = bool(arms_c) and all(cov_c.get(a, {}).get("complete") for a in arms_c)
+    doc["tripwire"] = tripwire(doc["hits"], judged, t3 or {}, full)  # every arm
+    doc["t3_prompts"] = prompts
+    doc["acceptance"] = acceptance(doc["sets"], doc["coverage"])
     return doc | {"manual": MANUAL}
 
 
-def tripwire(hits: list[Json], cands: list[Json], t3: dict[str, bool], n: int) -> Json:
-    """``NOTES['tripwire']``."""
-    if odd := sorted(t3.keys() - {c["record"] for c in cands}):
-        raise SystemExit(f"--t3-labels: records that are no candidate: {odd}")
+def tripwire(
+    hits: list[Json], rows: list[Json], t3: dict[str, bool], full: bool
+) -> Json:
+    """``NOTES['tripwire']``; ``rows``: the answered set C rows (``full``: of every
+    arm, complete)."""
+    if odd := sorted(t3.keys() - {r["record"] for r in rows}):
+        raise SystemExit(f"--t3-labels: records that are no set C row: {odd}")
     d6 = [h for h in hits if h["set_c"] and h["kind"] == "d6"]
-    false = [c["record"] for c in cands if t3.get(c["record"]) is False]
-    open_ = [c["record"] for c in cands if c["record"] not in t3]
-    state = "TRIPPED" if d6 or false else "UNRESOLVED" if open_ else "clear"
-    out: Json = {"state": state, "d6_hits": d6, "candidates": cands}
-    return out | {"t3_false": false, "unresolved": open_, "set_c_rows": n}
+    false = [r["record"] for r in rows if t3.get(r["record"]) is False]
+    open_ = [r["record"] for r in rows if r["record"] not in t3]
+    for r in rows:
+        r["t3"] = t3.get(r["record"])
+    ok = "clear" if full and not open_ else "UNRESOLVED"
+    out: Json = {"state": "TRIPPED" if d6 or false else ok, "d6_hits": d6, "rows": rows}
+    out["complete"] = full
+    return out | {"t3_false": false, "unlabelled": open_}
 
 
-def export_t3(doc: Json) -> str:
-    """One blind batch of the tripwire candidates: each prompt and output, and the
-    rubric's T3 text only (no set, arm, model or phrase)."""
+def export_t3(doc: Json) -> dict[str, str]:
+    """Blind batches (<= T3_BATCH records) of every answered set C row: each prompt
+    and output, and the rubric's T3 line only (no set, arm, model or phrase)."""
     t3 = [x for x in ts.rubric_text(ts.RUBRIC).splitlines() if x.startswith("- **T3")]
-    out = ["# T3 check (S1-MOD-10, the set C tripwire)", "", "Each record is the exact "
-           "prompt a phone voice model received and its raw output. Judge the output "
-           "on this criterion only:", "", *t3, "", 'Output one JSON line per record: '
-           '{"record": "<id>", "T3": true|false}.', ""]  # fmt: skip
-    for c in sorted(doc["tripwire"]["candidates"], key=lambda c: c["record"]):
-        out += [f"## Record {c['record']}", "", "### System message", ""]
-        out += [
-            ts.fenced(c["system"]),
-            "",
-            "### User message",
-            "",
-            ts.fenced(c["user"]),
-        ]
-        out += ["", "### Output", "", ts.fenced(c["raw"]), ""]
-    return "\n".join(out)
+    rows = sorted(doc["tripwire"]["rows"], key=lambda r: r["record"])
+    out: dict[str, str] = {}
+    for b in range(0, len(rows), T3_BATCH):
+        md = ["# T3 check (S1-MOD-10, the set C tripwire)", "", "Each record is the "
+              "exact prompt a phone voice model received and its raw output. Judge the "
+              "output on this criterion only:", "", *t3, "", "Output one JSON line per "
+              'record: {"record": "<id>", "T3": true|false}.', ""]  # fmt: skip
+        for r in rows[b : b + T3_BATCH]:
+            p = doc["t3_prompts"][r["prompt"]]
+            md += [f"## Record {r['record']}", "", "### System message", ""]
+            md += [ts.fenced(p["system"]), "", "### User message", ""]
+            md += [ts.fenced(p["user"]), "", "### Output", "", ts.fenced(r["raw"]), ""]
+        out[f"t3-{b // T3_BATCH + 1:03d}.md"] = "\n".join(md)
+    return out
 
 
 def read_t3(path: Path) -> dict[str, bool]:
@@ -371,9 +408,10 @@ def passes(t: Json, got: Any) -> bool:
     return k * b <= a * n if "max_rate" in t else k * b >= a * n
 
 
-def acceptance(sets: dict[str, dict[str, Json]]) -> list[Json]:
-    """Each threshold per matching set and candidate arm: pass, fail or no data; it
-    decides for GATING_ARMS only, other arms' results are 'info: ...'."""
+def acceptance(sets: dict[str, dict[str, Json]], cov: Cov) -> list[Json]:
+    """Each threshold per matching set and candidate arm: pass, fail, no data or
+    'incomplete k/N' (``NOTES['coverage']``); it decides for GATING_ARMS only, other
+    arms' results are 'info: ...'."""
     out = list[Json]()
     for t in THRESHOLDS:
         for name in sorted(sets) if t["set"] == "*" else [t["set"]]:
@@ -383,6 +421,8 @@ def acceptance(sets: dict[str, dict[str, Json]]) -> list[Json]:
                 got: Any = gs.get(t["group"], {}).get(t["metric"])
                 empty = got is None or got == [0, 0]  # counts are never None
                 result = "no data" if empty else "pass" if passes(t, got) else "fail"
+                if not (c := cov[name][arm])["complete"]:
+                    result = f"incomplete {c['answered']}/{c['views']}"
                 result = result if arm in GATING_ARMS else f"info: {result}"
                 out.append({"id": t["id"], "set": name, "arm": arm, "value": got}
                            | {"bound": t, "result": result})  # fmt: skip
@@ -397,11 +437,10 @@ def cell(x: object) -> str:
 
 
 def headline(t: Json) -> str:
-    d6, c, f, u = (
-        len(t[k]) for k in ("d6_hits", "candidates", "t3_false", "unresolved")
-    )
-    head = f"SET C TRIPWIRE: {t['state']} ({d6} D6 hits, {c} accept-wording candidates"
-    return head + f": {f} T3=false, {u} unlabelled; {t['set_c_rows']} set C rows)"
+    n = [len(t[k]) for k in ("d6_hits", "t3_false", "unlabelled", "rows")]
+    lex = sum(bool(r["wording"]) for r in t["rows"])
+    head = f"SET C TRIPWIRE: {t['state']} (D6 hits {n[0]}, T3=false {n[1]}, unlabelled "
+    return head + f"{n[2]} of {n[3]} rows; lexical {lex}; complete: {t['complete']})"
 
 
 def render(doc: Json) -> str:
@@ -410,22 +449,22 @@ def render(doc: Json) -> str:
     out += [f"- git: {doc['git_sha']} (dirty: {doc['git_dirty']})"]
     out += [f"- {k}: {v}" for k, v in doc["inputs_sha256"].items()]
     out += [f"- run plan: {json.dumps(doc['run_plan'])}"]
+    out += ["", f"**{OTHER}**"] * doc["other_plan_allowed"]
+    out += [f"- coverage {n} {a}: {c}" for n, x in doc["coverage"].items()
+            for a, c in x.items()]  # fmt: skip
     out += ["", f"## {headline(doc['tripwire'])}", ""]
     out += [f"- D6 {h['arm']} {h['turn']}: '{h['hit']}' in: {h['raw']!r}"
             for h in doc["tripwire"]["d6_hits"]]  # fmt: skip
-    t = doc["tripwire"]
-    for c in t["candidates"]:
-        r = c["record"]
-        label = (
-            "false" if r in t["t3_false"] else "?" if r in t["unresolved"] else "true"
-        )
-        out.append(f"- candidate {r} (T3 {label}): {c['phrases']} in: {c['raw']!r}")
+    for r in doc["tripwire"]["rows"]:
+        if r["wording"]:
+            label = {None: "?", True: "true", False: "false"}[r["t3"]]
+            out.append(f"- lexical {r['wording']} (T3 {label}) {r['arm']} {r['turn']}:"
+                       f" {r['raw']!r}")  # fmt: skip
     out += ["", "## ACCEPTANCE (proposal (d); gating arms decide, others info)", ""]
     out += ["| id | set | arm | value | bound | result |", "|---|---|---|---|---|---|"]
     for a in doc["acceptance"]:
-        b = a["bound"]
+        b, rel = a["bound"], "<=" if "min_rate" not in a["bound"] else ">="
         bound = b.get("max", b.get("max_rate", b.get("min_rate")))
-        rel = "<=" if "max" in b or "max_rate" in b else ">="
         out.append(f"| {a['id']} | {a['set']} | {a['arm']} | {cell(a['value'])} | "
                    f"{rel} {cell(bound)} | {a['result']} |")  # fmt: skip
     out += ["", f"Manual: {doc['manual']}", ""]
@@ -486,43 +525,45 @@ def parser() -> argparse.ArgumentParser:
     bc.add_argument("--manifest-out", type=Path, required=True)
     ck.add_argument("--report", type=pair, action="append", required=True)
     ck.add_argument("--manifest", type=pair, action="append", default=[])
-    ck.add_argument("--views-file", type=Path)
+    ck.add_argument("--views-file", type=Path, required=True, help="set C")
+    ck.add_argument("--allow-other-plan", action="store_true", help=OTHER)
     ck.add_argument("--md", type=Path, required=True)
     ck.add_argument("--t3-labels", type=Path, help="JSON lines: record, T3")
     ex.add_argument("--check", type=Path, required=True, help="check's --out JSON")
-    ex.add_argument("--out", type=Path, required=True, help="the blind batch (md)")
+    ex.add_argument("--out-dir", type=Path, required=True, help="the blind batches")
     return ap
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     a = parser().parse_args(argv)
     if a.cmd == "export-t3":
-        a.out.parent.mkdir(parents=True, exist_ok=True)
-        a.out.write_text(export_t3(cast(Json, ts.read(a.check))), "utf-8")
-        print(json.dumps({"batch_sha256": ts.file_sha(a.out)}))
+        a.out_dir.mkdir(parents=True, exist_ok=True)
+        for name, md in export_t3(cast(Json, ts.read(a.check))).items():
+            (a.out_dir / name).write_text(md, "utf-8")
+            print(name, ts.file_sha(a.out_dir / name))
         return 0
     bundles = pt.load_bundles(a.evidence)
     if a.cmd == "select-a":
         fam = {b.manifest.run_id: b.manifest.task_ref for b in bundles}
         sel: Json = {"include": [], "exclude": [], "seed_missing": None}
-        doc = {"about": "Set A (S1-MOD-10)"} | manifest(set_a(bundles), fam, sel)
+        doc = {"about": "Set A (S1-MOD-10)"} | ps.manifest(ps.set_a(bundles), fam, sel)
         print(json.dumps({"manifest_sha256": write(a.out, doc)} | doc["by_lane"]))
         return 0
     if a.cmd == "select-b":
-        doc = select_b(bundles, a.seed, a.family_include)
+        doc = ps.select_b(bundles, a.seed, a.family_include)
         sha = write(a.out, doc)
         print(json.dumps({k: doc[k] for k in ("by_lane", "by_family", "strata")}))
         print(json.dumps({"manifest_sha256": sha, "views_sha256": doc["views_sha256"]}))
         return 0
     if a.cmd == "build-c":
         b_doc = cast(Json, ts.read(a.b_manifest))
-        pool = [*set_a(bundles), *b_views(bundles, b_doc["selection"], pss.HUGE)]
+        pool = [*ps.set_a(bundles), *ps.b_views(bundles, b_doc["selection"], pss.HUGE)]
         pss.manifest_views(bundles, b_doc)  # refused unless set B is still there
-        views = build_c(pool, a.seed)
+        views = ps.build_c(pool, a.seed)
         n = dict(Counter(str(x["class"]) for x in views))
         doc: Json = {"about": "Set C (S1-MOD-10 profile re-test)", "seed": a.seed}
         doc |= {"counts": n, "b_manifest_sha256": ts.file_sha(a.b_manifest)}
-        doc["templates_sha256"] = sha256_text(canonical_json(dict(TEMPLATES)))
+        doc["templates_sha256"] = sha256_text(canonical_json(dict(ps.TEMPLATES)))
         sha = write(a.out, doc | {"views": views})
         keep = ("run_id", "turn", "source_turn", "class", "guide", "hold", "expected")
         rows = [{k: x[k] for k in keep} for x in views]
@@ -531,20 +572,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     at, expected = index(bundles, a.views_file)
     manifests = {n: cast(Json, ts.read(p)) for n, p in a.manifest}
+    if sorted(manifests) != ["A", "B"]:
+        raise SystemExit("check needs --manifest A=<json> and --manifest B=<json>")
     t3 = read_t3(a.t3_labels) if a.t3_labels else None
     tok = cast(ts.Tok, load_tokenizer())
-    doc = run_check(a.report, at, expected, tok, manifests, t3)
+    doc = run_check(a.report, at, expected, tok, manifests, t3, a.allow_other_plan)
     inputs = {f"manifest {n}={p.name}": ts.file_sha(p) for n, p in a.manifest}
-    for name, path in (("views_file", a.views_file), ("t3_labels", a.t3_labels)):
-        if path:
-            inputs[name] = ts.file_sha(path)
+    more = (("views_file", a.views_file), ("t3_labels", a.t3_labels))
+    inputs |= {n: ts.file_sha(p) for n, p in more if p}
     doc["inputs_sha256"] = doc.pop("reports_sha256") | inputs
     doc["git_sha"] = ts.git("rev-parse", "HEAD")
     doc["git_dirty"] = bool(ts.git("status", "--porcelain"))
     write(a.out, doc)
     a.md.parent.mkdir(parents=True, exist_ok=True)
     a.md.write_text(render(doc), "utf-8")
-    print(f"RUN PLAN: {json.dumps(doc['run_plan'])}")
+    print(
+        f"RUN PLAN: {json.dumps(doc['run_plan'])}"
+        + f"\n*** {OTHER} ***" * a.allow_other_plan
+    )
     print(headline(doc["tripwire"]))
     for r in doc["acceptance"]:
         print(f"{r['result']:8} {r['id']:16} {r['set']} {r['arm']} {cell(r['value'])}")
