@@ -24,16 +24,16 @@ def _world(cfg: SessionConfig) -> tuple[ModelRef, ModelRef, ModelRef]:
 def test_no_flag_keeps_todays_world() -> None:  # W1
     today = ModelRef(
         kind=REAL,
-        endpoint="teamrouter",
-        model_id="gemini-3.8-flash",
+        endpoint="openrouter",
+        model_id="google/gemini-3.8-flash",  # S1-SYS-96: TeamRouter's Gemini hung
         reasoning_effort="low",
     )
     assert _world(_cfg()) == (today, today, today)
-    assert cli.WORLD == "gemini-3.8-flash" and cli.WORLD_EFFORT == "low"
+    assert cli.WORLD == "google/gemini-3.8-flash" and cli.WORLD_EFFORT == "low"
     medium = _cfg("--world-effort", "medium", "--mouth-effort", "high")
     assert [r.reasoning_effort for r in _world(medium)] == ["medium", "high", "medium"]
     assert {(r.endpoint, r.model_id) for r in _world(medium)} == {
-        ("teamrouter", "gemini-3.8-flash")
+        ("openrouter", "google/gemini-3.8-flash")
     }
     for name in ("session", "rep-chat"):  # the same default on both commands
         args = cli.build_parser().parse_args([name, "--family", "f"])
@@ -55,8 +55,8 @@ def test_the_world_model_sets_every_role_and_a_role_model_one() -> None:  # W2
     assert _world(cfg) == (ear, x, x)
     only = _cfg("--simuser-model", "relay:u")  # the others keep today's
     assert (only.world.ear.endpoint, only.world.ear.model_id) == (
-        "teamrouter",
-        "gemini-3.8-flash",
+        "openrouter",
+        "google/gemini-3.8-flash",
     )
     assert only.world.simuser == ModelRef(
         kind=REAL, endpoint="relay", model_id="u", reasoning_effort="low"

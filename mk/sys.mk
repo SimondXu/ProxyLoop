@@ -17,14 +17,20 @@ llm-smoke:
 # the server roots without /v1 and the keys:
 #   PL_VLLM_BASE_URL PL_VLLM_API_KEY PL_RELAY_BASE_URL PL_RELAY_API_KEY
 #   PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
-# and, for FAST_ENDPOINT=openrouter, PL_OPENROUTER_BASE_URL (https://openrouter.ai/api)
-# and PL_OPENROUTER_API_KEY.
+# and, for the world (its default) and for FAST_ENDPOINT/SLOW_ENDPOINT=openrouter,
+# PL_OPENROUTER_BASE_URL (https://openrouter.ai/api) and PL_OPENROUTER_API_KEY.
 # WORLD_EFFORT: provisional: ADR-0005; S1 probe decides. EAR_/MOUTH_/SIMUSER_EFFORT
 # override it per world role (unset: WORLD_EFFORT).
+# WORLD_MODEL=<endpoint>:<model>[@effort] picks every world role's model (unset: the
+# CLI's openrouter:google/gemini-3.8-flash). Slow and the world on Gemini 3.8 Flash via
+# OpenRouter (TeamRouter's Gemini hung, S1-SYS-96), the Fast unchanged:
+#   make smoke-live FAMILY=<f> SLOW=google/gemini-3.8-flash SLOW_ENDPOINT=openrouter \
+#     WORLD_MODEL=openrouter:google/gemini-3.8-flash
 # FAST/FAST_ENDPOINT and SLOW/SLOW_ENDPOINT pick the Fast and Slow ModelRefs (unset: the
 # CLI defaults, Qwen3.5-9B@vllm and claude-sonnet-5@relay); FAST_EFFORT (hosted Fast only)
 # and SLOW_EFFORT pin reasoning_effort (unset: the CLI's provisional values for a hosted
-# Fast and a TeamRouter Slow; a vLLM Fast and a relay Slow keep the provider's default).
+# Fast and a Gemini Slow, TeamRouter or OpenRouter; a vLLM Fast and a relay Slow keep
+# the provider's default).
 # FAST_CP_BASE_URL: the dead-endpoint smoke only, a dead server root for fast_cp. The
 # redirect is not recorded in the bundle, so it needs CLAIM=0: with the default CLAIM the
 # CLI refuses it (a parser error, non-zero exit).
@@ -37,7 +43,7 @@ CLAIM ?= 1
 smoke-live:
 	uv run python -m proxyloop.cli session --family $(FAMILY) --user sim --rep sim \
 		$(if $(MODE),--mode $(MODE),) $(if $(INSTANCE),--instance $(INSTANCE),) \
-		--world-effort $(WORLD_EFFORT) \
+		--world-effort $(WORLD_EFFORT) $(if $(WORLD_MODEL),--world-model $(WORLD_MODEL),) \
 		$(if $(EAR_EFFORT),--ear-effort $(EAR_EFFORT),) \
 		$(if $(MOUTH_EFFORT),--mouth-effort $(MOUTH_EFFORT),) \
 		$(if $(SIMUSER_EFFORT),--simuser-effort $(SIMUSER_EFFORT),) \

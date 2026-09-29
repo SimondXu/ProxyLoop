@@ -5,7 +5,7 @@ Three pricing bases, so no call is ever silently priced at zero:
   OpenRouter models with a listed rate (``OPENROUTER_RATES``);
 - ``gpu_time``: vLLM calls. Modal bills the GPU per second, per job, outside
   any call; GPU $ come from Modal usage (PLAN §0.8), never from this ledger;
-- ``unpriced``: no measured rate (TeamRouter's world model, ADR-0005; GPT
+- ``unpriced``: no measured rate (TeamRouter's Gemini, ADR-0005; GPT
   output rates, ADR-0001) or no usage reported. Counted, never summed.
 
 Three runaway guards raise ``RunawaySpend``, with the charge that crossed the line
@@ -54,6 +54,9 @@ RELAY_RATES: Mapping[str, Rate] = {
 # setting, not a result. A response's ``usage.cost`` is never the price.
 OPENROUTER_RATES: Mapping[str, Rate] = {
     "openai/gpt-6-luna": Rate(0.10, 0.50),
+    # The same listing, read by the main root on 2026-09-29 (S1-SYS-96): prompt
+    # 0.00000075, completion 0.00000375 USD per token.
+    "google/gemini-3.8-flash": Rate(0.75, 3.75),
 }
 
 

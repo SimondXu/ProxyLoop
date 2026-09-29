@@ -47,8 +47,8 @@ def test_the_defaults_keep_todays_models() -> None:
         kind=REAL, endpoint="relay", model_id="claude-sonnet-5"
     )  # reasoning_effort None: the default cfg_hash is unchanged
     world = ModelRef(
-        kind=REAL, endpoint="teamrouter", model_id=cli.WORLD, reasoning_effort="low"
-    )
+        kind=REAL, endpoint="openrouter", model_id=cli.WORLD, reasoning_effort="low"
+    )  # S1-SYS-96
     assert cfg.world.ear == cfg.world.mouth == cfg.world.simuser == world
     assert cfg.live
 
@@ -105,6 +105,22 @@ def test_a_teamrouter_slow_pins_the_provisional_effort() -> None:
     )
     relay = _cfg("--slow-effort", "high")  # an explicit override on the relay
     assert relay.slow.reasoning_effort == "high"
+
+
+def test_an_openrouter_gemini_slow_pins_the_provisional_effort() -> None:  # S1-SYS-96
+    gemini = (
+        *("--slow-model", "google/gemini-3.8-flash", "--slow-endpoint", "openrouter"),
+    )
+    assert _cfg(*gemini).slow == ModelRef(
+        kind=REAL,
+        endpoint="openrouter",
+        model_id="google/gemini-3.8-flash",
+        reasoning_effort="low",
+    )
+    assert _cfg(*gemini, "--slow-effort", "high").slow.reasoning_effort == "high"
+    other = _cfg("--slow-model", "openai/gpt-6-luna", "--slow-endpoint", "openrouter")
+    assert other.slow.reasoning_effort is None  # only a Gemini Slow is pinned
+    assert _cfg().slow.reasoning_effort is None  # the CLI's Slow default is unchanged
 
 
 def test_each_world_role_takes_its_own_effort() -> None:

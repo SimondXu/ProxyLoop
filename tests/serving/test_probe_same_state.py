@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hashlib
 import json
+import shutil
 from collections.abc import Collection
 from datetime import timedelta
 from pathlib import Path
@@ -27,6 +29,7 @@ from tests.llm.wire import (
 from tests.support.manual_clock import ScaledClock
 from tests.support.sessions import FakeTokenizer, clients, fake_config, patient_task
 
+from proxyloop.contract import protocol as fp
 from proxyloop.contract.bundle import Bundle
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.llm import (
@@ -429,3 +432,276 @@ def test_max_tokens_is_at_least_one(
     with pytest.raises(SystemExit) as exit_:
         pss.main([*args, "--max-tokens", n])
     assert exit_.value.code == 2 and "must be at least 1" in capsys.readouterr().err
+
+
+# --- S1-MOD-10: a revised profile, re-tested -----------------------------------------
+
+
+def restamped(b: Bundle, run_id: str, **manifest: Any) -> Bundle:
+    """``older`` with other manifest fields (task_ref, fingerprints)."""
+    old = older(b, run_id)
+    return Bundle(old.manifest.model_copy(update=manifest), old.events, old.prompts)
+
+
+def seedless(b: Bundle, run_id: str) -> Bundle:
+    """``older`` whose Fast calls recorded no sampling (as before ADR-0019)."""
+    old = older(b, run_id)
+    events = tuple(
+        e.model_copy(update={"payload": e.payload | {"sampling_sent": None}})
+        if e.type == "llm.call"
+        else e
+        for e in old.events
+    )
+    return Bundle(old.manifest, events, old.prompts)
+
+
+NEW = {"cp": "pl_cp_v4", "user": "pl_user_v2"}  # the candidates (ADR-0026)
+
+
+def test_a_profile_override_renders_its_lane_and_rows_record_it(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found = views(evidence[0])
+    assert {v.profile for v in found}.isdisjoint(NEW.values())
+    over = [dataclasses.replace(v, render_as=NEW[v.lane]) for v in found]
+    set_env(monkeypatch, "relay")
+    sent = Sent()
+    seams = {"relay": recording(sent, "relay", ["Okay."])}
+    report = asyncio.run(
+        pss.probe(over, {"relay:claude-sonnet-5": SONNET}, None, {}, seams)
+    )
+    bodies = [json.loads(b)["messages"] for b in sent["relay"]]
+    for v, body in zip(over, bodies, strict=True):  # one arm: calls in view order
+        want = render_messages(v.view, NEW[v.lane])
+        assert body == [m.model_dump(include={"role", "content"}) for m in want]
+        assert body[0]["content"] == fp.PROFILES[NEW[v.lane]].system
+        assert body != [
+            m.model_dump(include={"role", "content"})
+            for m in render_messages(v.view, v.profile)
+        ]
+    for r in report["rows"]:
+        recorded = next(v.profile for v in found if v.turn == r["turn"])
+        mine = r["model"] != pss.REFERENCE
+        assert r["profile_rendered"] == (NEW[r["lane"]] if mine else recorded)
+        assert r["seed_source"] == "recorded"
+
+
+def test_profile_overrides_are_checked(
+    evidence: tuple[Path, Sent],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "2", *MODELS]
+    refused = {
+        "cp=pl_user_v1": "no cp-lane profile",
+        "cp=pl_cp_v9": "no cp-lane profile",
+        "slow=pl_cp_v3": "once per lane",
+    }
+    for spec, why in refused.items():
+        with pytest.raises(SystemExit, match=why):
+            pss.main([*args, "--profile", spec])
+    with pytest.raises(SystemExit, match="once per lane"):
+        pss.main([*args, "--profile", "cp=pl_cp_v3", "--profile", "cp=pl_cp_v1"])
+    assert pss.main([*args, "--profile", "cp=pl_cp_v1"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["profile_override"] == {"cp": "pl_cp_v1"}
+    both = ["--profile", "cp=pl_cp_v4", "--profile", "user=pl_user_v2"]
+    assert pss.main([*args, *both]) == 0
+    assert json.loads(capsys.readouterr().out)["profile_override"] == NEW
+    assert pss.main(args) == 0
+    assert json.loads(capsys.readouterr().out)["profile_override"] is None
+
+
+def test_any_fingerprint_needs_an_override_for_every_lane_present(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(evidence[0]), "--max-views", "99", *MODELS]
+    for more in ([], ["--profile", "cp=pl_cp_v3"]):
+        with pytest.raises(SystemExit, match="need a --profile for each lane"):
+            pss.main([*args, "--any-fingerprint", *more])
+    both = ["--profile", "cp=pl_cp_v3", "--profile", "user=pl_user_v1"]
+    assert pss.main([*args, "--any-fingerprint", *both]) == 0
+
+
+def test_stale_fingerprints_are_taken_only_on_request(
+    evidence: tuple[Path, Sent],
+) -> None:
+    (new,) = pt.load_bundles(evidence[0])
+    fps = pt.current_fingerprints()
+    stale = restamped(new, "run-stale", fingerprints=fps | {"pl_cp_v3": "0" * 64})
+    found, funnel = pss.collect([stale, new], fps, 999)
+    assert {v.run_id for v in found} == {new.manifest.run_id}
+    assert funnel["bundle_stale_fingerprint"] == 1
+    assert "bundle_stale_fingerprint_taken" not in funnel  # a default funnel as before
+    found, funnel = pss.collect([stale, new], fps, 999, any_fingerprint=True)
+    assert {v.run_id for v in found} == {new.manifest.run_id, "run-stale"}
+    assert funnel["bundle_stale_fingerprint_taken"] == 1
+
+
+def test_family_filters(
+    evidence: tuple[Path, Sent],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    (new,) = pt.load_bundles(evidence[0])
+    fps, fam = pt.current_fingerprints(), new.manifest.task_ref
+    other = restamped(new, "run-other", task_ref="other-family@1")
+    both = [other, new]
+    found, funnel = pss.collect(both, fps, 999, include=["other-family"])
+    assert {v.run_id for v in found} == {"run-other"}
+    assert funnel["bundle_family_filtered"] == 1
+    found, _ = pss.collect(both, fps, 999, exclude=["other-family"])
+    assert {v.run_id for v in found} == {new.manifest.run_id}
+    found, _ = pss.collect(both, fps, 999, include=[fam], exclude=["other"])
+    assert {v.run_id for v in found} == {new.manifest.run_id}
+    assert pss.family_ok("x@1", [], []) and not pss.family_ok("x@1", ["y"], [])
+    # The report (and the plan) lists the families taken.
+    root = tmp_path / "evidence"
+    for b in both:
+        shutil.copytree(evidence[0] / new.manifest.run_id, root / b.manifest.run_id)
+    manifest = root / "run-other" / "manifest.json"
+    doc = json.loads(manifest.read_text())
+    manifest.write_text(json.dumps(doc | {"task_ref": "other-family@1"}))
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(root), "--max-views", "999", *MODELS]
+    assert pss.main([*args, "--family-exclude", fam]) == 0
+    assert json.loads(capsys.readouterr().out)["families"] == {
+        "other-family@1": len(found)
+    }
+
+
+def test_seed_missing_seeds_a_seedless_turn_and_rows_say_so(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (new,) = pt.load_bundles(evidence[0])
+    fps, old = pt.current_fingerprints(), seedless(new, "run-seedless")
+    found, funnel = pss.collect([old, new], fps, 999)
+    assert {v.run_id for v in found} == {new.manifest.run_id}
+    assert funnel["seed_not_recorded"] == len(found)
+    found, funnel = pss.collect([old, new], fps, 999, seed_missing=7)
+    mine = [v for v in found if v.run_id == "run-seedless"]
+    assert funnel["seed_defaulted"] == len(mine) > 0
+    assert {(v.seed, v.seed_source) for v in mine} == {(7, "default")}
+    assert {v.seed_source for v in found if v not in mine} == {"recorded"}
+    set_env(monkeypatch, "relay")
+    sent = Sent()
+    seams = {"relay": recording(sent, "relay", ["Okay."])}
+    report = asyncio.run(
+        pss.probe(mine, {"relay:claude-sonnet-5": SONNET}, None, {}, seams)
+    )
+    assert {json.loads(b)["seed"] for b in sent["relay"]} == {7}
+    assert {r["seed_source"] for r in report["rows"]} == {"default"}
+
+
+def views_file(found: list[pss.View], path: Path) -> Path:
+    """A --views-file of ``found`` (as profile_check build-c writes one)."""
+    doc = {
+        "views": [
+            {
+                "run_id": v.run_id,
+                "turn": f"{v.turn}~x",
+                "lane": v.lane,
+                "profile": v.profile,
+                "view": v.view.model_dump(mode="json"),
+                "sampling": v.sampling.model_dump(mode="json"),
+                "seed": v.seed,
+                "seed_source": v.seed_source,
+                "source_call": v.reference.model_dump(mode="json"),
+            }
+            for v in found
+        ]
+    }
+    path.write_text(json.dumps(doc), "utf-8")
+    return path
+
+
+def test_a_views_file_is_probed_without_reference_rows(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    found = views(evidence[0])
+    path = views_file(found, tmp_path / "c.json")
+    read = pss.read_views(path)
+    assert [v.view for v in read] == [v.view for v in found]
+    assert all(v.counterfactual and v.raw == "" for v in read)
+    set_env(monkeypatch, "relay")
+    sent = Sent()
+    seams = {"relay": recording(sent, "relay", ["Okay."])}
+    models = {"relay:claude-sonnet-5": SONNET}
+    report = asyncio.run(pss.probe(read, models, None, {}, seams))
+    assert [r["model"] for r in report["rows"]] == ["relay:claude-sonnet-5"] * len(read)
+    assert all(
+        "agrees" not in r and "reference_directives" not in r for r in report["rows"]
+    )
+    assert report["summary"][pss.REFERENCE]["cp"]["n"] == 0
+    cp = report["summary"]["relay:claude-sonnet-5"]["cp"]
+    assert cp["n"] > 0 and cp["directive_agreement"] is None
+    assert [json.loads(b)["seed"] for b in sent["relay"]] == [v.seed for v in read]
+    out = tmp_path / "probe.json"
+
+    def served(
+        ref: ModelRef, *, live: bool, clock: Clock, on_record: RecordSink, **_: Any
+    ) -> LLMClient:
+        relay = seams["relay"]
+        return make_client(
+            ref, live=live, clock=clock, on_record=on_record, transport=relay
+        )
+
+    monkeypatch.setattr(pss, "make_client", served)
+    args = ["--views-file", str(path), "--max-views", "99", "--out", str(out)]
+    assert pss.main([*args, "--model", "relay:claude-sonnet-5"]) == 0
+    doc = json.loads(out.read_text())
+    assert doc["views_file_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert not [r for r in doc["rows"] if r["model"] == pss.REFERENCE]
+
+
+def test_a_views_file_takes_no_bundle_selection(
+    evidence: tuple[Path, Sent], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    no_network(monkeypatch)
+    path = views_file(views(evidence[0]), tmp_path / "c.json")
+    args = ["--plan", "--views-file", str(path), "--max-views", "9", *MODELS]
+    for more in (["--seed-missing", "1"], ["--family-exclude", "x"]):
+        with pytest.raises(SystemExit, match="take no bundle selection"):
+            pss.main([*args, *more])
+    with pytest.raises(SystemExit):  # one source: bundles or a views file
+        pss.main([*args, "--evidence", str(evidence[0])])
+
+
+def test_a_views_manifest_is_taken_exactly(
+    evidence: tuple[Path, Sent],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """``--views-manifest``: these views, in this order, stale or seedless alike."""
+    (new,) = pt.load_bundles(evidence[0])
+    found = views(evidence[0])
+    picked = [found[i] for i in (3, 0, 2)]  # any subset, any order
+    sel: dict[str, Any] = {"include": [], "exclude": [], "seed_missing": 9}
+    rows = [{"run_id": v.run_id, "turn": v.turn} for v in picked]
+    doc: dict[str, Any] = {"selection": sel, "views": rows}
+    assert [v.turn for v in pss.manifest_views([new], doc)] == [v.turn for v in picked]
+    lost = doc | {"views": [*rows, {"run_id": "gone", "turn": "t"}]}
+    with pytest.raises(SystemExit, match="1 manifest views not found"):
+        pss.manifest_views([new], lost)
+    path = tmp_path / "b.json"
+    path.write_text(json.dumps(doc), "utf-8")
+    no_network(monkeypatch)
+    args = ["--plan", "--evidence", str(evidence[0]), "--views-manifest", str(path)]
+    args += ["--max-views", "99", *MODELS]
+    with pytest.raises(SystemExit, match="need a --profile for each lane"):
+        pss.main(args)
+    with pytest.raises(SystemExit, match="take no bundle selection"):
+        pss.main([*args, "--seed-missing", "1", "--profile", "cp=pl_cp_v4"])
+    assert (
+        pss.main([*args, "--profile", "cp=pl_cp_v4", "--profile", "user=pl_user_v2"])
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["views"] == 3 and plan["funnel"]["selected"] == 3
+    assert (
+        plan["views_manifest_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    )

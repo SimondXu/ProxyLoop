@@ -51,7 +51,7 @@ from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 REF = "cp-direct-discount@1"
 CALLED_MS = 1000 * calls.INTAKE_S + 5_000  # the intake ran out; the disclosure said
 USER_QWEN = "fast_user:vllm:Qwen3.5-9B"
-SLOW_ID = "slow:teamrouter:gemini-3.8-flash"
+SLOW_ID = "slow:openrouter:google/gemini-3.8-flash"
 ENDPOINTS: tuple[Endpoint, ...] = get_args(Endpoint)
 SECRET = "sekrit-value"
 SCRIPTS: Mapping[str, list[str]] = {
@@ -154,8 +154,10 @@ def test_an_empty_models_map_gets_every_lanes_default(tmp_path: Path) -> None:
         assert cfg.live and cfg.fast_user == cfg.fast_cp
         assert (cfg.fast_user.endpoint, cfg.fast_user.model_id) == ("openrouter", LUNA)
         assert cfg.fast_user.reasoning_effort == "none"  # the CLI's OpenRouter rule
-        assert (cfg.slow.endpoint, cfg.slow.model_id) == ("teamrouter", web.SLOW)
-        assert cfg.slow.reasoning_effort == "low"  # the CLI's TeamRouter rule
+        assert (cfg.slow.endpoint, cfg.slow.model_id) == ("openrouter", web.SLOW)
+        assert cfg.slow.reasoning_effort == "low"  # the CLI's Gemini Slow rule
+        ear = cfg.world.ear
+        assert (ear.endpoint, ear.model_id) == ("openrouter", web.SLOW)
         refs = [cfg.fast_user, cfg.fast_cp, cfg.slow, cfg.world.ear, cfg.world.mouth]
         assert {r.kind for r in refs} == {AdapterKind.REAL_HTTP}
         await stop(case)
@@ -217,11 +219,10 @@ def test_a_held_out_family_is_never_opened(
     assert opened == []
 
 
-@pytest.mark.parametrize("endpoint", ["openrouter", "teamrouter"])
 def test_a_missing_endpoint_variable_is_unavailable_without_its_value(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv(f"PL_{endpoint.upper()}_API_KEY")
+    monkeypatch.delenv("PL_OPENROUTER_API_KEY")  # Fast, Slow, world (S1-SYS-96)
 
     async def case() -> None:
         s = starter(tmp_path, VirtualTime())
@@ -237,16 +238,20 @@ def test_a_missing_endpoint_variable_is_unavailable_without_its_value(
 def test_a_human_rep_needs_no_world_endpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("PL_TEAMROUTER_API_KEY")  # the world's, and the Slow's
-    catalog = (*CATALOG, Offer("slow", "relay", "claude-sonnet-5", "Sonnet"))
+    monkeypatch.delenv("PL_OPENROUTER_API_KEY")  # the world's (S1-SYS-96)
+    catalog = (
+        Offer("fast_user", "relay", "claude-haiku-4-5", "Haiku", True),
+        Offer("fast_cp", "relay", "claude-haiku-4-5", "Haiku", True),
+        Offer("slow", "relay", "claude-sonnet-5", "Sonnet", True),
+    )  # no OpenRouter model: the human rep starts, the sim rep's world cannot
 
     async def case() -> None:
         s = starter(tmp_path, VirtualTime(), catalog)
-        human = await s.start_case(REF, {"slow": "slow:relay:claude-sonnet-5"}, "human")
+        human = await s.start_case(REF, {}, "human")
         assert "ear" not in kernel(human).clients
         await stop(human)
         with pytest.raises(StartRefused, match="unavailable"):  # the sim rep's world
-            await s.start_case(REF, {"slow": "slow:relay:claude-sonnet-5"}, "sim")
+            await s.start_case(REF, {}, "sim")
 
     arun(case())
 
