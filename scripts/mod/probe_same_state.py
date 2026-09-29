@@ -5,7 +5,9 @@ Diagnostic only, open-loop (``ABOUT``). Views: the recorded Fast turns (both lan
 the train bundles on the current fingerprints, whole runs newest first, up to
 ``--max-views`` (``collect``), with the recorded answer as the reference. Calls go
 through the production adapter (``make_client``, live) in the kernel's request shape
-(``build_request``), after the kernel's P3 (``parity``). No session, kernel, world or
+(``build_request``), after the kernel's P3 (``parity``). ``--max-tokens`` overrides
+only the request's max_tokens, for reasoning models whose max_tokens counts reasoning;
+the default is the kernel's request. No session, kernel, world or
 Slow runs, and no retry here: the adapter's own rule (one retry of a connection failure
 before the first token) shows under ``failed_attempts``. A failed call raises
 ``LLMUnavailable``: its row is written with the partial report, and the run aborts
@@ -125,10 +127,15 @@ def parse_model(spec: str) -> llm.ModelRef:
     return llm.ModelRef.model_validate(ref | {"reasoning_effort": effort or None})
 
 
-def build_request(v: View, ref: llm.ModelRef, tok: Tok) -> llm.TextRequest:
+def build_request(
+    v: View, ref: llm.ModelRef, tok: Tok, max_tokens: int | None = None
+) -> llm.TextRequest:
     """The kernel's Fast request (``kernel.lanes.FastLane._request``): vLLM gets the
-    pinned tokenizer's prompt, other endpoints the messages; the session's sampling."""
+    pinned tokenizer's prompt, other endpoints the messages; the session's sampling,
+    with ``max_tokens`` replaced by the override when one is given."""
     args: Json = v.sampling.model_dump() | {"seed": v.seed}  # + max_tokens
+    if max_tokens is not None:
+        args["max_tokens"] = max_tokens
     args |= {"call_id": v.reference.call_id, "role": v.reference.role}
     if ref.endpoint != "vllm":
         args["messages"] = fp.render_messages(v.view, v.profile)
@@ -232,10 +239,16 @@ def summary(rows: Sequence[Json], labels: Sequence[str]) -> Json:
     return out
 
 
-def plan(views: Sequence[View], labels: Sequence[str], funnel: Json) -> Json:
+def plan(
+    views: Sequence[View],
+    labels: Sequence[str],
+    funnel: Json,
+    max_tokens: int | None = None,
+) -> Json:
     chars = sum(len(view_text(v)) for v in views)
     out: Json = {"views": len(views), "by_lane": dict(Counter(v.lane for v in views))}
     out |= {"funnel": funnel, "calls": {m: len(views) for m in labels}}
+    out["max_tokens_override"] = max_tokens
     out["est_prompt_tokens"] = {m: chars // 4 for m in labels}
     out["est_rule"] = "chars/4 of the rendered messages, the same for every model"
     return out
@@ -247,13 +260,15 @@ async def probe(
     tok: Tok,
     report: Json,
     transports: Mapping[str, httpx.AsyncBaseTransport] | None = None,
+    max_tokens: int | None = None,
 ) -> Json:
     """P3 once per vLLM candidate, then every (view, model) call, one at a time;
     ``report`` keeps the rows even when a dead endpoint or P3 aborts the run.
-    ``transports``: per endpoint, a test seam."""
+    ``transports``: per endpoint, a test seam. ``max_tokens``: the override, recorded
+    in the report as ``max_tokens_override`` (None: the kernel's own)."""
     sunk: list[Rec] = []  # every attempt's record, as the adapter sinks it
     rows = [row(REFERENCE, v, v.raw, v.reference, []) for v in views]
-    report |= {"rows": rows}
+    report |= {"rows": rows, "max_tokens_override": max_tokens}
     clients: dict[str, llm.LLMClient] = {}
     ms, sink, seams = WallClock().monotonic_ms, sunk.append, transports or {}
     for m, ref in models.items():
@@ -263,7 +278,7 @@ async def probe(
         await parity(clients, views, tok, report)
         for v in views:
             for m in arm_order(v, list(models)):
-                request, text = build_request(v, clients[m].ref, tok), ""
+                request, text = build_request(v, clients[m].ref, tok, max_tokens), ""
                 sunk.clear()
                 try:
                     async for delta in clients[m].stream_text(request):
@@ -326,6 +341,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-views", type=at_least_1, required=True, help="a hard cap"
     )
+    parser.add_argument(
+        "--max-tokens",
+        type=at_least_1,
+        help="override the request's max_tokens (default: the kernel's sampling)",
+    )
     parser.add_argument("--out", help="the report JSON (required without --plan)")
     parser.add_argument("--plan", action="store_true", help="counts only; no call")
     args = parser.parse_args(argv)
@@ -333,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
     fps = pt.current_fingerprints()
     views, funnel = collect(pt.load_bundles(Path(args.evidence)), fps, args.max_views)
     if args.plan:
-        print(json.dumps(plan(views, list(models), funnel), indent=1))
+        print(json.dumps(plan(views, list(models), funnel, args.max_tokens), indent=1))
         return 0
     if not args.out:
         raise SystemExit("--out is required without --plan")
@@ -344,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
-        asyncio.run(probe(views, models, tok, report))
+        asyncio.run(probe(views, models, tok, report, None, args.max_tokens))
     finally:  # a paid run is never lost, an aborted one included
         out.write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", "utf-8")
     print(json.dumps(report["summary"], indent=1))
