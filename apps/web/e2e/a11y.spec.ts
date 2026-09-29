@@ -447,6 +447,65 @@ for (const theme of THEMES) {
         await shot(page, `phone-360-details-${theme}`);
       });
 
+      test("no anchor(): the sheet is placed in px from the measured header and composer, and follows them (S1-SYS-92)", async ({
+        page,
+        baseURL,
+      }) => {
+        // Root condition 3. No CSS anchor rule is left anywhere, so this Chromium run takes the one path Firefox and
+        // older Safari take too (no Firefox or WebKit build is installed here to run it in them).
+        await capturePosts(page, 503, { error: "unavailable" });
+        await liveWithCards(page, baseURL, REAL, FIVE);
+        const rules = await page.evaluate(() =>
+          [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules].map((r) => r.cssText)).filter((t) => /anchor/.test(t)),
+        );
+        expect(rules).toEqual([]);
+        const card = page.getByRole("article", { name: "Approval ap-1" });
+        await card.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+        // The sheet's box against the measured rects themselves: it fills the gap between the header and the dock.
+        const placed = () =>
+          page.evaluate(() => {
+            const rect = (q: string) => document.querySelector(q)?.getBoundingClientRect();
+            const [sheet, head, dock] = [rect(".pl-sheet"), rect(".pl-casehead"), rect(".pl-dock")];
+            if (!sheet || !head || !dock) return null;
+            return { top: sheet.top - head.bottom, gap: dock.top - sheet.bottom, bottom: sheet.bottom };
+          });
+        const fills = (p: Awaited<ReturnType<typeof placed>>) => !!p && p.top >= 0 && p.top < 1 && p.gap >= 0 && p.gap < 1;
+        const check = async () => {
+          await expect.poll(async () => fills(await placed())).toBe(true);
+          for (const el of [page.getByRole("textbox", { name: "Message to the assistant" }), page.getByRole("button", { name: "Send" }), page.getByRole("button", { name: "Task details" })]) {
+            expect(await el.evaluate(uncovered)).toBe(true);
+          }
+          await expect(card.getByRole("button", { name: "Approve $75/mo" })).toBeInViewport({ ratio: 1 });
+          await expect(card.getByRole("button", { name: "Decline" })).toBeInViewport({ ratio: 1 });
+        };
+        await check();
+        await shot(page, `phone-sheet-no-anchor-${theme}`);
+        // The dock grows (a refused send's reason under the composer): the sheet's bottom follows it.
+        const before = (await placed())?.bottom;
+        await page.getByRole("textbox", { name: "Message to the assistant" }).fill("Is that the best they can do?");
+        await page.getByRole("button", { name: "Send" }).click();
+        await expect(page.getByRole("alert")).toHaveText("Not delivered: 503 unavailable");
+        await expect.poll(async () => (await placed())?.bottom).not.toBe(before);
+        await check();
+        // The header moves with nothing resized (the reviewer's probe): the sheet follows, Task details stays uncovered.
+        const was = (await placed())?.bottom;
+        await page.addStyleTag({ content: ".pl-live { margin-top: 40px; }" });
+        await expect.poll(async () => (await page.locator(".pl-sheet").boundingBox())?.y).toBe(
+          Math.ceil((await page.locator(".pl-casehead").evaluate((h) => h.getBoundingClientRect().bottom)) ?? 0),
+        );
+        expect((await placed())?.bottom).not.toBe(was);
+        await check();
+        // A smaller phone: measured again on resize.
+        await page.setViewportSize({ width: 360, height: 740 });
+        await check();
+        // Folded, the bar sits on the composer with its own height.
+        await page.getByRole("button", { name: "Hide the decision" }).click();
+        const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review" });
+        expect((await bar.boundingBox())?.height).toBe(56);
+        await expect.poll(async () => { const p = await placed(); return !!p && p.gap >= 0 && p.gap < 1; }).toBe(true);
+        expect(await bar.evaluate(uncovered)).toBe(true);
+      });
+
       test("the composer is 16px, so a phone does not zoom into it", async ({ page, baseURL }) => {
         await liveWithCards(page, baseURL);
         const size = await page.getByRole("textbox", { name: "Message to the assistant" }).evaluate((el) => getComputedStyle(el).fontSize);
@@ -470,6 +529,7 @@ for (const theme of THEMES) {
         await expect(page.getByRole("button", { name: "Hide the decision" })).toBeHidden(); // no sheet from 768px
         await expect(page.getByRole("article", { name: "Approval ap-1" })).toBeVisible();
         expect((await page.getByRole("region", { name: "Chat", exact: true }).boundingBox())?.width).toBeLessThanOrEqual(760);
+        await audit(page); // the drawer closed (S1-SYS-92)
         await shot(page, `tablet-stream-${theme}`);
         await details.click();
         await expect(page.getByRole("region", { name: "To-do" })).toBeVisible();
@@ -483,6 +543,34 @@ for (const theme of THEMES) {
         await expect(details).toHaveAttribute("aria-expanded", "false");
       });
     });
+
+    // S1-SYS-92: the closed drawer is no landmark (Now, with the status line, lives outside it); open, it is one.
+    for (const size of [
+      { width: 390, height: 844 },
+      { width: 900, height: 800 },
+      { width: 1280, height: 800 },
+    ]) {
+      test(`the Task details landmark at ${size.width}: only when the rail shows; the status line always in the tree`, async ({ page, baseURL }) => {
+        await page.setViewportSize(size);
+        await liveWithCards(page, baseURL);
+        const landmark = page.getByRole("complementary", { name: "Task details" });
+        const status = page.getByRole("status", { name: "Status line" });
+        await expect(status).toHaveCount(1); // getByRole leaves out what is not in the accessibility tree
+        await expect(status).toHaveText("Waiting for you: approve or decline $75/mo for 12 months");
+        if (size.width >= 1100) {
+          await expect(landmark).toHaveCount(1); // the rail is always shown
+          return;
+        }
+        await expect(landmark).toHaveCount(0);
+        await page.getByRole("button", { name: "Task details" }).click();
+        await expect(landmark).toHaveCount(1);
+        await expect(landmark.getByRole("region", { name: "To-do" })).toBeVisible();
+        await expect(status).toBeVisible();
+        await page.getByRole("button", { name: "Close" }).click();
+        await expect(landmark).toHaveCount(0);
+        await expect(status).toHaveCount(1);
+      });
+    }
 
     test.describe("landscape phone (844×390)", () => {
       test.use({ viewport: { width: 844, height: 390 } });

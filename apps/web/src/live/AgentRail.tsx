@@ -1,5 +1,5 @@
 // The live page's rail (redesign §3.2 AgentRail): the status line with the
-// planner's pulse, the limits in force, the to-do (v4, S1-SYS-79: todo.ts's
+// planner's pulse (NowCard), the limits in force, the to-do (v4, S1-SYS-79: todo.ts's
 // milestones, each revealing its steps from timeline.ts) and how the roles work.
 // Its payload reads all go through helpers: timeline.ts (steps, status line,
 // planner), todo.ts (the to-do), mandate.ts's limitRows and limitsStatusText
@@ -18,25 +18,36 @@ import "./rail.css";
 
 type Props = { events: Ev[]; cards: CardView[]; mandates: MandateView[] };
 
-export function AgentRail({ events, cards, mandates }: Props) {
+/**
+ * Now: the status line (role=status, "Status line") and the planner's pulse. Panes renders it outside the Task details
+ * landmark, so it stays in the accessibility tree while the drawer is closed (S1-SYS-92).
+ */
+export function NowCard({ events, cards, mandates }: Props) {
   const steps = useMemo(() => timeline(events), [events]);
   const line = useMemo(() => now(events, steps, cards, mandates), [events, steps, cards, mandates]);
   const pulse = useMemo(() => planner(events), [events]);
+  return (
+    <section className="pl-now">
+      <span className="pl-label">Now</span>
+      <p className="pl-now-line" role="status" aria-live="polite" aria-label="Status line">
+        {line}
+      </p>
+      {pulse && (
+        <p className={`pl-planner pl-planner-${pulse}`}>
+          <span className="pl-pulse" aria-hidden="true" />
+          {C.PLANNER[pulse]}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The rest of the rail, under Now: the limits, the to-do and how it works. */
+export function AgentRail({ events, mandates }: Omit<Props, "cards">) {
+  const steps = useMemo(() => timeline(events), [events]);
   const list = useMemo(() => todo(events, steps), [events, steps]);
   return (
     <>
-      <section className="pl-now">
-        <span className="pl-label">Now</span>
-        <p className="pl-now-line" role="status" aria-live="polite" aria-label="Status line">
-          {line}
-        </p>
-        {pulse && (
-          <p className={`pl-planner pl-planner-${pulse}`}>
-            <span className="pl-pulse" aria-hidden="true" />
-            {C.PLANNER[pulse]}
-          </p>
-        )}
-      </section>
       <Limits mandates={mandates} />
       <ToDo t={list} />
       <HowItWorks events={events} />

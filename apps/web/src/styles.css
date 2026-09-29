@@ -19,10 +19,6 @@
   /* start and rep pages */
   .start { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s3); max-width: 640px; margin-top: var(--s2); }
   .rep { max-width: 720px; margin: 0 auto; }
-  .transcript { list-style: none; padding: 0; }
-  .transcript li { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-mid); padding: var(--s2) var(--s3); margin: 0 15% var(--s2) 0; }
-  .transcript .rep-rep { margin: 0 0 var(--s2) 15%; background: var(--bubble); border-color: var(--bubble); }
-  .transcript .rep-call { background: none; border: 0; color: var(--ink-3); font-size: var(--fs-meta); text-align: center; }
 
   /* the engineer view: compact and mono */
   .lanes { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: var(--s2); overflow-x: auto; }

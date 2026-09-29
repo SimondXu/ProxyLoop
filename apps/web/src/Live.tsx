@@ -1,6 +1,6 @@
 // The live shell (?live=<run_id>), fed by /ws/live. The sticky header keeps the
 // honesty band. By default the v4 case (ConversationView.tsx, S1-SYS-77): the case
-// header (title, connection); one stream (the chat, the cards and the
+// header (the title, the one tag; Reconnect if the stream drops); one stream (the chat, the cards and the
 // call as call cards) above the message box; the Task details rail (AgentRail: the
 // status line, limits, the to-do; your role; the authority details and the models, folded). With ?view=engineer, the replay's
 // lanes, cards and drawer. It shows only what events say. Models are chosen on
@@ -13,7 +13,7 @@ import { approvalCards, type CardView, type Posting } from "./approval";
 import { authorityStrip, type Strip } from "./authority";
 import { parseEvent, unechoed, type Framed, type Sent, type Stream } from "./liveState";
 import { ApprovalCard } from "./live/ApprovalCard";
-import { AgentRail } from "./live/AgentRail";
+import { AgentRail, NowCard } from "./live/AgentRail";
 import { LimitsCard } from "./live/LimitsCard";
 import { Sheet } from "./live/Sheet";
 import { postApproval, postMandate, postMessage, type Decision, type Failed, type PostResult } from "./liveApi";
@@ -114,11 +114,12 @@ export function Live({ runId }: { runId: string }) {
       <RunSummary events={events} />
     </>
   );
-  const title = (
+  const name = <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>;
+  const alert = <StreamAlert stream={stream} reconnect={reconnect} />;
+  // The run id, the raw connection state and the event count: the engineer header, or the rail's Technical details.
+  const run = (
     <>
-      <h1>{start ? taskName(String(start.payload.task_ref)) : "Live case"}</h1>
-      <span className="meta pl-runid">{runId}</span>
-      <Connection stream={stream} reconnect={reconnect} count />
+      <span className="meta pl-runid">{runId}</span> <Connection stream={stream} count />
     </>
   );
 
@@ -129,7 +130,9 @@ export function Live({ runId }: { runId: string }) {
           <div className="pl-sticky">
             <HonestyBand h={h} />
             <header className="bar">
-              {title}
+              {name}
+              {run}
+              {alert}
               {link}
               <label>
                 <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
@@ -152,16 +155,23 @@ export function Live({ runId }: { runId: string }) {
             events={events}
             p={who}
             announce
-            head={title}
+            head={
+              <>
+                {name}
+                {alert}
+              </>
+            }
             input={{ cards: guardCards, pending, composer: <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
+            now={<NowCard events={events} cards={cards} mandates={mandates} />}
             details={
               <>
-                <AgentRail events={events} cards={cards} mandates={mandates} />
+                <AgentRail events={events} mandates={mandates} />
                 <details className="pl-card pl-role">
                   <summary>Your role</summary>
                   <YourRole card={role} />
                 </details>
                 <TechDetails>
+                  <p className="meta pl-tech-run">{run}</p>
                   {authority}
                   <RunSummary events={events} />
                 </TechDetails>
@@ -175,23 +185,21 @@ export function Live({ runId }: { runId: string }) {
   );
 }
 
-/** The stream's phase and close reason; `count` is left out where raw events are not the viewer's business. */
-export function Connection<T extends Framed>({
-  stream,
-  reconnect,
-  count,
-}: {
-  stream: Stream<T>;
-  reconnect: () => void;
-  count?: boolean;
-}) {
+/** The stream's raw phase and close reason (technical details); `count` is left out where raw events are not the viewer's business. */
+export function Connection<T extends Framed>({ stream, count }: { stream: Stream<T>; count?: boolean }) {
+  return (
+    <output aria-label="Connection">
+      {stream.phase}
+      {stream.message && stream.phase !== "error" ? `: ${stream.message}` : ""}
+      {count ? ` · ${stream.events.length} events` : ""}
+    </output>
+  );
+}
+
+/** What stays in the page header whatever is folded: the Reconnect button once the stream closes, and why it stopped. */
+export function StreamAlert<T extends Framed>({ stream, reconnect }: { stream: Stream<T>; reconnect: () => void }) {
   return (
     <>
-      <output aria-label="Connection">
-        {stream.phase}
-        {stream.message && stream.phase !== "error" ? `: ${stream.message}` : ""}
-        {count ? ` · ${stream.events.length} events` : ""}
-      </output>
       {stream.phase === "closed" && (
         <button type="button" onClick={reconnect}>
           Reconnect from seq {stream.next}

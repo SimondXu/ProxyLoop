@@ -394,8 +394,8 @@ test.describe("human rep", () => {
     await expect(page.getByRole("list", { name: "Chat transcript" })).toContainText(ASK, FLOW);
     await say(page, IDENTITY);
     const transcript = rep.getByRole("list", { name: "Call transcript" });
-    await expect(transcript.getByRole("listitem").nth(1)).toHaveText(/^Agent: Hello, this is an AI assistant/, FLOW);
-    await expect(transcript).toContainText("Agent: The account holder is", FLOW); // Guard-shared facts, not the user's words
+    await expect(transcript.getByRole("listitem").nth(1)).toHaveText(/^The agent: Hello, this is an AI assistant/, FLOW);
+    await expect(transcript).toContainText("The agent: The account holder is", FLOW); // Guard-shared facts, not the user's words
     // The live page's call card (S1-SYS-77: from chan.opened): a person, not the world.
     const calls = page.getByRole("group", { name: "Call with the company" });
     await expect(calls.first()).toBeVisible();
@@ -408,10 +408,10 @@ test.describe("human rep", () => {
       const [res] = await Promise.all([rep.waitForResponse(isPost(/\/rep$/)), rep.getByRole("button", { name: "Send" }).click()]);
       expect(res.status()).toBe(200);
       await expect(transcript).toContainText(`You: ${line}`);
-      await expect(transcript.getByRole("listitem").last()).toHaveText(/^Agent: /, FLOW); // the agent answers
+      await expect(transcript.getByRole("listitem").last()).toHaveText(/^The agent: /, FLOW); // the agent answers
     }
-    await expect(transcript).toContainText("Agent: Could you please read back all the terms of that offer?");
-    for (const t of await transcript.getByRole("listitem").allTextContents()) expect(t).toMatch(/^(Call|Agent|You): /);
+    await expect(transcript).toContainText("The agent: Could you please read back all the terms of that offer?");
+    for (const t of await transcript.getByRole("listitem").allTextContents()) expect(t).toMatch(/^(Call|The agent|You): /);
 
     const events = await log(page, id);
     expect(of(events, "utt.final", { speaker: "partner" }).map((e) => e.payload.text)).toEqual([offer, readback]);

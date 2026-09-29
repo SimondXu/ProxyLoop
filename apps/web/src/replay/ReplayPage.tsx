@@ -11,7 +11,7 @@ import { authorityStrip } from "../authority";
 import { loadRun, type Run } from "../bundleSource";
 import { parties } from "../conversation";
 import { Panes, TechDetails, useView } from "../ConversationView";
-import { AgentRail } from "../live/AgentRail";
+import { AgentRail, NowCard } from "../live/AgentRail";
 import { ApprovalCard } from "../live/ApprovalCard";
 import { LimitsCard } from "../live/LimitsCard";
 import { mandateCards } from "../mandate";
@@ -143,9 +143,10 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
             recording: true,
             composer: <p className="pl-recording">This is a recording: nothing here is sent, and no card can be clicked.</p>,
           }}
+          now={<NowCard events={shown} cards={cards} mandates={mandates} />}
           details={
             <>
-              <AgentRail events={shown} cards={cards} mandates={mandates} />
+              <AgentRail events={shown} mandates={mandates} />
               <TechDetails>
                 <RunSummary events={events} />
               </TechDetails>

@@ -126,3 +126,53 @@ describe("repLine on bare /ws/rep frames (no actor, no stream)", () => {
     expect(callState([opened, frame("chan.closed", { lane: "user" }), frame("chan.closed", { lane: "cp" }, { actor: "fast.cp" })])).toBe("open");
   });
 });
+
+// S1-SYS-92 (root condition 1): the rep view's data sources, pinned. Every frame key and payload key repLine and
+// callState read is recorded (a Proxy watch, as todo.test.ts does for PAYLOAD_KEYS); nothing outside these lists may
+// be read, whatever the frame claims to be. Widening a list is an allow-list change: it goes through the root.
+const REP_FRAME_KEYS = ["actor", "payload", "seq", "stream", "type"];
+// Per type: the payload keys read. Any other type is read for its lane only (and then dropped).
+const REP_PAYLOAD_KEYS: Record<string, string[]> = {
+  "utt.delivered": ["interrupted", "lane", "text_heard"],
+  "utt.final": ["lane", "speaker", "text"],
+  "chan.opened": ["lane"],
+  "chan.closed": ["lane"],
+};
+const OTHER_KEYS = ["lane"];
+
+describe("the rep view's data sources (S1-SYS-92, root condition 1)", () => {
+  /** `frame` with every key read recorded in `read` as "type/frame:key" or "type/payload:key". */
+  function watched(frame: RepFrame, read: Set<string>): RepFrame {
+    const record = (where: string) => (target: object, key: string | symbol, recv: unknown) => {
+      if (typeof key === "string") read.add(`${frame.type}/${where}:${key}`);
+      return Reflect.get(target, key, recv) as unknown;
+    };
+    const payload = new Proxy<RepFrame["payload"]>(frame.payload, { get: record("payload") });
+    return new Proxy<RepFrame>({ ...frame, payload }, { get: record("frame") });
+  }
+  // Every type on every lane and speaker, with private keys beside the heard ones; bare (/ws/rep) and full (a live event).
+  const FULL = everything.map((e): RepFrame => ({ ...e, payload: { ...e.payload, readback_text: SECRET, summary: SECRET, reason: SECRET } }));
+  const BARE = FULL.map(({ seq, t_ms, type, payload }): RepFrame => ({ seq, t_ms, type, payload }));
+  // Without the heard keys: a fallback to another key (`text_heard ?? …`) is read, and caught.
+  const UNHEARD = BARE.map((f): RepFrame => ({ ...f, payload: Object.fromEntries(Object.entries(f.payload).filter(([k]) => k !== "text_heard" && k !== "text")) }));
+
+  it.each([
+    ["full events", FULL],
+    ["bare /ws/rep frames", BARE],
+    ["frames without text_heard or text", UNHEARD],
+  ])("%s: repLine and callState read only the pinned frame and payload keys", (_n, frames) => {
+    const read = new Set<string>();
+    const lines = frames.map((f) => repLine(watched(f, read))).filter((l) => l !== null);
+    callState(frames.map((f) => watched(f, read)));
+    const outside = [...read].filter((k) => {
+      const [type = "", rest = ""] = k.split("/");
+      const [where, key = ""] = rest.split(":");
+      return where === "frame" ? !REP_FRAME_KEYS.includes(key) : !(REP_PAYLOAD_KEYS[type] ?? OTHER_KEYS).includes(key);
+    });
+    expect(outside).toEqual([]);
+    expect(read.has("utt.delivered/payload:text_heard")).toBe(true); // the watch sees the reads it pins
+    expect(new Set(lines.map((l) => l.who))).toEqual(new Set(["agent", "rep", "call"]));
+    if (frames === UNHEARD) expect(JSON.stringify(lines)).not.toContain(SECRET); // no heard key: nothing else fills in
+    expect(JSON.stringify(lines.filter((l) => l.who !== "rep"))).not.toContain(SECRET);
+  });
+});
