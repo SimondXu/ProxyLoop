@@ -8,35 +8,20 @@ import fnmatch
 import json
 import os
 import re
-import shlex
 import sys
 from pathlib import Path
+
+from hooklib import SHELLS, expand, segments, shell_c_arg, strip_wrappers, tokenize
 
 ARCHIVE = Path.home() / "Desktop" / "proxyloop-v0-archive"
 PROTECTED_DIRS = ("data", "external")
 ROOT_LITERALS = {".", "./", "*", "./*"}
-KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "{", "!"}
-# wrapper -> its flags that take a value; timeout also takes a duration
-WRAPPERS = {
-    "sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U"},
-    "nice": {"-n"},
-    "timeout": {"-s", "-k", "--signal", "--kill-after"},
-    "xargs": {"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"},
-    "env": {"-u", "-C", "-S"},
-    "exec": {"-a"},
-    **{w: set() for w in ("command", "nohup", "time")},
-}
-SHELLS = {"bash", "sh", "zsh"}
 REASON = (
     "Blocked by .claude/hooks/block_destructive.py: recursive delete or git clean on "
     "data/, external/, a repo root or the v0 archive. Do not delete: remove tracked "
     "files with `git rm`, move untracked files to ~/Desktop/proxyloop-v0-archive/, "
     "and tell the user what you moved."
 )
-
-
-def expand(word: str) -> str:
-    return os.path.expandvars(os.path.expanduser(word))
 
 
 def hits(part: str) -> bool:
@@ -61,21 +46,6 @@ def protected(target: str, cwd: str) -> bool:
         (a / ".git").exists() and (a == p or hits(p.relative_to(a).parts[0]))
         for a in (p, *p.parents)
     )
-
-
-def strip_wrappers(words: list[str]) -> list[str]:
-    while words:
-        w = words[0]
-        if w in KEYWORDS or re.match(r"[A-Za-z_]\w*=", w):
-            words = words[1:]
-        elif w in WRAPPERS:
-            words = words[1:]
-            while words and words[0].startswith("-"):
-                words = words[2:] if words[0] in WRAPPERS[w] else words[1:]
-            words = words[1:] if w == "timeout" else words
-        else:
-            break
-    return words[2:] if words[:2] == ["uv", "run"] else words
 
 
 def delete_targets(cmd: str, args: list[str]) -> list[str]:
@@ -123,20 +93,12 @@ def raw_scan(command: str) -> bool:
 
 
 def blocked(command: str, cwd: str) -> bool:
-    flat = command.replace("\\\n", " ").replace("\n", ";")
-    lexer = shlex.shlex(flat, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    lexer.commenters = ""  # a `#` must never hide the lines after it
     try:
-        words = list(lexer)
+        words = tokenize(command)
     except ValueError:
         return raw_scan(command)
-    segment: list[str] = []
-    for word in [*words, ";"]:
-        if not all(c in "();<>|&" for c in word):
-            segment.append(word)
-            continue
-        seg, segment = strip_wrappers(segment), []
+    for segment in segments(words):
+        seg = strip_wrappers(segment)
         if not seg:
             continue
         cmd, args = os.path.basename(seg[0]), seg[1:]
@@ -144,10 +106,8 @@ def blocked(command: str, cwd: str) -> bool:
             dest = [a for a in args if a[:1] != "-"]
             cwd = os.path.join(cwd, expand(dest[0]) if dest else str(Path.home()))
         elif cmd in SHELLS:
-            c = next(
-                (i for i, a in enumerate(args) if re.fullmatch(r"-\w*c\w*", a)), -1
-            )
-            if 0 <= c < len(args) - 1 and blocked(args[c + 1], cwd):
+            inner = shell_c_arg(args)
+            if inner is not None and blocked(inner, cwd):
                 return True
         elif (cmd == "git" and git_clean(args)) or any(
             protected(t, cwd) for t in delete_targets(cmd, args)

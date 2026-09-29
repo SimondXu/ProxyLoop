@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.harness.hooks_layout import Layout, git, make_layout
+from tests.harness.hooks_layout import REPO, Layout, git, make_layout
 
 HOOK = "owned_paths.py"
 IMPL = {"agent_type": "implementer", "agent_id": "agent-1"}
@@ -113,7 +113,7 @@ def test_shared_checkout_path_is_denied(layout: Layout) -> None:
     for rel in ("src/proxyloop/kernel/loop.py", "README.md", ".claude/x"):
         verdict, reason = decide(layout, payload(str(layout.shared / rel), **IMPL))
         assert verdict == "deny"
-        assert "pl-wt" in reason
+        assert "inside the shared checkout" in reason
 
 
 def test_a_stray_worktree_inside_the_shared_checkout_is_denied(
@@ -198,3 +198,20 @@ def test_malformed_implementer_input_fails_closed(
 def test_unparseable_hook_json_is_allowed(layout: Layout, raw: str) -> None:
     # without a parseable agent_type the call cannot be told from a top-level one
     assert layout.run(HOOK, None, raw=raw) == ""
+
+
+def test_settings_register_the_agent_hooks() -> None:
+    settings = json.loads((REPO / ".claude" / "settings.json").read_text())
+    hooks = settings["hooks"]
+    registered = {
+        (event, entry["matcher"], Path(h["command"].split('"')[1]).name)
+        for event, entries in hooks.items()
+        for entry in entries
+        for h in entry["hooks"]
+    }
+    assert registered == {
+        ("PreToolUse", "Bash", "block_destructive.py"),
+        ("PreToolUse", "Bash", "agent_bash.py"),
+        ("PreToolUse", "Edit|Write|NotebookEdit|MultiEdit", "owned_paths.py"),
+        ("SubagentStop", "implementer", "done_gate.py"),
+    }

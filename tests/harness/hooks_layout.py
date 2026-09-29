@@ -47,11 +47,18 @@ class Layout:
     def env(self) -> dict[str, str]:
         return {**os.environ, **GIT_ENV, "CLAUDE_PROJECT_DIR": str(self.shared)}
 
-    def run(self, hook: str, payload: Any, *, raw: str | None = None) -> str:
+    def run(
+        self,
+        hook: str,
+        payload: Any,
+        *,
+        raw: str | None = None,
+        python: str = sys.executable,
+    ) -> str:
         """Run a hook; return its stdout (empty means allow)."""
         stdin = raw if raw is not None else json.dumps(payload)
         result = subprocess.run(
-            [sys.executable, str(HOOKS / hook)],
+            [python, str(HOOKS / hook)],
             input=stdin,
             capture_output=True,
             text=True,

@@ -7,6 +7,7 @@ Top-level sessions (no agent_type/agent_id) are never affected.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -161,6 +162,11 @@ def test_cwd_inside_a_task_worktree_allows_state_changing_git(
     assert decide(layout, "git commit -m x", IMPL, cwd=str(layout.shared)) == "deny"
     sub_dir = str(layout.shared / "src")
     assert decide(layout, "git commit -m x", IMPL, cwd=sub_dir) == "deny"
+    back = f"cd {layout.shared} && git commit -m x"
+    assert decide(layout, back, IMPL, cwd=str(layout.wt)) == "deny"
+    assert decide(
+        layout, f"git -C {layout.shared} commit", IMPL, cwd=str(layout.wt)
+    ) == ("deny")
 
 
 SCOUT_DENIED = [
@@ -234,3 +240,24 @@ def test_malformed_subagent_input_fails_closed(
 @pytest.mark.parametrize("raw", ["", "not json", "[]", "{}"])
 def test_unparseable_hook_json_is_allowed(layout: Layout, raw: str) -> None:
     assert layout.run(HOOK, None, raw=raw) == ""
+
+
+SYSTEM_PYTHON = Path("/usr/bin/python3")
+
+
+@pytest.mark.skipif(not SYSTEM_PYTHON.exists(), reason="no /usr/bin/python3")
+def test_the_hooks_run_under_system_python(layout: Layout) -> None:
+    py = str(SYSTEM_PYTHON)
+    bash = {
+        "tool_name": "Bash",
+        "tool_input": {"command": f"git -C {layout.shared} fetch"},
+        "cwd": str(layout.shared),
+        **REVIEWER,
+    }
+    assert "deny" in layout.run(HOOK, bash, python=py)
+    edit = {"tool_name": "Edit", "tool_input": {"file_path": str(layout.wt / "x")}}
+    assert "deny" in layout.run("owned_paths.py", {**edit, **IMPL}, python=py)
+    ok = {"tool_name": "Edit", "tool_input": {"file_path": str(layout.wt / "a.txt")}}
+    assert layout.run("owned_paths.py", {**ok, **IMPL}, python=py) == ""
+    stop = {"stop_hook_active": False, "cwd": str(layout.wt), **IMPL}
+    assert '"block"' in layout.run("done_gate.py", stop, python=py)
