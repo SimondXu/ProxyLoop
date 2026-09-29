@@ -550,10 +550,13 @@ def test_t8_a_compound_ask_labelled_read_back_gets_the_terms(tmp_path: Path) -> 
     assert (
         "If one utterance does several things, its act is the first of them in "
         "this order: accept (only of an offer you made), "
-        "decline, provide_fact, ask_readback, then ask_discount, "
-        "cite_competitor, cancel_intent, tenure, then the rest."
+        "decline, ask_readback, then cite_competitor, cancel_intent, "
+        "tenure (only if the utterance says how long they have been a customer), "
+        "ask_discount, then provide_fact, then the rest."  # S1-SYS-95: verified
     ) in system
-    assert system == ear.SYSTEM.format(company=TASK.counterparty.company)
+    assert system == ear.SYSTEM.format(
+        company=TASK.counterparty.company, order=ear.ORDER_VERIFIED
+    )
     intent = cast(dict[str, Any], play.of("rep.policy")[-1].payload["intent"])
     assert intent["kind"] == "readback"
     assert ["fee:activation", "20.00"] in intent["say"]

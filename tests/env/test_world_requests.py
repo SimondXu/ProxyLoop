@@ -68,11 +68,15 @@ def _dump(request: Request) -> str:
 # -- the Ear ------------------------------------------------------------------
 
 
-def _ear_one(sink: BusSink, client: Capturing) -> None:
+def _ear_one(sink: BusSink, client: Capturing, verified: bool = False) -> None:
     heard = sink.heard("Is that really the best you can do?")
     block = [Heard("u1", str(heard.payload["text_heard"]), heard.event_id, 0)]
     ear = Ear(client, sink.world, CP.company, CP.identity)
-    asyncio.run(ear.classify(block, {}, ()))
+    asyncio.run(ear.classify(block, {}, (), verified=verified))
+
+
+def _ear_one_verified(sink: BusSink, client: Capturing) -> None:
+    _ear_one(sink, client, verified=True)  # S1-SYS-95: after identity
 
 
 EAR_THREE = (
@@ -198,6 +202,10 @@ SIM_REPLIES = {
 
 CASES: dict[str, tuple[Callable[[BusSink, Capturing], None], list[str]]] = {
     "ear_one": (_ear_one, [_tool("classify", acts=[{"act": "ask_discount"}])]),
+    "ear_one_verified": (
+        _ear_one_verified,
+        [_tool("classify", acts=[{"act": "ask_discount"}])],
+    ),
     "ear_three_regenerated": (
         _ear_three,
         [
@@ -245,12 +253,15 @@ Build = Callable[[BusSink, Capturing, str, int], Request]
 
 
 def _ear(
-    texts: tuple[str, ...], offers: dict[str, dict[str, str]], open_: set[str]
+    texts: tuple[str, ...],
+    offers: dict[str, dict[str, str]],
+    open_: set[str],
+    verified: bool = False,
 ) -> Build:
     def build(sink: BusSink, client: Capturing, cause: str, n: int) -> Request:
         block = [Heard(f"u{i}", t, cause, i) for i, t in enumerate(texts, 1)]
         return Ear(client, sink.world, CP.company, CP.identity).request(
-            block, offers, open_, n
+            block, offers, open_, n, verified=verified
         )
 
     return build
@@ -282,6 +293,9 @@ TURNS = [f"Assistant: {t}" for t in SIM_AGENT]
 REPLIED = [*TURNS[:2], "You: Actually, up to 74 a month is fine.", TURNS[2]]
 BUILDS: dict[str, list[Build]] = {
     "ear_one": [_ear(("Is that really the best you can do?",), {}, set())],
+    "ear_one_verified": [
+        _ear(("Is that really the best you can do?",), {}, set(), True)
+    ],
     "ear_three_regenerated": [_ear(EAR_THREE, OFFERS, {"loyal-2"})] * 2,
     **{f"mouth_{k}": [_mouth_built(k)] * len(MOUTH_LINES[k]) for k in INTENTS},
     "simuser_chat": [
