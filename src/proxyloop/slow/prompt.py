@@ -35,7 +35,11 @@ TOOLS = (
     *("share_fact", "propose_mandate", "tighten_mandate", "revoke"),
     *("request_approval", "accept_offer", "decline_offer", "check_account", "finish"),
 )
-MAX_TOKENS = 1_500
+# A runaway guard, not a length budget (S1-SYS-97): on OpenRouter's Gemini the
+# reasoning tokens count against max_tokens, and at 1_500 every high-effort Slow
+# call ended finish_reason "length" (~1,442 reasoning tokens, no tool call: 4/4
+# in runs/20260929T111005Z-b2deb5; 2/35 at medium, runs/20260929T110406Z-266e2b).
+MAX_TOKENS = 8_192
 SYSTEM = f"""You are the case agent behind an AI assistant that works for a user. \
 Two voices act for you: a chat voice that talks with the user, and a phone voice on \
 a live call with a company representative. You never hear either conversation. You \
