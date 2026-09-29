@@ -12,6 +12,9 @@
 # - main=CONTAINED: the head contains origin/main. DISJOINT: it does not, but the paths
 #   changed on main since the merge-base and the PR's paths do not intersect. Otherwise
 #   OVERLAP:<paths>.
+# - check also reports main_ci=success|failure|pending|unknown, the latest ci.yml run on
+#   main (the full `make check`); informational, it never blocks. A red one prints a
+#   WARNING line above the check line.
 # - merge squash-merges with --match-head-commit and confirms state MERGED afterwards.
 # - batch merges every head into a detached scratch worktree at origin/main, runs
 #   `HF_HUB_OFFLINE=1 make check` (and `make web-test` when apps/web/** is touched) there,
@@ -143,9 +146,36 @@ merge_and_confirm() {
   MERGE_SHA="$oid"
 }
 
+# main_ci: sets MAIN_CI (success|failure|pending|unknown) and MAIN_CI_URL from the latest
+# ci.yml run on main. Informational: a gh failure or no run is unknown, never an error.
+# shellcheck disable=SC2016  # jq program, no shell expansions
+MAIN_CI_JQ='
+if length == 0 then "unknown"
+else .[0]
+  | (if .status != "completed" then "pending"
+     elif .conclusion == "success" then "success"
+     elif (.conclusion | IN("failure", "timed_out", "startup_failure")) then "failure"
+     else "unknown" end) + " " + (.url // "")
+end'
+
+main_ci() {
+  local out
+  MAIN_CI=unknown MAIN_CI_URL=""
+  out="$(gh run list --branch main --workflow ci.yml --limit 1 \
+    --json status,conclusion,url --jq "$MAIN_CI_JQ" 2>/dev/null)" || return 0
+  read -r MAIN_CI MAIN_CI_URL <<<"$out"
+  MAIN_CI="${MAIN_CI:-unknown}"
+}
+
+# check adds main_ci=<...>, the latest full-check result on main (it never gates a merge),
+# and a WARNING line before the check line when that run is red.
 cmd_check() {
   inspect_pr "$1"
-  check_line "$1"
+  main_ci
+  if [ "$MAIN_CI" = failure ]; then
+    echo "WARNING: main's full check is red (${MAIN_CI_URL:-no url})"
+  fi
+  echo "$(check_line "$1") main_ci=$MAIN_CI"
 }
 
 cmd_merge() {

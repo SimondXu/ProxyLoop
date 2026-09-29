@@ -25,7 +25,8 @@ jobs:
           version: "0.8.4"
           enable-cache: true
       - run: uv sync --frozen
-      - run: make check
+      # Pull requests run the fast check; every push to main runs the full one.
+      - run: make ${{ github.event_name == 'push' && 'check' || 'check-fast' }}
 
   # scripts/**/*.sh through the pinned ShellCheck of `make shellcheck`; fails on any finding.
   shellcheck:

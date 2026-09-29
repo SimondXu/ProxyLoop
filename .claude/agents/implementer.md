@@ -34,7 +34,7 @@ You are the ProxyLoop `implementer`. You get one task packet, and you deliver on
 
 ## Before you return
 Run, in the worktree:
-- `make check` (or, before S0-SYS-02 lands, the commands the packet names);
+- `make check-fast` (the full `make check` when the change touches concurrency/fences, `tests/concurrency/**` or `serial`-marked tests; or, before S0-SYS-02 lands, the commands the packet names);
 - every verification command in your task block that does not need L, G or U.
 
 Paste the tails of real output only. Never claim a check you did not run.

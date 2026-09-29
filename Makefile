@@ -1,8 +1,13 @@
 # Root-owned. Lane targets go in mk/sys.mk and mk/mod.mk (AGENTS.md, PLAN.md §0.2).
 .DEFAULT_GOAL := check
-.PHONY: check lint typecheck test imports docs-check format
+.PHONY: check check-fast lint typecheck test test-fast imports docs-check format
 
 check: lint typecheck test imports docs-check
+
+# check-fast (S1-ROOT-26): the everyday and pull-request check. It leaves out the two
+# long Hypothesis tests and the `serial` wall-clock group (the concurrency guards), which
+# `check` runs on every push to main.
+check-fast: lint typecheck test-fast imports docs-check
 
 lint:
 	uv run ruff check src tests scripts serving training_jobs
@@ -20,6 +25,10 @@ test:
 	uv run pytest -q -n auto -m "not serial" --ignore=tests/concurrency/test_property.py
 	uv run pytest -q -n 2 -m "not serial" tests/concurrency/test_property.py
 	uv run pytest -q -m serial
+
+# test-fast: pass 1 of `test` only.
+test-fast:
+	uv run pytest -q -n auto -m "not serial" --ignore=tests/concurrency/test_property.py
 
 imports:
 	uv run lint-imports
