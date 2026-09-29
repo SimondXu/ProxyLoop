@@ -35,11 +35,8 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 
 from proxyloop.contract import protocol as fp
-from proxyloop.contract.base import Lane, canonical_json, sha256_text
-from proxyloop.contract.bundle import Bundle
-from proxyloop.contract.config import Sampling
+from proxyloop.contract.base import canonical_json, sha256_text
 from proxyloop.contract.state import CaseStatus
-from proxyloop.contract.views import FastView
 from proxyloop.kernel.lanes import load_tokenizer
 from proxyloop.training import pull_through as pt
 from scripts.mod import probe_same_state as pss
@@ -790,44 +787,24 @@ def render(doc: Json) -> str:
     return "\n".join(out if doc["authority_hits"] else [*out, "- none"]) + "\n"
 
 
-def manifest_views(bundles: Sequence[Bundle], doc: Json) -> list[pss.View]:
-    """A manifest's views ({"views": [{"run_id", "turn", ...}]}) in its order, from
-    the train bundles on any fingerprint (rows carry profile_rendered)."""
-    want = [(str(x["run_id"]), str(x["turn"])) for x in cast(list[Json], doc["views"])]
-    at = {(v.run_id, v.turn): v for b in bundles
-          for v in pss.collect([b], b.manifest.fingerprints, 10**9)[0]}  # fmt: skip
-    if len(set(want)) != len(want):
-        raise SystemExit("--views-manifest lists a view twice")
-    if lost := [k for k in want if k not in at]:
-        raise SystemExit(f"--views-manifest: {len(lost)} views not found: {lost[:3]}")
-    return [at[k] for k in want]
-
-
-def read_views(path: Path) -> list[pss.View]:
-    """A ``profile_check build-c`` views file: no recorded answer (``raw`` empty)."""
-    out = list[pss.View]()
-    for x in cast(list[Json], read(path)["views"]):
-        lane: Lane = "user" if x["lane"] == "user" else "cp"
-        args = (x["run_id"], x["turn"], lane, x["profile"])
-        args += (FastView.model_validate(x["view"]), Sampling(**x["sampling"]))
-        args += (int(x["seed"]), pss.Rec.model_validate(x["source_call"]), "")
-        out.append(pss.View(*args))
-    return out
-
-
 def views_of(a: argparse.Namespace) -> tuple[list[pss.View], Json]:
-    """A --views-file's views (--no-reference only), a --views-manifest's, or the
-    newest train bundles' (``pss.collect``); cut at --max-views; and the funnel."""
+    """A --views-file's views (``pss.read_views``; --no-reference only), a
+    --views-manifest's (``pss.manifest_views``: its order and selection, any
+    fingerprint; a view listed twice refused), or the newest train bundles'
+    (``pss.collect``); cut at --max-views; and the funnel."""
     if a.views_file:
         if not a.no_reference or a.views_manifest:
             raise SystemExit("--views-file: no reference (--no-reference), no manifest")
         sha = {"views_file_sha256": file_sha(a.views_file)}
-        return read_views(a.views_file)[: a.max_views], sha
+        return pss.read_views(a.views_file)[: a.max_views], sha
     bundles = pt.load_bundles(a.evidence)
     if not a.views_manifest:
         return pss.collect(bundles, pt.current_fingerprints(), a.max_views)
-    views = manifest_views(bundles, cast(Json, read(a.views_manifest)))
-    return views[: a.max_views], {"views_manifest_sha256": file_sha(a.views_manifest)}
+    doc = cast(Json, read(a.views_manifest))
+    if len({(x["run_id"], x["turn"]) for x in doc["views"]}) != len(doc["views"]):
+        raise SystemExit("--views-manifest lists a view twice")
+    views = pss.manifest_views(bundles, doc)[: a.max_views]
+    return views, {"views_manifest_sha256": file_sha(a.views_manifest)}
 
 
 def parser() -> argparse.ArgumentParser:

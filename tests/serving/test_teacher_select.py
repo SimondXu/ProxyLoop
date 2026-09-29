@@ -12,12 +12,13 @@ import os
 import random
 import re
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from tests.contract.samples import call_record
 from tests.golden.tokenizer import load_tokenizer
+from tests.serving.test_probe_same_state import evidence as evidence  # the fixture
+from tests.serving.test_probe_same_state import seedless
 
 from proxyloop.contract.config import Sampling
 from proxyloop.contract.llm import AdapterKind, ModelRef, ReasoningEffort, Usage
@@ -1104,35 +1105,39 @@ def test_pairs_across_prompts_are_flagged(tmp_path: Path) -> None:
 
 
 def test_views_manifest_takes_exactly_its_views(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    evidence: tuple[Path, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """Its order, any fingerprint (each bundle collected on its own), extra keys
-    ignored; a missing or repeated view is refused, and a report row outside it."""
-    stale = [mk(cp_view(), run="old", turn=f"t{i}") for i in range(2)]
-    fresh = [mk(cp_view(), run="new", turn="t9")]
-    bundles = [
-        SimpleNamespace(manifest=SimpleNamespace(fingerprints={"cp": "stale"})),
-        SimpleNamespace(manifest=SimpleNamespace(fingerprints={"cp": "now"})),
+    """A set-B manifest: its order, any fingerprint, ``selection.seed_missing`` for a
+    seedless turn (``pss.manifest_views``); extra keys ignored; a missing or repeated
+    view is refused, and a report row outside it."""
+    (new,) = pt.load_bundles(evidence[0])
+    old = seedless(new, "run-seedless")  # stale: recorded no seed
+    monkeypatch.setattr(ts.pt, "load_bundles", lambda root: [old, new])  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    found, _ = pss.collect([old], pt.current_fingerprints(), 999, seed_missing=9)
+    picked = [found[-1], found[0]]
+    sel: Json = {"include": [], "exclude": [], "seed_missing": 9}
+    rows = [{"run_id": v.run_id, "turn": v.turn, "lane": v.lane, "guide": None}
+            for v in picked]  # fmt: skip
+    argv = ["export", "--reports", "r", "--evidence", "e", "--max-views", "99"]
+    argv += ["--out-dir", "o", "--key-out", "k", "--seed", "1", "--views-manifest"]
+
+    def views_of(doc: Json) -> list[pss.View]:
+        path = write(tmp_path / "m.json", {"selection": sel} | doc)
+        return ts.views_of(ts.parser().parse_args([*argv, str(path)]))[0]
+
+    got = views_of({"views": rows})
+    assert [(v.run_id, v.turn, v.seed, v.seed_source) for v in got] == [
+        (v.run_id, v.turn, 9, "default") for v in picked
     ]
-    by_fp = {"stale": stale, "now": fresh}
-
-    def collect(bs: list[Any], fps: dict[str, str], cap: int) -> tuple[Any, Json]:
-        assert len(bs) == 1 and fps is bs[0].manifest.fingerprints
-        return by_fp[fps["cp"]], {}
-
-    monkeypatch.setattr(ts.pss, "collect", collect)
-    listed = [("new", "t9"), ("old", "t1")]
-    doc = {"views": [{"run_id": r, "turn": t, "lane": "cp", "guide": None}
-                     for r, t in listed]}  # fmt: skip
-    got = ts.manifest_views(bundles, doc)  # pyright: ignore[reportArgumentType]
-    assert [(v.run_id, v.turn) for v in got] == listed
-    for bad, match in (([*listed, listed[0]], "twice"), ([("old", "t7")], "not found")):
-        views = {"views": [{"run_id": r, "turn": t} for r, t in bad]}
-        with pytest.raises(SystemExit, match=match):
-            ts.manifest_views(bundles, views)  # pyright: ignore[reportArgumentType]
-    path = write(tmp_path / "r.json", multi_report(A, [*stale, *fresh]))
+    with pytest.raises(SystemExit, match="twice"):
+        views_of({"views": [*rows, rows[0]]})
+    with pytest.raises(SystemExit, match="not found"):
+        views_of({"views": [*rows, {"run_id": "gone", "turn": "t"}]})
+    report = write(tmp_path / "r.json", multi_report(A, found))
     with pytest.raises(SystemExit, match="no view"):
-        ts.run_export([path], got, tmp_path / "o", tmp_path / "k.json", 1)
+        ts.run_export([report], got, tmp_path / "o", tmp_path / "k.json", 1)
 
 
 def views_file(path: Path, views: list[pss.View]) -> Path:
@@ -1150,7 +1155,7 @@ def views_file(path: Path, views: list[pss.View]) -> Path:
 def test_views_file_is_judged_without_a_reference(tmp_path: Path) -> None:
     """Set C: views with no recorded answer; only with --no-reference."""
     vf = views_file(tmp_path / "views.json", VIEWS)
-    got = ts.read_views(vf)
+    got = pss.read_views(vf)
     assert [(v.run_id, v.turn, v.view, v.raw) for v in got] == [
         (v.run_id, v.turn, v.view, "") for v in VIEWS
     ]
