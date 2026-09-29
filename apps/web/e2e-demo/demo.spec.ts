@@ -223,11 +223,25 @@ test.describe("approve", () => {
     await expect(page.getByLabel("Status line")).toHaveText("Done. Verified.");
     // The receipt (live/Receipt.tsx, outcome.ts): the verified variant, the id the rep said, Guard's verifier and your approval.
     const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
-    await expect(receipt.getByRole("heading")).toHaveText("Done. Verified.");
-    await expect(receipt).toContainText(`Confirmation ${conf}`);
-    await expect(receipt).toContainText("Verified against the simulated company's records");
-    await expect(receipt).toContainText(/Approved by you at \d{1,2}:\d{2}\s[AP]M/);
-    await expect(receipt.getByLabel("Accepted terms").getByRole("listitem")).toHaveCount(5);
+    // S1-SYS-80: the title is the tag; the serif headline is the approved card's price and term; the terms in a sunken panel.
+    await expect(receipt.getByText("Done. Verified.", { exact: true })).toBeVisible();
+    const head = receipt.getByRole("heading");
+    await expect(head).toHaveText(/^Accepted: \$78 a month( for \d+ months)?\.$/);
+    await expect(head).toHaveCSS("font-style", "italic");
+    await expect(head).toHaveCSS("font-family", /Newsreader/);
+    await expect(receipt.getByText(`Confirmation ${conf}`, { exact: true })).toBeVisible();
+    await expect(receipt.getByText("Verified against the simulated company's records", { exact: true })).toBeVisible();
+    await expect(receipt.getByText(/^Approved by you at \d{1,2}:\d{2}\s[AP]M$/)).toBeVisible();
+    await expect(receipt.locator(".pl-outcome-panel").getByLabel("Accepted terms").getByRole("listitem")).toHaveCount(5);
+    await expect(receipt).not.toContainText(/saving|saved|estimated|mock|per year|a year/i);
+    // The cost fold still lists session.ended's spend (outcome.ts spendLines).
+    await receipt.getByText("Cost and details", { exact: true }).click();
+    await expect(receipt.getByRole("list", { name: "Cost" }).getByRole("listitem").first()).toHaveText(/^(Priced model calls: \$[\d.,]+|No cost was recorded for this run\.)$/);
+    // Back to the call: the last call card's heading, scrolled to and focused.
+    await receipt.getByRole("button", { name: "Back to the call" }).click();
+    const callHead = page.getByRole("heading", { name: "Call with the company" }).last();
+    await expect(callHead).toBeFocused();
+    await expect(callHead).toBeInViewport();
     // The rail's to-do (S1-SYS-79) from the same run: nothing in progress after the end, the Result row is the receipt's title,
     // and under the rows the approval, your click, Guard's clearance and the heard yes. locator("li"): a folded row's steps count too.
     const todo = page.getByRole("list", { name: "To-do" });
