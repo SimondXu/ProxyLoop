@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { approvalCards, type Posting } from "./approval";
 import { mandateCards } from "./mandate";
 import type { Ev } from "./replay";
-import { groups, now, PAYLOAD_KEYS, planner, timeline } from "./timeline";
+import { now, PAYLOAD_KEYS, planner, timeline } from "./timeline";
 
 let seq = 0;
 const ev = (type: string, actor: string, payload: Ev["payload"] = {}, causes: Ev[] = []): Ev => {
@@ -295,15 +295,11 @@ describe("timeline: one row per event type", () => {
     expect(steps.map((s) => [s.who, s.text, ...(s.mark === null ? [] : [s.mark])])).toEqual(want);
   });
 
-  it("groups steps by call, with session times", () => {
+  it("names each step's call group (groups() went with the Steps list, S1-SYS-79; the field stays)", () => {
     const steps = timeline([mandate(), ev("chan.opened", "kernel", { lane: "cp", call: 1 }), offer(), ev("chan.closed", "kernel", { lane: "cp" }), ev("chan.opened", "kernel", { lane: "cp", call: 2 }), ev("completion.decided", "guard", { verdict: "ok" })]);
-    expect(groups(steps).map((g) => [g.name, g.steps.length])).toEqual([
-      ["Before the call", 1],
-      ["On the call", 3],
-      ["Call 2", 2],
-    ]);
+    expect(steps.map((s) => s.group)).toEqual(["Before the call", "On the call", "On the call", "On the call", "Call 2", "Call 2"]);
     const closed = timeline([ev("chan.opened", "kernel", { lane: "cp", call: 1 }), ev("chan.closed", "kernel", { lane: "cp" }), ev("evidence.recorded", "guard", { confirmation_id: "C" })]);
-    expect(groups(closed).map((g) => g.name)).toEqual(["On the call", "After"]);
+    expect(closed.map((s) => s.group)).toEqual(["On the call", "On the call", "After"]);
   });
 });
 

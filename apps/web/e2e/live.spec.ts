@@ -48,6 +48,11 @@ test("approval card: appears on approval.requested, Approve posts the contract b
   // The card sits in the chat stream at its event's seq: before the later message.
   await expect(chatItems.first().getByRole("article", { name: "Approval ap-1" })).toBeVisible();
   await expect(card.getByLabel("Approval status")).toHaveText("Waiting for your decision");
+  // The rail's to-do (S1-SYS-79): the needs-you tag and "Get your decision" waiting for you.
+  const todo = page.getByRole("region", { name: "To-do" });
+  const decision = todo.getByRole("list", { name: "To-do" }).getByRole("listitem").filter({ hasText: /^Get your decision/ });
+  await expect(todo.getByText(/^Needs you · \d+ of \d+ done$/)).toHaveText("Needs you · 0 of 7 done");
+  await expect(decision).toHaveText("Get your decision Waiting for your decision · needs you", { useInnerText: true });
   await shot(page, "live-card");
 
   await card.getByRole("button", { name: "Approve" }).click();
@@ -61,11 +66,23 @@ test("approval card: appears on approval.requested, Approve posts the contract b
     },
   ]);
   await expect(card.getByRole("button", { name: "Approve" })).toBeDisabled();
-
+  // A click decides nothing: the to-do still waits for you until the kernel's approval.decided arrives.
   const post = { subject: "approval", subject_id: "ap-1", decision: "granted", subject_hash: CARD.terms_hash, authority_epoch: 2 };
   ws.send(ev("approval.post", "ui", post));
+  await expect(decision).toHaveText("Get your decision Sent. Waiting for Guard to record it · needs you", { useInnerText: true });
+  await expect(todo.getByText("Needs you · 0 of 7 done", { exact: true })).toBeVisible();
   ws.send(ev("approval.decided", "kernel", { approval_id: "ap-1", decision: "granted", by: "ui" }));
   await expect(card.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
+  await expect(decision).toHaveText("Get your decision Approved by your click · done", { useInnerText: true });
+  await expect(todo.getByText("1 of 7 done", { exact: true })).toBeVisible();
+  await expect(todo.getByText(/^Needs you/)).toHaveCount(0);
+  await decision.getByRole("button").click();
+  await expect(decision.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+  await expect(todo.getByRole("list", { name: "Get your decision: steps" }).getByRole("listitem")).toHaveText([
+    /^Guard \d{2}:\d{2} Asked for your approval$/,
+    /^You \d{2}:\d{2} Approved$/,
+  ]);
+  await shot(page, "live-todo-decided");
   expect(urls).toEqual([expect.stringMatching(new RegExp(`/ws/live/${RUN}\\?from_seq=0$`))]);
 });
 
@@ -324,8 +341,16 @@ test("conversation view: one stream with the right speakers, heard text only, th
   await expect(calls.last().getByRole("list", { name: "Call transcript" })).toContainText("Rep (simulated): What is the account name?");
   for (const hidden of ["UNHEARD", "GENERATED-ONLY"]) await expect(page.locator("main")).not.toContainText(hidden);
   await expect(page.getByLabel("Status line")).toHaveText("On the call with the company");
-  // The rail's steps: fixed wording from Guard's and the kernel's events, never a line's text.
-  await expect(page.getByRole("region", { name: "Steps" }).getByRole("listitem")).toHaveText([
+  // The rail's to-do (S1-SYS-79): the call done, its steps behind the row; fixed wording, never a line's text.
+  const todo = page.getByRole("list", { name: "To-do" });
+  await expect(todo.getByRole("listitem")).toHaveText([
+    "Call the company · done",
+    "Hear an offer · in progress",
+    "Have every term read back · not started",
+    "Result · not started",
+  ], { useInnerText: true }); // a row's folded steps are not its text
+  await todo.getByRole("button", { name: /^Call the company/ }).click();
+  await expect(page.getByRole("list", { name: "Call the company: steps" }).getByRole("listitem")).toHaveText([
     /^Call \d{2}:\d{2} Called the company$/,
     /^Guard \d{2}:\d{2} Opened with the AI disclosure$/,
   ]);
@@ -397,11 +422,11 @@ test("v4 stream: the call card holds the rep's line, a message sent during the c
   await expect(card.getByLabel("Approval status")).toHaveText("Sent. Waiting for Guard to record it");
   expect(posts.map((p) => p.path)).toEqual([`/api/cases/${RUN}/messages`, `/api/cases/${RUN}/approvals/ap-1`]);
 
-  // The Task details rail: Now, the limits, the steps; the authority area is folded in Technical details.
+  // The Task details rail: Now, the limits, the to-do; the authority area is folded in Technical details.
   const rail = page.getByRole("complementary", { name: "Task details" });
   await expect(rail.getByLabel("Status line")).toBeVisible();
   await expect(rail.getByRole("region", { name: "Your limits (summary)" })).toBeVisible();
-  await expect(rail.getByRole("region", { name: "Steps" })).toBeVisible();
+  await expect(rail.getByRole("region", { name: "To-do" })).toBeVisible();
   await expect(rail.getByRole("region", { name: "Authority" })).toBeHidden();
   await expect(page.locator("details.pl-tech details.authority")).toHaveCount(1);
   await rail.getByText("Technical details", { exact: true }).click();

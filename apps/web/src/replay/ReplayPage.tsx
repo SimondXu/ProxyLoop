@@ -18,7 +18,6 @@ import { mandateCards } from "../mandate";
 import { honesty } from "../provenance";
 import { endOf } from "../replay";
 import { HonestyBand } from "../shell/HonestyBand";
-import { PhaseStepper } from "../shell/PhaseStepper";
 import { taskName } from "../start";
 import { timeline } from "../timeline";
 import { Banner } from "../ui/Banner";
@@ -108,7 +107,6 @@ function Recording({ runId, run }: { runId: string; run: Run }) {
     <>
       <h1>{start ? taskName(String(start.payload.task_ref)) : "Recorded run"}</h1>
       <span className="meta pl-runid">{runId}</span>
-      <PhaseStepper events={shown} />
     </>
   );
 

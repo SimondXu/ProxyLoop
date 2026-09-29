@@ -1,5 +1,5 @@
 // The frame of every operator page (redesign §3.0): the top bar (brand, nav, theme), then the page.
-// The Live-only parts of the bar (case title, stepper, reconnect) come with UI-2.
+// The Live-only parts of the bar (case title, reconnect) come with UI-2.
 import type { ReactNode } from "react";
 import { BrandMark } from "../ui/BrandMark";
 import { ThemeToggle } from "./ThemeToggle";

@@ -178,6 +178,16 @@ for (const theme of THEMES) {
           await liveWithCards(page, baseURL);
           await audit(page);
           await shot(page, `a11y-live-${size.name}-${theme}`);
+          if (size.name === "desktop") {
+            // The rail's to-do with a row open (S1-SYS-79): its steps under it. The card is the needs-you row; the open
+            // limits say "Also needs you" in words (visible and for screen readers), with an icon.
+            const todo = page.getByRole("list", { name: "To-do" });
+            await expect(todo.getByRole("listitem").filter({ hasText: /^Set your limits/ })).toHaveText("Set your limits Also needs you · also needs you", { useInnerText: true });
+            await expect(todo.getByRole("listitem").filter({ hasText: /^Get your decision/ })).toHaveText("Get your decision Waiting for your decision · needs you", { useInnerText: true });
+            await todo.getByRole("button", { name: /^Call the company/ }).click();
+            await expect(page.getByRole("list", { name: "Call the company: steps" }).getByRole("listitem")).toHaveCount(1);
+            await audit(page);
+          }
         });
 
         test("live page with an approval card beside confirmed limits, the rep on hold (S1-SYS-78)", async ({ page, baseURL }) => {
@@ -254,16 +264,21 @@ for (const theme of THEMES) {
         await audit(page);
         await shot(page, `phone-sheet-folded-${theme}`);
 
-        // Task details opens a drawer from the case header with the steps at full width (was: the Steps tab).
+        // Task details opens a drawer from the case header with the to-do at full width (was: the Steps tab; S1-SYS-79: the to-do).
         await details.click();
-        const steps = page.getByRole("region", { name: "Steps" });
+        const steps = page.getByRole("region", { name: "To-do" });
         await expect(steps).toBeVisible();
         expect((await steps.boundingBox())?.width).toBeGreaterThan(300);
+        await expect(steps.getByText("Needs you · 2 of 7 done", { exact: true })).toBeVisible(); // the limits and the card wait for you
         await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
         // The drawer opens under the sticky band: the sim label stays in view on every frame (I8, I11).
         expect(await page.getByRole("note", { name: "Simulated parties" }).evaluate(uncovered)).toBe(true);
         await audit(page);
         await shot(page, `phone-details-${theme}`);
+        const row = steps.getByRole("button", { name: /^Call the company/ });
+        await row.click();
+        await expect(row).toHaveAttribute("aria-expanded", "true");
+        await audit(page);
         await page.keyboard.press("Escape");
         await expect(steps).toBeHidden();
         await expect(details).toBeFocused();
@@ -360,7 +375,7 @@ for (const theme of THEMES) {
         await shot(page, `phone-360-sheet-${theme}`);
         // The Task details drawer opens under the band: the sim label is not covered (I8, I11).
         await page.getByRole("button", { name: "Task details" }).click();
-        await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
+        await expect(page.getByRole("region", { name: "To-do" })).toBeVisible();
         expect(await page.getByRole("note", { name: "Simulated parties" }).evaluate(uncovered)).toBe(true);
         await shot(page, `phone-360-details-${theme}`);
       });
@@ -379,7 +394,7 @@ for (const theme of THEMES) {
         const { ws, ev } = await liveWithCards(page, baseURL);
         const details = page.getByRole("button", { name: "Task details" });
         await expect(details).toHaveAttribute("aria-expanded", "false");
-        await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
+        await expect(page.getByRole("region", { name: "To-do" })).toBeHidden();
         // Closed, the drawer keeps its status line in the accessibility tree (visually hidden), so changes are announced.
         const status = page.getByRole("status", { name: "Status line" });
         await expect(status).toHaveAttribute("aria-live", "polite");
@@ -390,14 +405,14 @@ for (const theme of THEMES) {
         expect((await page.getByRole("region", { name: "Chat", exact: true }).boundingBox())?.width).toBeLessThanOrEqual(760);
         await shot(page, `tablet-stream-${theme}`);
         await details.click();
-        await expect(page.getByRole("region", { name: "Steps" })).toBeVisible();
+        await expect(page.getByRole("region", { name: "To-do" })).toBeVisible();
         await expect(page.getByLabel("Status line")).toBeVisible();
         await audit(page);
         await shot(page, `tablet-details-${theme}`);
         // Escape closes it wherever the focus is, here in the composer outside the drawer.
         await page.getByRole("textbox", { name: "Message to the assistant" }).focus();
         await page.keyboard.press("Escape");
-        await expect(page.getByRole("region", { name: "Steps" })).toBeHidden();
+        await expect(page.getByRole("region", { name: "To-do" })).toBeHidden();
         await expect(details).toHaveAttribute("aria-expanded", "false");
       });
     });

@@ -195,19 +195,6 @@ function replaced(events: Ev[]): Set<string> {
   return out;
 }
 
-export type Group = { name: string; steps: Step[] };
-
-/** Consecutive steps under their group's name, in order. */
-export function groups(steps: Step[]): Group[] {
-  const out: Group[] = [];
-  for (const s of steps) {
-    const last = out.at(-1);
-    if (last?.name === s.group) last.steps.push(s);
-    else out.push({ name: s.group, steps: [s] });
-  }
-  return out;
-}
-
 /** "$78/mo for 24 months", from the card's own rows (terms.ts); null without a price. */
 function cardTerms(events: Ev[], v: CardView): string | null {
   const rows = termRows(events, v.card);

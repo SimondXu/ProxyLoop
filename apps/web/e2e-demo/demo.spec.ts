@@ -228,9 +228,13 @@ test.describe("approve", () => {
     await expect(receipt).toContainText("Verified against the simulated company's records");
     await expect(receipt).toContainText(/Approved by you at \d{1,2}:\d{2}\s[AP]M/);
     await expect(receipt.getByLabel("Accepted terms").getByRole("listitem")).toHaveCount(5);
-    // The rail's steps from the same run: the approval, your click, Guard's clearance and the heard yes, in order.
-    // locator("li"): a folded group's steps count too.
-    const steps = page.getByRole("region", { name: "Steps" }).locator("li");
+    // The rail's to-do (S1-SYS-79) from the same run: nothing in progress after the end, the Result row is the receipt's title,
+    // and under the rows the approval, your click, Guard's clearance and the heard yes. locator("li"): a folded row's steps count too.
+    const todo = page.getByRole("list", { name: "To-do" });
+    await expect(todo.getByRole("listitem").filter({ hasText: /· (in progress|needs you|also needs you|waiting|not started)/ })).toHaveCount(0);
+    await expect(todo.getByRole("listitem").filter({ hasText: /^Result/ })).toHaveText("Result Done. Verified. · done", { useInnerText: true });
+    await expect(todo.getByRole("listitem").filter({ hasText: /^Get your decision/ })).toHaveText("Get your decision Approved by your click · done", { useInnerText: true });
+    const steps = page.getByRole("region", { name: "To-do" }).locator("li");
     for (const step of [
       /^Guard \d{2}:\d{2} Asked for your approval$/,
       /^You \d{2}:\d{2} Approved$/,
@@ -263,7 +267,8 @@ test.describe("approve", () => {
     const replayCard = page.getByRole("region", { name: "Chat" }).getByRole("article", { name: `Approval ${String(decided.payload.approval_id)}` });
     await expect(replayCard.getByLabel("Approval status")).toHaveText(/^You approved · \d{1,2}:\d{2}\s[AP]M$/);
     await expect(replayCard.getByRole("button", { name: "Approve $78/mo" })).toBeDisabled();
-    await expect(page.getByRole("region", { name: "Steps" }).locator("li").filter({ hasText: /^You \d{2}:\d{2} Approved$/ })).toHaveCount(1);
+    await expect(page.getByRole("region", { name: "To-do" }).locator("li").filter({ hasText: /^You \d{2}:\d{2} Approved$/ })).toHaveCount(1);
+    await expect(page.getByRole("list", { name: "To-do" }).getByRole("listitem").filter({ hasText: /^Result/ })).toHaveText("Result Done. Verified. · done", { useInnerText: true });
     const chapters = page.getByRole("list", { name: "Chapters" });
     for (const name of ["Call starts", "Offer", "Your decision"]) await expect(chapters.getByRole("button", { name, exact: true })).toBeEnabled();
     await expect(page.getByRole("region", { name: "Guard" })).toHaveCount(0);
