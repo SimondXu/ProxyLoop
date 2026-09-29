@@ -4,7 +4,6 @@
 @layer components {
   .pl-outcome { padding: var(--s5) var(--s6) 0; }
   .pl-outcome > .pl-gcard-tech { margin: var(--s4) calc(-1 * var(--s6)) 0; padding-inline: var(--s6); }
-  .pl-outcome-tag-err { background: var(--err-tint); color: var(--err); }
   .pl-outcome > .pl-outcome-head {
     margin-top: var(--s3); margin-bottom: 0; font: italic 500 var(--fs-page) / 1.2 var(--font-serif); letter-spacing: -0.01em;
     text-wrap: balance;
@@ -26,6 +25,9 @@
   .pl-outcome-cost { margin: var(--s2) 0 0; padding-left: var(--s4); }
   .pl-outcome-err { border-color: transparent; background: var(--err-tint); box-shadow: none; }
   .pl-outcome-err .pl-outcome-panel { background: var(--card); }
+  /* on the tinted card the tag sits on the card colour (a second tint fails contrast), its words and icon in err */
+  .pl-outcome-err .pl-outcome-tag-err { background: var(--card); color: var(--err); }
+  .pl-outcome-err .pl-gcard-tech { color: var(--ink-2); }
 
   @media (max-width: 767px) {
     .pl-outcome { padding: var(--s4) var(--s4) 0; }

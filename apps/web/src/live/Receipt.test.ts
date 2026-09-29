@@ -1,5 +1,6 @@
 // The receipt per variant (S1-SYS-80), rendered to static markup: the tag's words, the headline, and never a
 // saving, an estimate, a mock or a yearly figure (rule 13, I11: no event carries one).
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -30,6 +31,23 @@ function verifiedRun(slots = [PRICE, TERM], card = true): Ev[] {
   const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: "cap-1" });
   const released = ev("speak.released", "kernel", { lane: "cp", cap_id: "cap-1" }, [said.event_id]);
   return [offer, asked, granted, auth, said, released];
+}
+
+/** Offer `n` at `price` minor units, its card granted by you, and its accept released, revoked (a fence) or held. */
+function grantedCard(n: number, price: string, fate: "released" | "revoked" | "held"): Ev[] {
+  const [ref, id, cap, th] = [`offer-${n}`, `a${n}`, `cap-${n}`, `th${n}`];
+  const offer = ev("offer.recorded", "guard", { offer_ref: ref, revision: 1, terms_hash: th, slots: [slot("monthly_price", price, "usd_minor"), TERM] });
+  const asked = ev("approval.requested", "guard", { ...CARD, approval_id: id, offer_ref: ref, terms_hash: th });
+  const granted = ev("approval.decided", "kernel", { approval_id: id, decision: "granted", by: "ui" });
+  const auth = ev("action.authorized", "guard", { intent: {}, capability: { cap_id: cap, terms_hash: th, epoch: 0 } }, [granted.event_id]);
+  const said = ev("speak.verbatim", "guard", { lane: "cp", kind: "accept", text: "Yes, we accept.", cap_id: cap });
+  const after =
+    fate === "released"
+      ? [ev("speak.released", "kernel", { lane: "cp", cap_id: cap }, [said.event_id])]
+      : fate === "revoked"
+        ? [ev("speak.revoked", "kernel", { lane: "cp", reason: "fence", cap_id: cap }, [said.event_id])]
+        : [];
+  return [offer, asked, granted, auth, said, ...after];
 }
 
 function end(events: Ev[], status: string, reason: string, verdict?: string): { events: Ev[]; outcome: Outcome } {
@@ -80,6 +98,7 @@ describe("the receipt per variant: tag, headline, and no saving or estimate", ()
     const r = render(events, outcome);
     expect([r.tag, r.head]).toEqual([tag, head]);
     expect(r.all).not.toMatch(HONEST);
+    expect(r.html).not.toMatch(HONEST); // attributes too: aria-labels, titles, classes
     expect(r.html).toContain('aria-label="Outcome"');
     expect(r.html).toContain('aria-label="Cost"');
   });
@@ -129,11 +148,30 @@ describe("the verified headline (decision.ts acceptedHeadline, as headline() rea
     expect(render(events, outcome).head).toBe("Accepted: $78 a month.");
   });
 
-  it("falls back to the receipt's title with no approved card, or no price on it", () => {
+  it("falls back to the receipt's title with no approved card, or no price on it; the tag then says Receipt", () => {
     expect(acceptedHeadline(rows(["term_months", "24"]))).toBeNull();
-    const none = end(verifiedRun([PRICE, TERM], false), "VERIFIED_COMPLETE", "completed", "ok");
-    expect(render(none.events, none.outcome).head).toBe("Done. Verified.");
-    const noPrice = end(verifiedRun([TERM]), "VERIFIED_COMPLETE", "completed", "ok");
-    expect(render(noPrice.events, noPrice.outcome).head).toBe("Done. Verified.");
+    for (const before of [verifiedRun([PRICE, TERM], false), verifiedRun([TERM])]) {
+      const { events, outcome } = end(before, "VERIFIED_COMPLETE", "completed", "ok");
+      const r = render(events, outcome);
+      expect([r.tag, r.head]).toEqual(["Receipt", "Done. Verified."]);
+    }
+  });
+
+  it.each(["revoked", "held"] as const)("uses the card whose accept was released, not a newer granted one whose accept was %s", (fate) => {
+    const { events, outcome } = end([...grantedCard(1, "7800", "released"), ...grantedCard(2, "6500", fate)], "VERIFIED_COMPLETE", "completed", "ok");
+    expect(render(events, outcome).head).toBe("Accepted: $78 a month for 24 months.");
+  });
+
+  it.each(["revoked", "held"] as const)("uses the newer card when its accept was released and the older one's was %s", (fate) => {
+    const { events, outcome } = end([...grantedCard(1, "7800", fate), ...grantedCard(2, "6500", "released")], "VERIFIED_COMPLETE", "completed", "ok");
+    expect(render(events, outcome).head).toBe("Accepted: $65 a month for 24 months.");
+  });
+});
+
+describe("receipt.css", () => {
+  it("draws no text of its own: no non-empty content (a CSS-only saving or badge)", () => {
+    const css = readFileSync(new URL("./receipt.css", import.meta.url), "utf8");
+    const values = [...css.matchAll(/(?<![-\w])content\s*:\s*([^;}]*)/g)].map((m) => m[1]?.trim());
+    expect(values.filter((v) => v !== '""' && v !== "''" && v !== "none")).toEqual([]);
   });
 });

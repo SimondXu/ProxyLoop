@@ -155,9 +155,16 @@ async function liveBesideLimits(page: Page, baseURL: string | undefined, slots =
 
 /**
  * S1-SYS-80: a live page at its end, with a call line and the offer: a verified receipt (your grant, the released yes,
- * the confirmation, the verifier's ok) or an information-only one.
+ * the confirmation, the verifier's ok), an information-only one, or an endpoint or error one (the err card) after Guard
+ * recorded an accept that nothing verified.
  */
-async function liveEnded(page: Page, baseURL: string | undefined, kind: "verified" | "info_only") {
+const ENDED = {
+  verified: ["completed", "Accepted: $75 a month for 12 months."],
+  info_only: ["info_only", "Here's what they offered · nothing accepted (information only)"],
+  endpoint: ["llm_unavailable", "A model endpoint stopped responding, so the case stopped. ProxyLoop never switches to a backup model."],
+  error: ["error", "An error stopped the case. Not completed."],
+} as const;
+async function liveEnded(page: Page, baseURL: string | undefined, kind: keyof typeof ENDED) {
   await csrfCookie(page, baseURL, "pl_csrf", CSRF);
   const { connected } = await mockSockets(page);
   await page.goto(`/?live=${RUN}`);
@@ -182,13 +189,13 @@ async function liveEnded(page: Page, baseURL: string | undefined, kind: "verifie
     send(ev("evidence.recorded", "guard", { evidence_id: "ledger:CNF-8841", kind: "ledger", confirmation_id: "CNF-8841" }));
     send(ev("completion.decided", "guard", { verdict: "ok", reasons: [] }));
     send(ev("status.changed", "guard", { previous: "EVIDENCE_PENDING", status: "VERIFIED_COMPLETE" }));
-  } else send(ev("status.changed", "guard", { previous: "IN_CALL", status: "CLOSED_NO_ACTION" }));
+  } else if (kind === "info_only") send(ev("status.changed", "guard", { previous: "IN_CALL", status: "CLOSED_NO_ACTION" }));
+  else send(ev("status.changed", "guard", { previous: "COMMIT_AUTHORIZED", status: "COMMITTED" }));
   const spend = { priced_micro_usd: 12_345, unpriced_calls: 0, gpu_time_calls: 0 };
-  send(ev("session.ended", "kernel", { reason: kind === "verified" ? "completed" : "info_only", counts: {}, spend }, { stream: "ops" }));
+  const [reason, heading] = ENDED[kind];
+  send(ev("session.ended", "kernel", { reason, counts: {}, spend }, { stream: "ops" }));
   const receipt = page.getByRole("region", { name: "Chat" }).getByRole("region", { name: "Outcome" });
-  await expect(receipt.getByRole("heading")).toHaveText(
-    kind === "verified" ? "Accepted: $75 a month for 12 months." : "Here's what they offered · nothing accepted (information only)",
-  );
+  await expect(receipt.getByRole("heading")).toHaveText(heading);
   return receipt;
 }
 
@@ -252,10 +259,14 @@ for (const theme of THEMES) {
           await shot(page, `a11y-rep-${size.name}-${theme}`);
         });
 
-        for (const kind of ["verified", "info_only"] as const) {
+        for (const kind of ["verified", "info_only", "endpoint", "error"] as const) {
           test(`live page ended with a ${kind} receipt (S1-SYS-80), then its cost fold open`, async ({ page, baseURL }) => {
             const receipt = await liveEnded(page, baseURL, kind);
             await receipt.scrollIntoViewIfNeeded();
+            if (kind === "endpoint" || kind === "error") {
+              // The unverified-commit note stays visible on a receipt whose title does not say so (outcome.ts unverifiedCommit).
+              await expect(receipt.getByText("The agent had accepted on the call; this was never verified.", { exact: true })).toBeVisible();
+            }
             await audit(page);
             await receipt.getByText("Cost and details", { exact: true }).click();
             await expect(receipt.getByRole("list", { name: "Cost" })).toBeVisible();

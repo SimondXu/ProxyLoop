@@ -16,7 +16,7 @@ import "./receipt.css";
 
 const NO_POSTS = new Map<string, Posting>();
 const TONE: Record<string, "err" | "ok" | "neutral"> = { verified: "ok", endpoint: "err", error: "err" };
-/** The card's label before v4; the tag's words on every variant but verified, whose title the headline replaces. */
+/** The card's label before v4: the tag's words whenever the headline is the title (never the same words twice). */
 const RECEIPT = "Receipt";
 
 function Terms({ label, rows }: { label: string; rows: TermRow[] }) {
@@ -57,6 +57,8 @@ export function Receipt({ events, outcome }: { events: Ev[]; outcome: Outcome })
   const called = useMemo(() => conversation(events).call.length > 0, [events]);
   const verified = kind === "verified";
   const terms = verified && approved ? termRows(events, approved.card) : [];
+  // Verified with the approved card's price: the headline is its terms and the title moves to the tag.
+  const accepted = verified ? acceptedHeadline(terms) : null;
   const offers = kind === "info_only" || kind === "no_deal" ? latestOffers(events) : [];
   const ids = verified ? confirmations(events) : [];
   const verifier = verifiedLine(events);
@@ -64,9 +66,9 @@ export function Receipt({ events, outcome }: { events: Ev[]; outcome: Outcome })
     <section ref={ref} className={`pl-gcard pl-outcome pl-outcome-${tone}`} aria-label="Outcome">
       <Chip tone={tone === "ok" ? "ok" : "neutral"} className={`pl-outcome-tag pl-outcome-tag-${tone}`}>
         <Icon name={verified ? "guard" : "ended"} size="xs" />
-        {verified ? title : RECEIPT}
+        {accepted ? title : RECEIPT}
       </Chip>
-      <h3 className="pl-outcome-head">{(verified && acceptedHeadline(terms)) || title}</h3>
+      <h3 className="pl-outcome-head">{accepted ?? title}</h3>
       {note && <p className="pl-outcome-line pl-outcome-note">{note}</p>}
       {verified && (
         <>
