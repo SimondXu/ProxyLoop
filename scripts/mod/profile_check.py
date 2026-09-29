@@ -26,6 +26,7 @@ import sys
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 
 from proxyloop.contract import protocol as fp
@@ -83,6 +84,18 @@ THRESHOLDS: tuple[Json, ...] = (
     {"id": "parroting", "set": "*", "arms": "*", "group": "all",
      "metric": "parroting", "max": 0},
 )  # fmt: skip
+# The re-test run plan (model root, 2026-09-29), frozen; ``check`` prints it first.
+ARMS = (
+    "teamrouter:gpt-6-luna@none", "teamrouter:deepseek-flash@none",
+    "teamrouter:deepseek-flash@medium", "teamrouter:deepseek-flash@high",
+    "teamrouter:glm-5.3-flash@none", "teamrouter:claude-sonnet-5-5@none",
+    "teamrouter:claude-sonnet-5-5@low",
+)  # fmt: skip
+GATING_ARMS = ("teamrouter:gpt-6-luna@none", "teamrouter:deepseek-flash@none")
+PROFILES_UNDER_TEST = MappingProxyType({"cp": "pl_cp_v4", "user": "pl_user_v2"})
+MAX_TOKENS = 16384
+SETS = MappingProxyType({"A": "select-a", "B": "select-b --seed 29",
+                         "C": "build-c --seed 29"})  # fmt: skip
 MANUAL = (
     "T3 and D4 no worse, D5 not lower, D7 no worse (p90): each against the same arm on "
     "the old profile; the values are in the tables, not decided here."
@@ -249,6 +262,8 @@ def load(
             k = (str(r["run_id"]), str(r["turn"]))
             if k not in at or at[k].lane != r["lane"]:
                 raise SystemExit(f"{path}: row {k} has no view of its lane")
+            if r["model"] not in (REF, *ARMS):
+                raise SystemExit(f"{path}: arm {r['model']!r} is not in ARMS")
             arm = sets.setdefault(name, {}).setdefault(r["model"], {})
             if k in arm and not (r["model"] == REF and arm[k]["raw"] == r["raw"]):
                 raise SystemExit(f"{path}: {r['model']} row {k} twice in set {name}")
@@ -269,6 +284,8 @@ def run_check(
     manifest: every row's view must be one of the manifest's."""
     sets, shas = load(reports, at)
     doc: Json = {"about": __doc__.split("\n")[0] if __doc__ else "", "notes": NOTES}
+    doc["run_plan"] = {"arms": ARMS, "gating_arms": GATING_ARMS, "sets": dict(SETS)}
+    doc["run_plan"] |= {"profiles": dict(PROFILES_UNDER_TEST), "max_tokens": MAX_TOKENS}
     doc |= {"sets": {}, "hits": [], "reports_sha256": shas}
     cands: list[Json] = []
     for name, m in (manifests or {}).items():
@@ -298,7 +315,7 @@ def run_check(
                                     "user": msgs[1].content})  # fmt: skip
             doc["sets"][name][arm] = {g: tally(cs) for g, cs in sorted(by.items())}
     rows = sum(k in expected for x in sets.values() for a in x.values() for k in a)
-    doc["tripwire"] = tripwire(doc["hits"], cands, t3 or {}, rows)
+    doc["tripwire"] = tripwire(doc["hits"], cands, t3 or {}, rows)  # every arm
     doc["acceptance"] = acceptance(doc["sets"])
     return doc | {"manual": MANUAL}
 
@@ -355,7 +372,8 @@ def passes(t: Json, got: Any) -> bool:
 
 
 def acceptance(sets: dict[str, dict[str, Json]]) -> list[Json]:
-    """Each threshold per matching set and candidate arm: pass, fail or no data."""
+    """Each threshold per matching set and candidate arm: pass, fail or no data; it
+    decides for GATING_ARMS only, other arms' results are 'info: ...'."""
     out = list[Json]()
     for t in THRESHOLDS:
         for name in sorted(sets) if t["set"] == "*" else [t["set"]]:
@@ -365,6 +383,7 @@ def acceptance(sets: dict[str, dict[str, Json]]) -> list[Json]:
                 got: Any = gs.get(t["group"], {}).get(t["metric"])
                 empty = got is None or got == [0, 0]  # counts are never None
                 result = "no data" if empty else "pass" if passes(t, got) else "fail"
+                result = result if arm in GATING_ARMS else f"info: {result}"
                 out.append({"id": t["id"], "set": name, "arm": arm, "value": got}
                            | {"bound": t, "result": result})  # fmt: skip
     return out
@@ -390,6 +409,7 @@ def render(doc: Json) -> str:
     out = ["# Profile check (S1-MOD-10)", ""]
     out += [f"- git: {doc['git_sha']} (dirty: {doc['git_dirty']})"]
     out += [f"- {k}: {v}" for k, v in doc["inputs_sha256"].items()]
+    out += [f"- run plan: {json.dumps(doc['run_plan'])}"]
     out += ["", f"## {headline(doc['tripwire'])}", ""]
     out += [f"- D6 {h['arm']} {h['turn']}: '{h['hit']}' in: {h['raw']!r}"
             for h in doc["tripwire"]["d6_hits"]]  # fmt: skip
@@ -400,7 +420,7 @@ def render(doc: Json) -> str:
             "false" if r in t["t3_false"] else "?" if r in t["unresolved"] else "true"
         )
         out.append(f"- candidate {r} (T3 {label}): {c['phrases']} in: {c['raw']!r}")
-    out += ["", "## ACCEPTANCE (pre-registered, proposal (d); pass/fail only)", ""]
+    out += ["", "## ACCEPTANCE (proposal (d); gating arms decide, others info)", ""]
     out += ["| id | set | arm | value | bound | result |", "|---|---|---|---|---|---|"]
     for a in doc["acceptance"]:
         b = a["bound"]
@@ -524,6 +544,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     write(a.out, doc)
     a.md.parent.mkdir(parents=True, exist_ok=True)
     a.md.write_text(render(doc), "utf-8")
+    print(f"RUN PLAN: {json.dumps(doc['run_plan'])}")
     print(headline(doc["tripwire"]))
     for r in doc["acceptance"]:
         print(f"{r['result']:8} {r['id']:16} {r['set']} {r['arm']} {cell(r['value'])}")

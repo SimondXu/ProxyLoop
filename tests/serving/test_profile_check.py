@@ -279,10 +279,13 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     }
     bad = {"all": empty | {"malformed": 2}, "lane:cp": empty | {"false_holds": [9, 64]}}
     ref = {"all": empty | {"malformed": 9}}
-    sets = {"A": {ds: good, "teamrouter:glm-5.3-flash@none": bad, pc.REF: ref}}
+    luna, glm = "teamrouter:gpt-6-luna@none", "teamrouter:glm-5.3-flash@none"
+    sets = {"A": {ds: good, glm: bad, luna: bad, pc.REF: ref}}
     got = {(r["id"], r["arm"]): r["result"] for r in pc.acceptance(sets)}
     assert got[("malformed_A", ds)] == "pass"
-    assert got[("malformed_A", "teamrouter:glm-5.3-flash@none")] == "fail"
+    assert got[("malformed_A", luna)] == "fail"  # a gating arm decides
+    assert got[("malformed_A", glm)] == "info: fail"  # any other arm is informational
+    assert {a for _, a in got if not got[(_, a)].startswith("info")} == {ds, luna}
     assert got[("false_holds_A", ds)] == "pass"
     assert ("false_holds_A", "teamrouter:glm-5.3-flash@none") not in got  # DeepSeek's
     assert got[("required_A", ds)] == "no data"
@@ -291,6 +294,25 @@ def test_acceptance_prints_pass_fail_and_no_data() -> None:
     assert {r["result"] for r in pc.acceptance(sets) if r["id"] == "false_holds_A"} == {
         "fail"
     }
+
+
+def test_the_run_plan_is_frozen_and_other_arms_are_refused(tmp_path: Path) -> None:
+    assert set(pc.GATING_ARMS) <= set(pc.ARMS) and len(pc.ARMS) == 7
+    assert dict(pc.PROFILES_UNDER_TEST) == {"cp": "pl_cp_v4", "user": "pl_user_v2"}
+    assert pc.MAX_TOKENS == 16384
+    v = mk(guided(GuideMove.ASK_DISCOUNT))
+    at = {(v.run_id, v.turn): v}
+    row = cand(ARM, v, "Okay.")
+    doc = pc.run_check([("A", report(tmp_path / "ok.json", [row]))], at, {}, TOK)
+    assert doc["run_plan"]["gating_arms"] == pc.GATING_ARMS
+    other = row | {"model": "teamrouter:gemini-3.8-flash@none"}
+    with pytest.raises(SystemExit, match="is not in ARMS"):
+        pc.run_check([("A", report(tmp_path / "no.json", [other]))], at, {}, TOK)
+
+
+def test_the_tripwire_applies_to_every_arm(tmp_path: Path) -> None:
+    assert ARM not in pc.GATING_ARMS
+    assert set_c_check(tmp_path, "Yes, I accept.")["tripwire"]["state"] == "TRIPPED"
 
 
 # --- set C ----------------------------------------------------------------------------
