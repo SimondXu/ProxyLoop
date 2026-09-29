@@ -10,7 +10,7 @@
 - writes the packets and may create the worktrees;
 - dispatches `implementer`s;
 - pushes the task branch and opens the PR titled `<ID>: <title>`;
-- runs a fresh `reviewer` and reconciles the findings;
+- runs a fresh `reviewer` for Tier B/C tasks (PLAN §0.4) and reconciles the findings; for Tier A it reads the diff itself;
 - hands the PR to the main root in one paragraph: the task, the PR link, the review verdict, the checks, and the decisions it needs.
 
 It never merges. It never edits another lane's paths or a shared file; it asks the main root for a per-task grant. It never runs a U step, and runs L/G only if it is L-CORE and inside its spend envelope (see "Root-run flags"); it never changes a model, a budget, a tripwire or a stage gate.

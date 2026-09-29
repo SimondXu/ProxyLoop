@@ -22,7 +22,7 @@ Legend:
 - **One task = one PR = one implementer, in its own git worktree.**
   - The root creates the worktree with `git worktree add ../pl-wt/<ID> -b task/<id-lowercase> origin/main`.
   - The implementer works only there and commits on the task branch. It never pushes, merges, rebases `main` or touches another worktree.
-  - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer, reconciles the findings, squash-merges, then removes the worktree and branch.
+  - The root verifies (`make check` + the task's verification, read through `test-log-analyzer`, `CLAUDE.md`), pushes, opens the PR titled `<ID>: <title>` (CI checks the title), spawns a fresh-context reviewer for Tier B/C tasks (§0.4) (for Tier A it reads the diff itself), reconciles the findings, squash-merges, then removes the worktree and branch.
 - **The packet** is `.claude/task-packet-template.md` filled with: the task block from this file verbatim, plus `NORTH_STAR.md`, plus ≤ 5 named files, the verification commands and the escalation triggers.
 - **Concurrency:** ≤ 8 implementers in flight across all sessions, with disjoint owned paths (user decision 2026-09-26). By default the main root keeps 1, the model root 2, L-CORE 2, P-WEB 1, P-API 1, P-OBS 1 and P-TOOLS 0 (`CLAUDE.md`). A lane lead that wants a second implementer asks the main root. Reviewers do not count.
 - **Merge at gate** (user decision 2026-09-26): early work, meaning S1 pure tasks and product-lane work, is coded and reviewed now but merged only after S0-ROOT-05's real bundles are committed.
@@ -42,7 +42,7 @@ Legend:
   - It becomes `done` only when a named real run exercises it (for example S0-ROOT-05 flips S0-SYS-03…06).
 - **Failure → fixture:** every failure class a live run exposes gets a named detector (S1-SYS-42) and, where deterministic, a regression fixture that replays the recorded model output through the current code (no model call, no second runner) (root decision under §0.5a, 2026-09-27).
 - **Process defaults** (root decisions under §0.5a, 2026-09-28; the user raised no objection):
-  - review tiers: multi-round reviews only for I6 code; other PRs get one round (§0.4);
+  - review tiers: Tiers A/B/C in §0.4;
   - batched merges: 2–3 approved PRs with disjoint files are merged locally onto `main` in one batch worktree, and one full `make check` (plus `make web-test` when web paths are touched) on the batch is its merged-state check; each PR head is verified unchanged, and `main`'s tree must equal the tested batch tree;
   - a daily ROOT sync of this file;
   - parallel smokes;
