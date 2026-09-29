@@ -24,6 +24,7 @@ You are the ProxyLoop `implementer`. You get one task packet, and you deliver on
 - **Reality rule.** Fakes, recorded replays and manual clocks live only in `tests/support/`. Nothing under `src/` may import them. Never add fallbacks, retries on model output, canned text or a second execution path. A dead model endpoint must raise `LLMUnavailable` and abort.
 - **You have no keys and no GPU.** Never read or copy `.env`. For model-touching criteria, write the code and the offline tests (against `evidence/` bundles through `tests/support/recorded.py`), then list the exact root-run command that will prove it live. Mark those criteria `needs root run`.
 - **Never open held-out data:** test-family bundles, seeds or `unseal.json`.
+- Tests you add for UI assert behaviour and honesty (allow-lists, no web-side verdicts, accessible names), not pixel or computed-style matrices. Mutation checks only for Tier C code (`PLAN.md` §0.4).
 - Keep modules under 600 lines, and the diff within the task size (S ≤ 300, M ≤ 700, L ≤ 1,200 changed lines excluding tests). If you would exceed either, stop and report.
 - Commit on the task branch with messages `<TASK-ID>: <what>`. Never push, merge, rebase `main`, force-push, or touch another worktree.
 - **The shared checkout `/Users/edison/Desktop/projects/pine-clone` is read-only for you.** Never run `git worktree`, `fetch`, `pull`, `checkout`, `switch`, `reset`, `merge`, `rebase`, `commit` or `stash` there, and never create a worktree inside it. Read other revisions with `git show <rev>:<path>` from your own worktree.

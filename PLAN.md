@@ -80,16 +80,21 @@ Legend:
 6. After `semantics-v1` (S3-ROOT-01), a fingerprint change also invalidates every dataset built under the old fingerprint. That requires the user's go (§0.6).
 
 ### 0.4 Reviewer (fresh-context Claude subagent, `.claude/agents/reviewer.md`): mandatory fields in the review
-1. The `make check` output tail (run by the reviewer) and the task's verification output as it was actually run.
+1. The CI result on the reviewed head (the required checks `check`, `task-id`, `web`, `shellcheck`) and the task's verification output as the implementer ran it. The reviewer runs focused tests and its adversarial cases itself; it runs `make check` only when CI is unavailable or red for an unclear reason.
 2. **"Could this pass with every model stubbed? Could it pass with the model endpoint dead? Why not?"**
-3. At least one defect, **or** the adversarial cases tried (listed). Every finding is tagged **blocker**, **major** or **nit**.
+3. At least one defect, **or** the adversarial cases tried (listed). Every finding is tagged **blocker**, **major**, **minor** or **nit** (minor and nit go to §0.9).
 4. NORTH_STAR invariants touched, and whether they hold.
 5. Owned paths: is the diff inside the task's paths? Is the contract untouched, or is there an ADR?
 6. "Does this add a second path for eval, data, serving or rendering? A fallback? Anything on the TTFS path? A process doc?"
 7. **Anti-absorption:** "Does this make base Qwen look better without changing semantics (parser leniency, retries, templates, Fast-specific kernel help)?"
 8. The reality statement: `real_http` vs `recorded_replay` vs `test_fake` vs `baseline`, and where each is used.
 
-**Fixes and rounds.** Only blocker and major findings must be fixed before merge. Nits go to the follow-up list (§0.9) and never trigger another round. An S task gets at most one review round unless a blocker is found; wording-only fixes never trigger re-review. Multi-round reviews are kept for I6 code (root decision under §0.5a, 2026-09-28).
+**Review tiers** (root decision under §0.5a, user-approved 2026-09-29). Only blocker and major findings must be fixed before merge.
+- **Tier A** — docs, config, PLAN, data-only or harness text (no `src/` logic, no test logic): no fresh reviewer; the root reads the diff.
+- **Tier B** — ordinary code: one review round. The lane lead (or the root) checks blocker and major fixes against the finding; there is no delta review unless a blocker was found. Minor and nit never trigger a round.
+- **Tier C** — Guard/authority, concurrency/fences, renderer/parser, contract, metrics/grading, I6 code: multi-round review, and mutation testing is allowed.
+- **UI tests** assert behaviour and honesty (allow-lists, no web-side verdicts, accessible names), not pixel or computed-style matrices.
+- **Merging:** CI on the PR head is authoritative, and the root merges with `scripts/root/merge_gate.sh`. A head whose files are disjoint from what `main` changed merges without update-branch; batch only when needed. There is no per-PR CI-watcher agent: the root checks CI with `merge_gate.sh check` when a PR is handed off, and uses at most one watcher for several PRs when it must wait.
 
 ### 0.5 Root-run tasks and the reality rule
 - **L, G and U work is executed by the root** (or CI), never by an implementer. Implementers get recorded bundles from `evidence/` through `tests/support/recorded.py`, and fakes from `tests/support/fakes.py`.
