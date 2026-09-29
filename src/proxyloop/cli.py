@@ -41,15 +41,15 @@ from proxyloop.llm.relay import ChatClient
 REAL = AdapterKind.REAL_HTTP
 FAST, FAST_ENDPOINT = "Qwen3.5-9B", "vllm"  # today's defaults
 SLOW, SLOW_ENDPOINT = "claude-sonnet-5", "relay"
-WORLD = "gemini-3.8-flash"  # ADR-0005
+WORLD = "google/gemini-3.8-flash"  # ADR-0005; via OpenRouter (S1-SYS-96)
 WORLD_ROLES = ("ear", "mouth", "simuser")
 WORLD_EFFORT = "low"  # provisional: ADR-0005; S1 probe decides
 WorldSpec = tuple[Endpoint, str, ReasoningEffort | None]  # --world-model's value
 WORLD_ENDPOINTS: tuple[Endpoint, ...] = ChatClient.ENDPOINTS  # vLLM serves no world
-WORLD_SPEC: WorldSpec = ("teamrouter", WORLD, None)  # today's world, every role
+WORLD_SPEC: WorldSpec = ("openrouter", WORLD, None)  # today's world, every role
 _WORLD_ENDPOINTS: dict[str, Endpoint] = {e: e for e in WORLD_ENDPOINTS}
 _EFFORTS: dict[str, ReasoningEffort] = {e: e for e in get_args(ReasoningEffort)}
-TEAMROUTER_SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
+GEMINI_SLOW_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 HOSTED_FAST_EFFORT = "low"  # provisional until S0-ROOT-12; the user's setting
 OPENROUTER_FAST_EFFORT = "none"  # user decision 2026-09-27 (S1-SYS-26): Luna
 SHOWN = {  # what a person follows in a replay: the payload field per event type
@@ -121,14 +121,16 @@ def _fast(args: argparse.Namespace) -> ModelRef:
 
 def live_config(args: argparse.Namespace) -> SessionConfig:
     """The session's models from the options; a vLLM Fast and a relay Slow keep
-    the provider's effort, a hosted Fast and a TeamRouter Slow pin it. A
+    the provider's effort, a hosted Fast and a Gemini Slow (TeamRouter, or
+    OpenRouter's ``google/gemini-*``, S1-SYS-96) pin it. A
     ``--condition`` sets both Fast lanes and, for R, the teacher's repair; F
     runs with ``live=False``, since live mode accepts ``real_http`` alone."""
 
     fast, teacher = CONDITIONS.get(args.condition) or (_fast(args), None)
     slow_effort = args.slow_effort  # the relay's Slow keeps the provider's default
-    if args.slow_endpoint == "teamrouter" and slow_effort is None:
-        slow_effort = TEAMROUTER_SLOW_EFFORT
+    gemini = args.slow_endpoint == "openrouter" and "gemini" in args.slow_model
+    if (args.slow_endpoint == "teamrouter" or gemini) and slow_effort is None:
+        slow_effort = GEMINI_SLOW_EFFORT
     world = {role: _world(args, role) for role in WORLD_ROLES}
     return SessionConfig(
         fast_user=fast,
@@ -214,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--world-model",
             type=world_spec,
             metavar="ENDPOINT:MODEL[@EFFORT]",
-            help=f"every world role; unset: teamrouter:{WORLD}. ENDPOINT: "
+            help=f"every world role; unset: openrouter:{WORLD}. ENDPOINT: "
             f"{', '.join(WORLD_ENDPOINTS)}. Effort, first set wins: --<role>-effort,"
             " the role's @EFFORT, --world-effort",
         )

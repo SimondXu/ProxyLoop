@@ -74,7 +74,7 @@ TRAINING = (
     "x-out-of-envelope-approval",
     "x-user-mind-change",
 )
-LUNA, SLOW = "openai/gpt-6-luna", "gemini-3.8-flash"
+LUNA, SLOW = "openai/gpt-6-luna", "google/gemini-3.8-flash"
 _log = logging.getLogger(__name__)
 
 
@@ -102,7 +102,7 @@ def _fast(lane: LaneKey) -> tuple[Offer, ...]:  # the vLLM option needs flag G
 CATALOG = (
     *_fast("fast_user"),
     *_fast("fast_cp"),
-    Offer("slow", "teamrouter", SLOW, "Gemini 3.8 Flash (TeamRouter)", True),
+    Offer("slow", "openrouter", SLOW, "Gemini 3.8 Flash (OpenRouter)", True),
 )
 
 

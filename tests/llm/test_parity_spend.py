@@ -228,6 +228,23 @@ def test_openrouter_luna_is_priced_at_its_listed_rate() -> None:
     assert ledger.spend.by_role == {"fast_cp": 400} and ledger.unpriced_calls == 0
 
 
+def test_openrouter_gemini_is_priced_at_its_listed_rate() -> None:
+    """S1-SYS-96: $0.75 / $3.75 per 1M tokens (root, 2026-09-29; a rate setting)."""
+    gemini = LUNA.model_copy(update={"model_id": "google/gemini-3.8-flash"})
+    assert OPENROUTER_RATES[gemini.model_id] == Rate(0.75, 3.75)
+    ledger = _ledger(refs=(gemini,))
+    assert ledger.factor == RUNAWAY_FACTOR  # priced: not the unpriced guard
+    charge = ledger.charge(_record(gemini, 2_000, 400, requested_model=gemini.model_id))
+    assert (charge.basis, charge.endpoint, charge.micro_usd) == (
+        "tokens",
+        "openrouter",
+        1_500 + 1_500,
+    )
+    assert ledger.unpriced_calls == 0
+    teamrouter = gemini.model_copy(update={"endpoint": "teamrouter"})
+    assert _ledger().price(_record(teamrouter, 1, 1)).basis == "unpriced"
+
+
 def test_an_unknown_openrouter_model_is_unpriced_not_zero() -> None:
     other = LUNA.model_copy(update={"model_id": "openai/gpt-6-sol"})
     ledger = _ledger()
