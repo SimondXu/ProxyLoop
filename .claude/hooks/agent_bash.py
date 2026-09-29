@@ -1,17 +1,9 @@
-"""PreToolUse(Bash) hook for subagents (S1-ROOT-24). Denies, for every subagent:
-- state-changing git (worktree fetch pull checkout switch reset merge rebase commit
-  stash clean, `branch -D`) aimed at the shared checkout: through `git -C`, the cwd,
-  or a `cd` earlier in the command; and `git worktree` other than `list` anywhere;
-- application launches and system installs: `open -a`/`open X.app`, docker, colima,
-  `brew install|upgrade|reinstall`, `npm|pnpm install -g`, pip install (not `uv pip`),
-  sudo.
-A `scout` is also read-only: no output redirection to a file, no rm/mv/cp/tee/touch/
-mkdir, and only read-only git.
-
-Top-level sessions are never affected; unparseable hook JSON is allowed (it cannot be
-told from a top-level call); a subagent's malformed input or unparseable command is
-denied. Heredoc bodies are data, except when a shell reads them as a script.
-Stdlib only, Python 3.9+."""
+"""PreToolUse(Bash) hook for subagents (S1-ROOT-24). Denies state-changing git on the
+shared checkout (via `git -C`, the cwd or an earlier `cd`) and `git worktree` other
+than `list` anywhere; app launches and system installs (open -a/X.app, docker,
+colima, brew install, npm -g, pip install, sudo); and, for a `scout`, any write.
+Top-level sessions are never affected; a subagent's malformed input or unparseable
+command is denied. Heredoc bodies are data unless a shell runs them. Stdlib only."""
 
 from __future__ import annotations
 
@@ -20,21 +12,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from hooklib import (
-    SHELLS,
-    deny,
-    expand,
-    inside,
-    is_operator,
-    load_payload,
-    real,
-    segments,
-    shared_checkout,
-    shell_c_arg,
-    strip_wrappers,
-    subagent,
-    tokenize,
-)
+import hooklib as hl
 
 HOOK = "agent_bash.py"
 ASK = "; ask the dispatching session."
@@ -100,7 +78,7 @@ def git_reason(args: list[str], cwd: str, shared: Path, scout: bool) -> str | No
     target, i = cwd, 0
     while i < len(args) and args[i].startswith("-"):
         if args[i] == "-C" and i + 1 < len(args):
-            target = os.path.join(target, expand(args[i + 1]))
+            target = os.path.join(target, hl.expand(args[i + 1]))
         i += 2 if args[i] in GIT_VALUE_OPTS or args[i] == "-C" else 1
     if i >= len(args):
         return None
@@ -114,8 +92,8 @@ def git_reason(args: list[str], cwd: str, shared: Path, scout: bool) -> str | No
     force_delete = "D" in flags or (
         ("d" in flags or "--delete" in rest) and ("f" in flags or "--force" in rest)
     )
-    if (verb in SHARED_VERBS or (verb == "branch" and force_delete)) and inside(
-        real(target), shared
+    if (verb in SHARED_VERBS or (verb == "branch" and force_delete)) and hl.inside(
+        hl.real(target), shared
     ):
         return (
             f"subagents never run state-changing git (`git {verb}`) on the shared "
@@ -148,7 +126,7 @@ def app_reason(cmd: str, args: list[str]) -> str | None:
 def writes_file(words: list[str]) -> bool:
     """Output redirection to a file (not /dev/*, not an fd duplication)."""
     for op, target in zip(words, [*words[1:], ""]):
-        if not is_operator(op) or ">" not in op:
+        if not hl.is_operator(op) or ">" not in op:
             continue
         if op.endswith("&"):
             if not re.fullmatch(r"\d+|-", target):
@@ -165,13 +143,13 @@ def reason_for(command: str, cwd: str, shared: Path, scout: bool) -> str | None:
         if found:
             return found
     try:
-        words = tokenize(text)
+        words = hl.tokenize(text)
     except ValueError:
         return "the command could not be parsed (unbalanced quotes?); simplify it" + ASK
     if scout and writes_file(words):
         return "a scout is read-only (output redirection to a file)" + ASK
-    for segment in segments(words):
-        seg = strip_wrappers(segment)
+    for segment in hl.segments(words):
+        seg = hl.strip_wrappers(segment)
         prefix = segment[: len(segment) - len(seg)]
         if "sudo" in (os.path.basename(w) for w in prefix):
             return "subagents never use sudo" + ASK
@@ -181,9 +159,9 @@ def reason_for(command: str, cwd: str, shared: Path, scout: bool) -> str | None:
         found = None
         if cmd == "cd":
             dest = [a for a in args if a[:1] != "-"]
-            cwd = os.path.join(cwd, expand(dest[0]) if dest else str(Path.home()))
-        elif cmd in SHELLS:
-            inner = shell_c_arg(args)
+            cwd = os.path.join(cwd, hl.expand(dest[0]) if dest else str(Path.home()))
+        elif cmd in hl.SHELLS:
+            inner = hl.shell_c_arg(args)
             found = reason_for(inner, cwd, shared, scout) if inner else None
         elif cmd == "git":
             found = git_reason(args, cwd, shared, scout)
@@ -203,20 +181,19 @@ def verdict(payload: dict[str, Any]) -> str | None:
     if not isinstance(command, str):
         return "malformed hook input (no tool_input.command)" + ASK
     cwd = cwd if isinstance(cwd, str) and cwd else os.getcwd()
-    return reason_for(command, cwd, shared_checkout(), subagent(payload) == "scout")
+    return reason_for(
+        command, cwd, hl.shared_checkout(), hl.subagent(payload) == "scout"
+    )
 
 
 def main() -> None:
-    payload = load_payload()
-    if payload is None or not subagent(payload):
+    payload = hl.load_payload()
+    if payload is None or not hl.subagent(payload):
         return
     reason = verdict(payload)
     if reason is not None:
-        deny(HOOK, reason)
+        hl.deny(HOOK, reason)
 
 
 if __name__ == "__main__":
-    os.environ.setdefault(
-        "CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parents[2])
-    )
     main()

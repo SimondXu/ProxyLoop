@@ -27,9 +27,6 @@ WRAPPERS = {
 SHELLS = {"bash", "sh", "zsh"}
 
 
-# --- shell words ----------------------------------------------------------------
-
-
 def expand(word: str) -> str:
     return os.path.expandvars(os.path.expanduser(word))
 
@@ -79,9 +76,6 @@ def shell_c_arg(args: list[str]) -> str | None:
     return args[c + 1] if 0 <= c < len(args) - 1 else None
 
 
-# --- hook payloads --------------------------------------------------------------
-
-
 def load_payload() -> dict[str, Any] | None:
     """The hook JSON on stdin, or None if it is not a JSON object."""
     try:
@@ -107,9 +101,6 @@ def deny(hook: str, reason: str) -> None:
         "permissionDecisionReason": f"Blocked by .claude/hooks/{hook}: {reason}",
     }
     print(json.dumps({"hookSpecificOutput": out}))
-
-
-# --- checkout layout ------------------------------------------------------------
 
 
 def real(path: str | Path) -> Path:

@@ -1,24 +1,18 @@
-"""SubagentStop hook, matcher `implementer` (S1-ROOT-24): a soft done-gate. While the
-implementer's task worktree has uncommitted changes, or no commit ahead of
-origin/main, block the stop once and ask it to commit or say why it returns without
-a commit. With stop_hook_active set it always allows, so it never loops.
-
-The worktree is the ../pl-wt/<ID> worktree holding the hook's cwd; a subagent's cwd
-is usually reset to the shared checkout, so failing that it is the one ../pl-wt
-worktree the subagent's transcript names (its packet's WORKTREE path). No worktree,
-or more than one named: allow. Top-level sessions and other agents are never
-affected. Stdlib only, Python 3.9+."""
+"""SubagentStop hook, matcher `implementer` (S1-ROOT-24): a soft done-gate. It blocks
+the stop once while the task worktree is dirty or has no commit ahead of origin/main;
+with stop_hook_active set it allows, so it never loops. The worktree holds the cwd,
+or else (a subagent's cwd is reset to the shared checkout) it is the one ../pl-wt
+worktree the subagent's transcript names; none or several: allow. Stdlib only."""
 
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
-from hooklib import load_payload, real, shared_checkout, subagent, task_worktree
+import hooklib as hl
 
 REASON = (
     "commit your work, or state explicitly in your report why you are returning "
@@ -31,12 +25,12 @@ def from_transcript(payload: dict[str, Any], shared: Path) -> Path | None:
     if not isinstance(path, str) or not path:
         return None
     try:
-        text = real(path).read_text(errors="replace")
+        text = hl.real(path).read_text(errors="replace")
     except OSError:
         return None
     plwt = shared.parent / "pl-wt"
     names = set(re.findall(re.escape(str(plwt)) + r"/([A-Za-z0-9._-]+)", text))
-    found = {w for w in (task_worktree(plwt / n, shared) for n in names) if w}
+    found = {w for w in (hl.task_worktree(plwt / n, shared) for n in names) if w}
     return found.pop() if len(found) == 1 else None
 
 
@@ -62,15 +56,15 @@ def problems(worktree: Path) -> list[str]:
 
 
 def main() -> None:
-    payload = load_payload()
-    if payload is None or subagent(payload) != "implementer":
+    payload = hl.load_payload()
+    if payload is None or hl.subagent(payload) != "implementer":
         return
     if payload.get("stop_hook_active"):
         return
-    shared = shared_checkout()
+    shared = hl.shared_checkout()
     cwd = payload.get("cwd")
     worktree = (
-        task_worktree(real(cwd), shared) if isinstance(cwd, str) and cwd else None
+        hl.task_worktree(hl.real(cwd), shared) if isinstance(cwd, str) and cwd else None
     )
     worktree = worktree or from_transcript(payload, shared)
     if worktree is None:
@@ -82,7 +76,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault(
-        "CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parents[2])
-    )
     main()

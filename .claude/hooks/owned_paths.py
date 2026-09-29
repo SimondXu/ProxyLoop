@@ -1,31 +1,16 @@
 """PreToolUse(Edit|Write|NotebookEdit|MultiEdit) hook (S1-ROOT-24): an `implementer`
-subagent edits only its own ../pl-wt/<ID> worktree, and there only the globs its
-dispatcher granted with scripts/root/new_worktree.sh (the grant file
-`<worktree git dir>/pl-owned-paths`). The contract, golden and `.env*` paths need a
-glob that names them explicitly; a broad `**` does not reach them. Writes into the
-session's scratchpad are allowed.
-
-Top-level sessions and other subagents are never affected; unparseable hook JSON is
-allowed (it cannot be told from a top-level call); malformed input from an
-implementer is denied. Stdlib only, Python 3.9+."""
+edits only its ../pl-wt/<ID> worktree's granted globs (`<git dir>/pl-owned-paths`,
+written by scripts/root/new_worktree.sh) or its scratchpad. Contract, golden and
+`.env*` paths need a glob that names them; a broad `**` does not reach them.
+Top-level sessions and other subagents are never affected. Stdlib only."""
 
 from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 from typing import Any
 
-from hooklib import (
-    deny,
-    grant_globs,
-    inside,
-    load_payload,
-    real,
-    shared_checkout,
-    subagent,
-    task_worktree,
-)
+import hooklib as hl
 
 HOOK = "owned_paths.py"
 # repo-relative roots that only an explicit grant opens
@@ -81,23 +66,23 @@ def verdict(payload: dict[str, Any]) -> str | None:
             "malformed hook input (no absolute tool_input.file_path/notebook_path); "
             "implementer edits are denied until the path is known."
         )
-    target = real(path)
+    target = hl.real(path)
     scratch = payload.get("scratchpad_dir")
-    if isinstance(scratch, str) and scratch and inside(target, real(scratch)):
+    if isinstance(scratch, str) and scratch and hl.inside(target, hl.real(scratch)):
         return None
-    shared = shared_checkout()
-    if inside(target, shared):
+    shared = hl.shared_checkout()
+    if hl.inside(target, shared):
         return (
             f"{target} is inside the shared checkout {shared}; implementers work "
             "only in their ../pl-wt worktree."
         )
-    worktree = task_worktree(target, shared)
+    worktree = hl.task_worktree(target, shared)
     if worktree is None:
         return (
             f"{target} is outside every task worktree ({shared.parent}/pl-wt/<ID>); "
             "implementers work only in their ../pl-wt worktree."
         )
-    globs = grant_globs(worktree)
+    globs = hl.grant_globs(worktree)
     if globs is None:
         return (
             f"{worktree} has no owned-paths grant; ask the dispatcher to create the "
@@ -120,16 +105,13 @@ def verdict(payload: dict[str, Any]) -> str | None:
 
 
 def main() -> None:
-    payload = load_payload()
-    if payload is None or subagent(payload) != "implementer":
+    payload = hl.load_payload()
+    if payload is None or hl.subagent(payload) != "implementer":
         return
     reason = verdict(payload)
     if reason is not None:
-        deny(HOOK, reason)
+        hl.deny(HOOK, reason)
 
 
 if __name__ == "__main__":
-    os.environ.setdefault(
-        "CLAUDE_PROJECT_DIR", str(Path(__file__).resolve().parents[2])
-    )
     main()
