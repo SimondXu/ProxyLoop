@@ -17,7 +17,7 @@ from tests.contract.samples import call_record
 from tests.golden.tokenizer import load_tokenizer
 
 from proxyloop.contract.config import Sampling
-from proxyloop.contract.llm import AdapterKind, ModelRef, Usage
+from proxyloop.contract.llm import AdapterKind, ModelRef, ReasoningEffort, Usage
 from proxyloop.contract.messages import Guide, GuideMove
 from proxyloop.contract.state import CaseStatus, Line, OfferPublic, PublicFact
 from proxyloop.contract.state import ReadbackSlot as Slot
@@ -26,14 +26,18 @@ from scripts.mod import probe_same_state as pss
 from scripts.mod import teacher_select as ts
 
 Json = dict[str, Any]
+Key = tuple[str, str]
 REPO = Path(__file__).resolve().parents[2]
 ADR = REPO / "docs/decisions/0025-teacher-selection-method.md"
 SAMPLING = Sampling(temperature=0.3, top_p=0.9, max_tokens=160)
 REAL = AdapterKind.REAL_HTTP
 LUNA = ModelRef(
-    kind=REAL, endpoint="openrouter", model_id="openai/gpt-6-luna", reasoning_effort="none"
+    kind=REAL,
+    endpoint="openrouter",
+    model_id="openai/gpt-6-luna",
+    reasoning_effort="none",
 )
-REFS = {
+REFS: dict[str, tuple[str, ReasoningEffort, str]] = {
     "teamrouter:glm-5.3-flash@none": ("glm-5.3-flash", "none", "glm-5.3-flash-0901"),
     "teamrouter:gemini-3.8-flash@minimal": ("gemini-3.8-flash", "minimal", "gem-38f"),
     "teamrouter:deepseek-flash@low": (
@@ -64,7 +68,9 @@ def cp_view(
     facts: tuple[PublicFact, ...] = (),
     offers: tuple[OfferPublic, ...] = (),
 ) -> FastView:
-    said = tuple(Line(utt_id=f"u{i}", speaker="partner", text=t) for i, t in enumerate(lines))
+    said = tuple(
+        Line(utt_id=f"u{i}", speaker="partner", text=t) for i, t in enumerate(lines)
+    )
     return FastView.model_validate(
         {
             "lane": "cp",
@@ -84,7 +90,9 @@ def cp_view(
 def user_view(
     *, lines: tuple[str, ...] = (), status: CaseStatus = CaseStatus.IN_CALL
 ) -> FastView:
-    said = tuple(Line(utt_id=f"u{i}", speaker="partner", text=t) for i, t in enumerate(lines))
+    said = tuple(
+        Line(utt_id=f"u{i}", speaker="partner", text=t) for i, t in enumerate(lines)
+    )
     return FastView.model_validate(
         {
             "lane": "user",
@@ -100,7 +108,9 @@ def user_view(
     )
 
 
-def mk(fv: FastView, raw: str = "Okay.", run: str = "run-a", turn: str = "t1") -> pss.View:
+def mk(
+    fv: FastView, raw: str = "Okay.", run: str = "run-a", turn: str = "t1"
+) -> pss.View:
     lane = fv.lane
     profile = "pl_cp_v3" if lane == "cp" else "pl_user_v1"
     rec = call_record(LUNA, role=f"fast_{lane}", call_id=f"c-{turn}")
@@ -109,7 +119,9 @@ def mk(fv: FastView, raw: str = "Okay.", run: str = "run-a", turn: str = "t1") -
 
 def cand(label: str, v: pss.View, raw: str, error: str | None = None) -> Json:
     model_id, effort, echo = REFS[label]
-    ref = ModelRef(kind=REAL, endpoint="teamrouter", model_id=model_id, reasoning_effort=effort)  # type: ignore[arg-type]
+    ref = ModelRef(
+        kind=REAL, endpoint="teamrouter", model_id=model_id, reasoning_effort=effort
+    )
     rec = call_record(
         ref,
         role=v.reference.role,
@@ -132,12 +144,17 @@ def check(v: pss.View, raw: str, error: str | None = None) -> Json:
 
 
 GUIDE_FACTS = (
-    PublicFact(key="account.holder_name", value="Marcus Bell", source="shareable", source_ref="x"),
+    PublicFact(
+        key="account.holder_name",
+        value="Marcus Bell",
+        source="shareable",
+        source_ref="x",
+    ),
     PublicFact(key="account.last4", value="5190", source="shareable", source_ref="y"),
 )
 
 
-# --- D1 parse_ok ------------------------------------------------------------------
+# --- D1 parse_ok ----------------------------------------------------------------------
 
 
 def test_d1_parse_ok() -> None:
@@ -153,17 +170,25 @@ def test_d1_parse_ok() -> None:
     assert all(errored[d] is False for d in ts.HARD)
 
 
-# --- D2 guide_directive -----------------------------------------------------------
+# --- D2 guide_directive ---------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("move", "good", "bad"),
     [
         ("hold_for_decision", "Let me check.\n@hold decision", "Let me check."),
-        ("hold_for_fact", "One moment.\n@hold fact_request", "One moment.\n@hold decision"),
+        (
+            "hold_for_fact",
+            "One moment.\n@hold fact_request",
+            "One moment.\n@hold decision",
+        ),
         ("close_call", "Thanks, bye.\n@end_call", "Thanks, bye."),
         ("ask_discount", "Can you lower the price?", "Can you lower it?\n@end_call"),
-        ("hold_for_decision", "Let me check.\n@hold decision", "Bye.\n@hold decision\n@end_call"),
+        (
+            "hold_for_decision",
+            "Let me check.\n@hold decision",
+            "Bye.\n@hold decision\n@end_call",
+        ),
     ],
 )
 def test_d2_guide_directive(move: str, good: str, bad: str) -> None:
@@ -191,7 +216,7 @@ def test_more_than_one_guide_is_refused() -> None:
         check(mk(fv), "Hello.")
 
 
-# --- D4 no_invented_numbers -------------------------------------------------------
+# --- D4 no_invented_numbers -----------------------------------------------------------
 
 
 def test_d4_numbers() -> None:
@@ -210,7 +235,7 @@ def test_d4_numbers() -> None:
     assert check(v, "So thirteen hundred then?")["D4"] is True
 
 
-# --- D6 authority_lexical ---------------------------------------------------------
+# --- D6 authority_lexical -------------------------------------------------------------
 
 
 @pytest.mark.parametrize("phrase", ts.CP_AUTHORITY)
@@ -230,7 +255,7 @@ def test_d6_every_user_phrase_fires(phrase: str) -> None:
 def test_d6_case_and_word_boundaries() -> None:
     v = mk(cp_view())
     assert check(v, "OK, WE ACCEPT.")["D6"] is False
-    assert check(v, "Okay, We’ll take it.")["D6"] is False  # curly apostrophe
+    assert check(v, "Okay, We\u2019ll take it.")["D6"] is False  # curly apostrophe
     assert check(v, "They said hi, accept later.")["D6"] is True  # 'hi accept'
     u = mk(user_view(lines=("Hi.",)))
     assert check(u, "We are all settled in.")["D6"] is True  # 'all set' is a phrase
@@ -278,7 +303,10 @@ def test_d6_user_guards(said: str) -> None:
 def test_d6_verified_complete_may_say_done() -> None:
     fv = user_view(lines=("Any news?",), status=CaseStatus.VERIFIED_COMPLETE)
     assert check(mk(fv), "Good news, your discount has been applied.")["D6"] is True
-    assert check(mk(user_view(lines=("Any news?",))), "Good news, it is done.")["D6"] is False
+    assert (
+        check(mk(user_view(lines=("Any news?",))), "Good news, it is done.")["D6"]
+        is False
+    )
 
 
 def test_d6_reads_speech_only() -> None:
@@ -286,7 +314,7 @@ def test_d6_reads_speech_only() -> None:
     assert check(v, "One moment.\n@slow: they asked if we accept")["D6"] is True
 
 
-# --- D7 fits_student_budget -------------------------------------------------------
+# --- D7 fits_student_budget -----------------------------------------------------------
 
 
 def test_d7_budget_stub() -> None:
@@ -306,7 +334,7 @@ def test_d7_budget_real_tokenizer() -> None:
     assert ts.checks(cand(A, v, "Sure thing. " * 80), v, tok)["D7"] is False
 
 
-# --- informational: D3, D5 ----------------------------------------------------------
+# --- informational: D3, D5 ------------------------------------------------------------
 
 
 def test_d3_slots_stated() -> None:
@@ -315,16 +343,25 @@ def test_d3_slots_stated() -> None:
     v = mk(cp_view(guide=guide, trigger="guidance", facts=GUIDE_FACTS))
     assert check(v, "It's for marcus bell, account ending 5190.")["D3"] is True
     assert check(v, "It's for Marcus Bell.")["D3"] is False
-    assert check(v, "It's for Marcus Bell, ending in five one nine zero.")["D3"] is False
+    assert (
+        check(v, "It's for Marcus Bell, ending in five one nine zero.")["D3"] is False
+    )
     offer = OfferPublic(
         offer_ref="o1",
         revision=1,
-        slots=(Slot(field="monthly_price", value="5500", unit="usd_minor", role="recurring"),),
+        slots=(
+            Slot(
+                field="monthly_price", value="5500", unit="usd_minor", role="recurring"
+            ),
+        ),
     )
     price = Guide(move=GuideMove.ASK_READBACK, slots=("offer:o1.monthly_price",))
     w = mk(cp_view(guide=price, trigger="guidance", offers=(offer,)))
     assert check(w, "Could you confirm the 55 dollar price?")["D3"] is True
-    assert check(mk(cp_view(guide=Guide(move=GuideMove.ASK_DISCOUNT))), "Hi.")["D3"] is None
+    assert (
+        check(mk(cp_view(guide=Guide(move=GuideMove.ASK_DISCOUNT))), "Hi.")["D3"]
+        is None
+    )
 
 
 def test_d5_relay_expected() -> None:
@@ -332,13 +369,16 @@ def test_d5_relay_expected() -> None:
     assert check(v, "Thanks.\n@slow: fact monthly_price=55")["D5"] is True
     assert check(v, "Thanks, 55 it is?")["D5"] is False
     assert check(mk(cp_view(lines=("Hello there.",))), "Hi.")["D5"] is None
-    assert check(mk(cp_view(trigger="guidance", lines=("It is 55.",))), "Hi.")["D5"] is None
+    assert (
+        check(mk(cp_view(trigger="guidance", lines=("It is 55.",))), "Hi.")["D5"]
+        is None
+    )
     u = mk(user_view(lines=("My limit is 60 a month.",)))
     assert check(u, "Got it.\n@slow: fact max_monthly=60")["D5"] is True
     assert check(u, "Got it.")["D5"] is False
 
 
-# --- the fixture: 2 views, the reference and 3 candidate arms -----------------------
+# --- the fixture: 2 views, the reference and 3 candidate arms -------------------------
 
 V1 = mk(
     cp_view(
@@ -358,8 +398,14 @@ V2 = mk(
 )
 VIEWS = [V1, V2]
 RAWS: dict[str, tuple[str, str | None]] = {  # (V1 raw or error, V2 raw)
-    A: ("Let me check with my customer first.\n@hold decision", "Noted, your limit is 70 dollars.\n@slow: fact max_monthly=70"),
-    B: ("We accept the offer.\n@hold decision", "Thanks, I'll share your 60 dollar limit.\n@slow: fact max_monthly=60"),
+    A: (
+        "Let me check with my customer first.\n@hold decision",
+        "Noted, your limit is 70 dollars.\n@slow: fact max_monthly=70",
+    ),
+    B: (
+        "We accept the offer.\n@hold decision",
+        "Thanks, I'll share your 60 dollar limit.\n@slow: fact max_monthly=60",
+    ),
     C: ("HTTP 503", "Thanks, I've noted it.\n@slow: fact max_monthly=60"),
 }
 # Judge labels, by (arm, run_id): the False criteria (every other one is True).
@@ -417,7 +463,7 @@ def labels(tmp_path: Path, key: Json, skip: int = 0) -> Path:
     d = tmp_path / "labels"
     d.mkdir(exist_ok=True)
     for batch, ids in key["batches"].items():
-        lines = []
+        lines = list[str]()
         for rid in ids:
             meta = key["records"][rid]
             bad = FALSE[(meta["arm"], meta["run_id"])]
@@ -427,7 +473,9 @@ def labels(tmp_path: Path, key: Json, skip: int = 0) -> Path:
     return d
 
 
-def score(tmp_path: Path, reports: list[Path], costs: Json | None = None, **kw: Any) -> Json:
+def score(
+    tmp_path: Path, reports: list[Path], costs: Json | None = None, **kw: Any
+) -> Json:
     key, _ = export(tmp_path, reports)
     lab = labels(tmp_path, key)
     cost = write(tmp_path / "costs.json", costs) if costs is not None else None
@@ -438,17 +486,19 @@ def kn(rate: Json) -> tuple[int, int]:
     return rate["k"], rate["n"]
 
 
-# --- export -------------------------------------------------------------------------
+# --- export ---------------------------------------------------------------------------
 
 
 def test_export_is_blind(tmp_path: Path, reports: list[Path]) -> None:
-    key, out = export(tmp_path, reports)
+    _, out = export(tmp_path, reports)
     text = "\n".join(p.read_text("utf-8") for p in sorted(out.iterdir()))
     banned = [*REFS, REF, "luna", "openrouter", "teamrouter", "ttft", "latency"]
     banned += [x for m, e, echo in REFS.values() for x in (m, echo, f"@{e}")]
     banned += ["t_first_token", "t_start", "2048", "served"]
-    for word in banned:
-        assert word.lower() not in text.lower(), word
+    for word in banned:  # as a whole word: "preferences" is in the user profile
+        assert not re.search(
+            rf"(?<![a-z]){re.escape(word.lower())}(?![a-z])", text.lower()
+        ), word
     assert ts.RUBRIC.read_text("utf-8") in text  # the rubric, verbatim
     for v in VIEWS:  # the exact rendered prompt
         for m in ts.fp.render_messages(v.view, v.profile):
@@ -480,17 +530,21 @@ def test_export_is_deterministic(tmp_path: Path, reports: list[Path]) -> None:
     files = sorted(p.name for p in o1.iterdir())
     for name in files:
         assert (o1 / name).read_bytes() == (tmp_path / "again" / name).read_bytes()
-    orders = set()
+    orders = set[tuple[str, ...]]()
     for seed in range(8):
         k, _ = export(tmp_path, reports, seed=seed)
-        orders.add(tuple(k["records"][i]["arm"] for b in k["batches"].values() for i in b))
+        orders.add(
+            tuple(k["records"][i]["arm"] for b in k["batches"].values() for i in b)
+        )
     assert len(orders) > 1  # the seed shuffles
 
 
 def test_export_refusals(tmp_path: Path, reports: list[Path]) -> None:
     bad = write(tmp_path / "rubric.md", "a changed rubric")
     with pytest.raises(SystemExit, match="sha256"):
-        ts.run_export(reports, VIEWS, tmp_path / "o", tmp_path / "k.json", 1, rubric=bad)
+        ts.run_export(
+            reports, VIEWS, tmp_path / "o", tmp_path / "k.json", 1, rubric=bad
+        )
     with pytest.raises(SystemExit, match="inside"):
         ts.run_export(reports, VIEWS, tmp_path / "o", tmp_path / "o" / "k.json", 1)
 
@@ -535,7 +589,7 @@ def test_max_tokens_sent_is_checked(tmp_path: Path, fault: str) -> None:
         ts.run_export([path], VIEWS, tmp_path / "o", tmp_path / "k.json", 1)
 
 
-# --- score ---------------------------------------------------------------------------
+# --- score ----------------------------------------------------------------------------
 
 
 def test_score_fixture(tmp_path: Path, reports: list[Path]) -> None:
@@ -550,8 +604,14 @@ def test_score_fixture(tmp_path: Path, reports: list[Path]) -> None:
             assert kn(got[d]["all"]) == k_n, (arm, d)
     c = doc["arms"][C]
     assert kn(c["all"]["D1"]["answered"]) == (1, 1)
-    assert kn(c["cp"]["D1"]["answered"]) == (0, 0) and c["cp"]["D1"]["answered"]["rate"] is None
-    assert kn(c["all"]["judged"]["T2"]) == (0, 1) and kn(c["all"]["judged"]["T1"]) == (1, 1)
+    assert (
+        kn(c["cp"]["D1"]["answered"]) == (0, 0)
+        and c["cp"]["D1"]["answered"]["rate"] is None
+    )
+    assert kn(c["all"]["judged"]["T2"]) == (0, 1) and kn(c["all"]["judged"]["T1"]) == (
+        1,
+        1,
+    )
     assert kn(doc["arms"][B]["all"]["judged"]["T3"]) == (1, 2)
     assert kn(doc["arms"][REF]["all"]["judged"]["T6"]) == (1, 2)
     assert kn(doc["arms"][REF]["user"]["useful"]) == (0, 1)
@@ -564,7 +624,10 @@ def test_score_fixture(tmp_path: Path, reports: list[Path]) -> None:
     assert kn(doc["arms"][REF]["all"]["D5_relay_expected"]) == (2, 2)
     # $ without --costs is null, never 0
     for arm in FIXTURE:
-        assert doc["arms"][arm]["usd"] is None and doc["arms"][arm]["usd_per_useful"] is None
+        assert (
+            doc["arms"][arm]["usd"] is None
+            and doc["arms"][arm]["usd_per_useful"] is None
+        )
 
 
 def test_score_reads_rows_not_constants(tmp_path: Path, reports: list[Path]) -> None:
@@ -623,7 +686,9 @@ def test_score_disclosures(tmp_path: Path, reports: list[Path]) -> None:
     assert doc["note"] in md and "not comparable" in md and "not gold" in md
 
 
-@pytest.mark.parametrize("fault", ["missing", "duplicate", "unknown", "non_bool", "errored"])
+@pytest.mark.parametrize(
+    "fault", ["missing", "duplicate", "unknown", "non_bool", "errored"]
+)
 def test_score_refusals(tmp_path: Path, reports: list[Path], fault: str) -> None:
     key, _ = export(tmp_path, reports)
     key_path = tmp_path / "key-7.json"
@@ -658,10 +723,60 @@ def test_score_refuses_a_changed_rubric(tmp_path: Path, reports: list[Path]) -> 
     lab = labels(tmp_path, key)
     bad = write(tmp_path / "rubric.md", "changed")
     with pytest.raises(SystemExit, match="sha256"):
-        ts.run_score(reports, VIEWS, tmp_path / "key-7.json", lab, None, TOK, rubric=bad)
+        ts.run_score(
+            reports, VIEWS, tmp_path / "key-7.json", lab, None, TOK, rubric=bad
+        )
 
 
-# --- the pins ---------------------------------------------------------------------------
+def test_an_aborted_arm_is_scored_over_its_rows(tmp_path: Path) -> None:
+    """A dead endpoint aborts the probe (rule 6): its partial rows are kept, the views
+    it never called are ``not_run``, outside its denominators, and disclosed."""
+    doc = report(C)
+    doc["aborted"] = "LLMUnavailable: read timeout"
+    del doc["rows"][3]  # V2: never called
+    reports = [write(tmp_path / "a.json", report(A)), write(tmp_path / "c.json", doc)]
+    key, _ = export(tmp_path, reports)
+    assert key["not_run"][C] == 1 and key["n_records"] == 4  # 2 reference + 2 of A
+    out = score(tmp_path, reports)
+    c = out["arms"][C]
+    assert (c["rows"], c["not_run"], c["aborted"]) == (1, 1, doc["aborted"])
+    assert kn(c["all"]["useful"]) == (0, 1) and c["all"]["errors"] == 1
+    assert out["paired"]["useful"]["all"][f"{C} - {REF}"]["units"] == 1
+    del doc["aborted"]
+    with pytest.raises(SystemExit, match="rows for 1 of 2"):
+        ts.run_export(
+            [write(tmp_path / "c.json", doc)], VIEWS, tmp_path / "o", tmp_path / "k", 1
+        )
+
+
+def test_pairs_by_model_and_effort_level() -> None:
+    """ADR-0025: every candidate - the reference, the two arms of a model, the models
+    at one level (none/minimal/low = low-end; medium); never cross-model cross-level."""
+
+    def arm(model_id: str, effort: str) -> dict[Key, Json]:
+        ref = {
+            "endpoint": "teamrouter",
+            "model_id": model_id,
+            "reasoning_effort": effort,
+        }
+        row = {"record": {"model_ref": ref}, "lane": "cp"}
+        return {("run-a", "t1"): {"row": row, "useful": True}}
+
+    es = {
+        REF: arm("openai/gpt-6-luna", "none"),
+        "glm@none": arm("glm-5.3-flash", "none"),
+        "glm@medium": arm("glm-5.3-flash", "medium"),
+        "gem@minimal": arm("gemini-3.8-flash", "minimal"),
+        "gem@medium": arm("gemini-3.8-flash", "medium"),
+    }
+    got = set(ts.paired(es, "useful", 0, 10)["all"])
+    want = {"gem@medium - gem@minimal", "glm@medium - glm@none"}  # effort effect
+    want |= {"gem@minimal - glm@none", "gem@medium - glm@medium"}  # one level
+    want |= {f"{m} - {REF}" for m in es if m != REF}
+    assert got == want
+
+
+# --- the pins -------------------------------------------------------------------------
 
 
 def sha(path: Path) -> str:
