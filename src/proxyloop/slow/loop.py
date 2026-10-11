@@ -171,6 +171,6 @@ class SlowLoop:
         if not resp.tool_calls:
             none = dict(_NO_TOOL)
             if filtered:
-                none["result_text"] = "no tool call (content_filter)"
+                none["result_text"] = f"no tool call ({resp.record.finish_reason})"
             host.emit("slow.tool", "slow", none, causes)
         host.emit("slow.step.completed", "slow", basis, [started])

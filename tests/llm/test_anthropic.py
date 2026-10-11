@@ -120,7 +120,7 @@ def test_slow_request_maps_to_messages_and_the_response_folds_back(
     assert "authorization" not in headers
     assert sent["system"] == "S"
     assert sent["messages"] == [
-        {"role": "user", "content": "TASK head"},
+        {"role": "user", "content": [{"type": "text", "text": "TASK head"}]},
         {
             "role": "assistant",
             "content": [
@@ -167,6 +167,44 @@ def test_slow_request_maps_to_messages_and_the_response_folds_back(
     assert record.finish_reason == "tool_use" and record.request_id == "msg_01"
     assert record.served_model_echo == "claude-sonnet-5-5"
     assert record.sampling_sent == {}
+
+
+def roles(sent: dict[str, Any]) -> list[str]:
+    return [t["role"] for t in sent["messages"]]
+
+
+def test_two_tool_rounds_alternate_and_a_refusal_turn_is_not_sent(
+    monkeypatch: Any,
+) -> None:
+    """Review of #305: a second tool round opens its own user turn; a refusal
+    (no text, no calls) is not sent, so the note after it joins the previous
+    user turn; whitespace-only text is not sent."""
+    one = ToolCall(call_id="toolu_1", name="act", arguments="{}")
+    two = ToolCall(call_id="toolu_2", name="act", arguments="{}")
+    history = (
+        ChatMessage(role="system", content="S"),
+        ChatMessage(role="user", content="TASK head"),
+        ChatMessage(role="assistant", content="  ", tool_calls=(one,)),
+        ChatMessage(role="tool", content="r1", tool_call_id="toolu_1"),
+        ChatMessage(role="assistant", content="", tool_calls=(two,)),
+        ChatMessage(role="tool", content="r2", tool_call_id="toolu_2"),
+        ChatMessage(role="assistant", content=""),  # a refusal step
+        ChatMessage(role="user", content="[WAKE] rep"),
+    )
+    wire = Recorder(httpx.Response(200, json=body()))
+    request = SLOW.model_copy(update={"messages": history})
+    asyncio.run(client(monkeypatch, wire).chat_tools(request))
+    sent = wire.body()
+    assert roles(sent) == ["user", "assistant", "user", "assistant", "user"]
+    first_call, first_result = sent["messages"][1], sent["messages"][2]
+    assert first_call["content"] == [
+        {"type": "tool_use", "id": "toolu_1", "name": "act", "input": {}}
+    ]  # whitespace-only text is not sent
+    assert [b["tool_use_id"] for b in first_result["content"]] == ["toolu_1"]
+    assert sent["messages"][-1]["content"] == [
+        {"type": "tool_result", "tool_use_id": "toolu_2", "content": "r2"},
+        {"type": "text", "text": "[WAKE] rep"},
+    ]
 
 
 def test_a_forced_tool_passes_through_and_its_400_is_unavailable(

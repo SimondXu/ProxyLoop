@@ -3,10 +3,11 @@
 
 Tool calls only: one non-streamed response per call; ``stream_text`` is not
 served. Leading system messages become the ``system`` field; a later one stays a
-``system`` message. An assistant turn's tool calls become ``tool_use`` blocks, and
-consecutive ``tool`` messages one user turn of ``tool_result`` blocks. Thinking
+``system`` message. An assistant turn's tool calls become ``tool_use`` blocks and
+each ``tool`` message a ``tool_result`` block of the following user turn. Thinking
 blocks are never replayed: ``ChatMessage`` carries none, and Slow's context is
-windowed, so a replayed block could not pass the history-editing check.
+windowed, so a replayed block could not pass the history-editing check. Empty
+turns and whitespace-only text are not sent; adjacent same-role turns merge.
 
 Effort: ``none`` is ``thinking: between_tools`` (Sonnet 5.5's lowest setting);
 ``low``, ``medium`` and ``high`` are adaptive thinking at that effort; ``minimal``
@@ -61,45 +62,50 @@ class MessagesAttempt(Attempt):
 
 
 def _messages(messages: tuple[ChatMessage, ...]) -> tuple[str, list[Json]]:
-    """The ``system`` text and the Messages API turns."""
+    """The ``system`` text and the Messages API turns, strictly alternating:
+    adjacent same-role turns (tool results, then a note after a refusal) are
+    merged into one turn of blocks, in order."""
 
     system: list[str] = []
     turns: list[Json] = []
-    results: list[Json] | None = None  # the open user turn of tool results
     for m in messages:
         if m.cache_breakpoint:  # the request-level breakpoint covers Slow
             raise ValueError("cache_breakpoint is not supported on this endpoint")
-        if m.role != "tool":
-            results = None
+        text: list[Json] = (
+            [{"type": "text", "text": m.content}] if m.content.strip() else []
+        )
         if m.role == "system" and not turns:
             system.append(m.content)
-        elif m.role == "assistant":
-            blocks: list[Json] = (
-                [{"type": "text", "text": m.content}] if m.content else []
+            continue
+        if m.role == "assistant":
+            role, blocks = (
+                "assistant",
+                text
+                + [
+                    {
+                        "type": "tool_use",
+                        "id": c.call_id,
+                        "name": c.name,
+                        "input": json.loads(c.arguments),
+                    }
+                    for c in m.tool_calls
+                ],
             )
-            blocks += [
-                {
-                    "type": "tool_use",
-                    "id": c.call_id,
-                    "name": c.name,
-                    "input": json.loads(c.arguments),
-                }
-                for c in m.tool_calls
-            ]
-            if blocks:  # a turn that said nothing is not sent
-                turns.append({"role": "assistant", "content": blocks})
         elif m.role == "tool":
-            result: Json = {
-                "type": "tool_result",
-                "tool_use_id": m.tool_call_id,
-                "content": m.content,
-            }
-            if results is None:
-                results = []
-                turns.append({"role": "user", "content": results})
-            results.append(result)
-        else:  # user, or a system message after the first turn
-            turns.append({"role": m.role, "content": m.content})
+            result = {"type": "tool_result", "tool_use_id": m.tool_call_id}
+            role, blocks = "user", [result | {"content": m.content}]
+        elif m.role == "system":  # after the first turn: its own operator message
+            if text:
+                turns.append({"role": "system", "content": m.content})
+            continue
+        else:
+            role, blocks = "user", text
+        if not blocks:  # a turn that said nothing is not sent (a refusal)
+            continue
+        if turns and turns[-1]["role"] == role:
+            turns[-1]["content"] += blocks
+        else:
+            turns.append({"role": role, "content": blocks})
     return "\n\n".join(system), turns
 
 
