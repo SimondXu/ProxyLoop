@@ -37,7 +37,7 @@ Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash via OpenRouter, Fast = Luna 
 
 ## Now / Next
 
-1. **Waiting on the user:** the Slow model and effort (see below). Until then, smokes run Slow effort medium on Gemini 3.8 Flash.
+1. **Slow on Sonnet 5.5** (ADR-0027, S1-SYS-99): once the user has set `PL_ANTHROPIC_BASE_URL`/`PL_ANTHROPIC_API_KEY`, 3 live runs of `x-out-of-envelope-approval` at effort medium; check infra-clean steps, tool calls on most steps, step latency under 6 s, and the furthest step.
 2. Land `task/s1-sys-98` (tenure goes public in the phrasings users use; 39 lines, `slow/tools.py`): step 4.
 3. Offline scripted-Slow walk of the whole ladder (extend the SlowScript in `tests/support/web_demo.py` from save-1 + direct approval to tenure → save-2 → approval → accept → confirmation → `check_account`). Passing it shows the mechanism works and the block is Slow's judgement; failing it finds a mechanism bug offline.
 4. One "heard" rule: move the GUIDE/ask-heard decision into one pure function in `guard/` and delete the copies in `obs/guides.py` and `obs/grading.py` (obs may import guard); acceptance: `diagnose` output byte-identical on the local `runs/` bundles.
@@ -45,7 +45,7 @@ Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash via OpenRouter, Fast = Luna 
 
 ## Waiting on the user
 
-- **Slow model and effort** (a product role, so the user decides): Gemini 3.8 Flash's judgement failures dominate the last runs. OpenRouter candidates and prices per M tokens in/out, as listed on 2026-09-29: claude-sonnet-5.5 2/10, gpt-6-sol 2/10, claude-haiku-4.5 1/5, deepseek-v4-pro 0.96/1.91, gemini-3.8-flash 0.75/3.75. Options: keep Gemini at effort medium; or a one-off diagnostic arm with a stronger Slow on the same family (≤ 3 runs) before deciding.
+- The Anthropic API key in `.env` (`PL_ANTHROPIC_BASE_URL`, `PL_ANTHROPIC_API_KEY`) from the Console organisation linked to the Max-plan monthly credit.
 - The S0 principal session and the S1 U step (in person).
 - Root-run G steps parked until M1: `make pull-through MODE=full` for S1-CON-01/05/08.
 
@@ -59,7 +59,7 @@ Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash via OpenRouter, Fast = Luna 
 ## Standing decisions (still in force)
 
 - Fast in development: OpenRouter `openai/gpt-6-luna`, `reasoning_effort` none; Qwen enters only after fine-tuning (user, 2026-09-28).
-- Slow and world default to Gemini 3.8 Flash via OpenRouter (#297); world stays Gemini by the family rule (user, 2026-09-29); teacher = DeepSeek (user, 2026-09-29).
+- Slow = `claude-sonnet-5-5` on the `anthropic` endpoint, effort medium, paid by the user's monthly API credit (user, 2026-10-11; ADR-0027). The world defaults to Gemini 3.8 Flash via OpenRouter (#297) and stays Gemini by the family rule (user, 2026-09-29); teacher = DeepSeek (user, 2026-09-29).
 - Live profiles `pl_cp_v3` / `pl_user_v1` (`kernel/lanes.py`); `semantics-v1` is not frozen yet (S3).
 - Training labels: hosted-model outputs may be SFT labels and Opus-rewritten text is allowed, with provenance; such adapters are not published (ADR-0022 and amendment).
 - Outcome tiers A–F, X, S and F-infra (ADR-0023); infra ends are reported apart from agent outcomes.

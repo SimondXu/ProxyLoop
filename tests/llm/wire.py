@@ -25,6 +25,7 @@ HOSTS = {
     "relay": "relay.test",
     "teamrouter": "tr.test",
     "openrouter": "openrouter.test",
+    "anthropic": "anthropic.test",
 }
 
 

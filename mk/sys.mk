@@ -27,10 +27,11 @@ llm-smoke:
 #   make smoke-live FAMILY=<f> SLOW=google/gemini-3.8-flash SLOW_ENDPOINT=openrouter \
 #     WORLD_MODEL=openrouter:google/gemini-3.8-flash
 # FAST/FAST_ENDPOINT and SLOW/SLOW_ENDPOINT pick the Fast and Slow ModelRefs (unset: the
-# CLI defaults, Qwen3.5-9B@vllm and claude-sonnet-5@relay); FAST_EFFORT (hosted Fast only)
-# and SLOW_EFFORT pin reasoning_effort (unset: the CLI's provisional values for a hosted
-# Fast and a Gemini Slow, TeamRouter or OpenRouter; a vLLM Fast and a relay Slow keep
-# the provider's default).
+# CLI defaults, Qwen3.5-9B@vllm and claude-sonnet-5-5@anthropic, ADR-0027); FAST_EFFORT
+# (hosted Fast only) and SLOW_EFFORT pin reasoning_effort (unset: the CLI's values for a
+# hosted Fast, a Gemini Slow (TeamRouter or OpenRouter) and an Anthropic Slow (medium);
+# a vLLM Fast and a relay Slow keep the provider's default). The Anthropic Slow reads
+# PL_ANTHROPIC_BASE_URL (https://api.anthropic.com) and PL_ANTHROPIC_API_KEY.
 # FAST_CP_BASE_URL: the dead-endpoint smoke only, a dead server root for fast_cp. The
 # redirect is not recorded in the bundle, so it needs CLAIM=0: with the default CLAIM the
 # CLI refuses it (a parser error, non-zero exit).
@@ -79,10 +80,10 @@ replay:
 # option (`make serve-up` first). Builds the web, then serves it same-origin with live starts
 # (`python -m proxyloop.kernel.web --web-dir apps/web/dist`, http://127.0.0.1:8000): /start
 # picks a training task, each lane's model (default: Luna on OpenRouter for both Fast lanes,
-# gemini-3.8-flash on TeamRouter for Slow) and the rep (sim, or human at /rep/<case_id>).
+# claude-sonnet-5-5 on Anthropic for Slow, ADR-0027) and the rep (sim, or human at /rep/<case_id>).
 # One case at a time; each run is written to runs/live/<run_id>/<run_id>. The root exports,
 # in the shell only (never a repo file), the variables of the endpoints a start uses:
-#   PL_OPENROUTER_BASE_URL PL_OPENROUTER_API_KEY PL_TEAMROUTER_BASE_URL PL_TEAMROUTER_API_KEY
+#   PL_OPENROUTER_BASE_URL PL_OPENROUTER_API_KEY PL_ANTHROPIC_BASE_URL PL_ANTHROPIC_API_KEY
 # and, for the vLLM option, PL_VLLM_BASE_URL PL_VLLM_API_KEY. A start whose variables are
 # missing is refused ("unavailable"); no value is printed. Afterwards:
 # `make evidence-check RUN=runs/live/<run_id>/<run_id> MODE=claim`.

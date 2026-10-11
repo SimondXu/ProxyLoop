@@ -239,7 +239,7 @@ def test_a_slow_call_past_its_deadline_ends_the_session_loudly(
 
 
 @pytest.mark.parametrize("calls", [False, True])
-@pytest.mark.parametrize("reason", ["content_filter", "stop"])
+@pytest.mark.parametrize("reason", ["content_filter", "refusal", "stop"])
 def test_a_filtered_slow_reply_is_counted_never_retried(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str, calls: bool
 ) -> None:
@@ -263,8 +263,8 @@ def test_a_filtered_slow_reply_is_counted_never_retried(
     monkeypatch.setattr(client, "chat_tools", filtered)
     asyncio.run(slow.step(["relay"]))
     tools = [e for e in k.bus.events if e.type == "slow.tool"]
-    filtered_ = reason == "content_filter"
-    text = "no tool call (content_filter)" if filtered_ else "no tool call"
+    filtered_ = reason in ("content_filter", "refusal")  # refusal: ADR-0027
+    text = f"no tool call ({reason})" if filtered_ else "no tool call"
     if calls:
         assert [t.payload["name"] for t in tools] == ["record_fact", "act"]  # R3b
     else:

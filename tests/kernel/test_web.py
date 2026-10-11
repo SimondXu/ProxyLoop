@@ -51,7 +51,7 @@ from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 REF = "cp-direct-discount@1"
 CALLED_MS = 1000 * calls.INTAKE_S + 5_000  # the intake ran out; the disclosure said
 USER_QWEN = "fast_user:vllm:Qwen3.5-9B"
-SLOW_ID = "slow:openrouter:google/gemini-3.8-flash"
+SLOW_ID = "slow:anthropic:claude-sonnet-5-5"
 ENDPOINTS: tuple[Endpoint, ...] = get_args(Endpoint)
 SECRET = "sekrit-value"
 SCRIPTS: Mapping[str, list[str]] = {
@@ -154,10 +154,10 @@ def test_an_empty_models_map_gets_every_lanes_default(tmp_path: Path) -> None:
         assert cfg.live and cfg.fast_user == cfg.fast_cp
         assert (cfg.fast_user.endpoint, cfg.fast_user.model_id) == ("openrouter", LUNA)
         assert cfg.fast_user.reasoning_effort == "none"  # the CLI's OpenRouter rule
-        assert (cfg.slow.endpoint, cfg.slow.model_id) == ("openrouter", web.SLOW)
-        assert cfg.slow.reasoning_effort == "low"  # the CLI's Gemini Slow rule
+        assert (cfg.slow.endpoint, cfg.slow.model_id) == ("anthropic", web.SLOW)
+        assert cfg.slow.reasoning_effort == "medium"  # the CLI's Anthropic rule
         ear = cfg.world.ear
-        assert (ear.endpoint, ear.model_id) == ("openrouter", web.SLOW)
+        assert (ear.endpoint, ear.model_id) == ("openrouter", web.GEMINI)
         refs = [cfg.fast_user, cfg.fast_cp, cfg.slow, cfg.world.ear, cfg.world.mouth]
         assert {r.kind for r in refs} == {AdapterKind.REAL_HTTP}
         await stop(case)
@@ -500,7 +500,7 @@ def test_the_real_starter_offers_only_real_http_models(tmp_path: Path) -> None:
         assert sum(o.default for o in options if o.lane == lane) == 1
     assert [o.id for o in options] == [o.id for o in real.model_options()]  # stable
     assert broken(options, real.task_options()) is None  # serve's own promises
-    assert [o.model_id for o in options if o.lane == "slow"] == [web.SLOW]
+    assert [o.model_id for o in options if o.lane == "slow"] == [web.SLOW, web.GEMINI]
 
 
 def test_a_non_real_http_catalogue_entry_is_never_offered(tmp_path: Path) -> None:

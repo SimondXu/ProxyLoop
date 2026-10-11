@@ -20,7 +20,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -66,7 +66,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -126,7 +126,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -206,7 +206,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -306,7 +306,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -420,7 +420,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -554,7 +554,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -688,7 +688,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
@@ -822,7 +822,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]

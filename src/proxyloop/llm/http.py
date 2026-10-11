@@ -90,10 +90,12 @@ class EndpointEnv:
                 text = text.replace(secret, "<redacted>")
         return text
 
-    def client(self, transport: httpx.AsyncBaseTransport | None) -> httpx.AsyncClient:
+    def client(
+        self, transport: httpx.AsyncBaseTransport | None, headers: dict[str, str]
+    ) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             base_url=self.base_url,
-            headers={"Authorization": f"Bearer {self.api_key}"},
+            headers=headers,
             timeout=TIMEOUT,
             transport=transport,
         )
@@ -176,6 +178,7 @@ class HTTPAdapter:
     """Base of the real_http adapters: owns the client, the clock and the retry."""
 
     ENDPOINTS: tuple[Endpoint, ...] = ()
+    ATTEMPT: type[Attempt] = Attempt  # how a response body folds into the record
 
     def __init__(
         self,
@@ -188,7 +191,10 @@ class HTTPAdapter:
             raise ValueError(f"{type(self).__name__} serves {self.ENDPOINTS}")
         self._ref, self._clock, self._on_record = ref, clock, on_record
         self._env = EndpointEnv.load(ref.endpoint)
-        self._http = self._env.client(transport)
+        self._http = self._env.client(transport, self._auth(self._env.api_key))
+
+    def _auth(self, api_key: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {api_key}"}
 
     @property
     def ref(self) -> ModelRef:
@@ -219,7 +225,9 @@ class HTTPAdapter:
         # Recorded from the body itself, so a record never claims unsent sampling.
         sent = {k: body[k] for k in get_args(SamplingKey) if k in body}
         for n in ATTEMPTS:
-            attempt = Attempt(self._ref, request, n, self._clock(), sampling_sent=sent)
+            attempt = self.ATTEMPT(
+                self._ref, request, n, self._clock(), sampling_sent=sent
+            )
             text: list[str] = []
             try:
                 async with self._http.stream("POST", path, json=body) as resp:
