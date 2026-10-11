@@ -1,5 +1,6 @@
-"""Slow's system prompt, its one forced tool ``act`` (ADR-0001 Decision 4:
-structured output is one forced tool call) and its context notes (§8). The
+"""Slow's system prompt, its one tool ``act`` (ADR-0001 Decision 4; since ADR-0027
+the prompt, not ``tool_choice``, steers the call, as Sonnet 5.5 refuses a forced
+tool) and its context notes (§8). The
 ``relay_only`` prompt (ablation A5) is ``SYSTEM`` as it was; the ``transcript``
 prompt swaps whole sentences of it (ADR-0016)."""
 

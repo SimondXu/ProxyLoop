@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from proxyloop.kernel.session import Kernel
 
 _NO_TOOL = {"name": "act", "args": None, "result_text": "no tool call", "ok": False}
+FILTERED = ("content_filter", "refusal")  # OpenAI's and Anthropic's finish reasons
 MAX_STEPS = 120  # per session: the runaway guard (S1-SYS-29; was 40, PLAN §0.5a)
 WINDOW = 6  # [E] answered turns kept in the context (ADR-0009)
 CALL_S = 180.0  # provisional until S0-ROOT-12: one whole Slow call, relay included
@@ -141,7 +142,7 @@ class SlowLoop:
                 *context,
             ),
             tools=(prompt.ACT,),
-            tool_choice=prompt.ACT.name,
+            tool_choice=None,  # ADR-0027: the prompt steers; Sonnet 5.5 refuses forcing
             max_tokens=prompt.MAX_TOKENS,
         )
         host.expect(request.call_id, started)
@@ -164,7 +165,7 @@ class SlowLoop:
             (c.call_id, self.tools.act(c, causes, basis=basis["basis_seq"]))
             for c in resp.tool_calls
         ]
-        filtered = resp.record.finish_reason == "content_filter"  # S1-SYS-28
+        filtered = resp.record.finish_reason in FILTERED  # S1-SYS-28; ADR-0027
         if filtered:  # counted, never retried; any tool calls ran as usual
             host.counts["slow_content_filter"] += 1
         if not resp.tool_calls:

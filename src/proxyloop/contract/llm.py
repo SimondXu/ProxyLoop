@@ -24,7 +24,7 @@ class AdapterKind(StrEnum):
 
 
 # Endpoints are named as data; SYS resolves URL and key from its environment.
-Endpoint = Literal["relay", "teamrouter", "vllm", "openrouter"]
+Endpoint = Literal["relay", "teamrouter", "vllm", "openrouter", "anthropic"]
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
 LLMRole = Literal["fast_user", "fast_cp", "slow", "ear", "mouth", "simuser", "teacher"]
 SamplingKey = Literal["temperature", "top_p", "seed"]

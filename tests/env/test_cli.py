@@ -44,8 +44,11 @@ def test_the_defaults_keep_todays_models() -> None:
     fast = ModelRef(kind=REAL, endpoint="vllm", model_id="Qwen3.5-9B")
     assert cfg.fast_user == cfg.fast_cp == fast  # no effort: vLLM keeps its own
     assert cfg.slow == ModelRef(
-        kind=REAL, endpoint="relay", model_id="claude-sonnet-5"
-    )  # reasoning_effort None: the default cfg_hash is unchanged
+        kind=REAL,
+        endpoint="anthropic",
+        model_id="claude-sonnet-5-5",
+        reasoning_effort="medium",
+    )  # user decision 2026-10-11 (ADR-0027)
     world = ModelRef(
         kind=REAL, endpoint="openrouter", model_id=cli.WORLD, reasoning_effort="low"
     )  # S1-SYS-96
@@ -119,8 +122,8 @@ def test_an_openrouter_gemini_slow_pins_the_provisional_effort() -> None:  # S1-
     )
     assert _cfg(*gemini, "--slow-effort", "high").slow.reasoning_effort == "high"
     other = _cfg("--slow-model", "openai/gpt-6-luna", "--slow-endpoint", "openrouter")
-    assert other.slow.reasoning_effort is None  # only a Gemini Slow is pinned
-    assert _cfg().slow.reasoning_effort is None  # the CLI's Slow default is unchanged
+    assert other.slow.reasoning_effort is None  # only a Gemini Slow is pinned here
+    assert _cfg().slow.reasoning_effort == "medium"  # the Anthropic default (ADR-0027)
 
 
 def test_each_world_role_takes_its_own_effort() -> None:
