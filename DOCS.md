@@ -112,7 +112,7 @@ docs/
 | `make serve-up` / `make serve-down` | GPU | Modal vLLM lifecycle (a trap runs `serve-down`) |
 | `make publish-replay` / `make publish-dataset` / `make publish-adapter` | release approval | §8; refuses without an approved release manifest |
 
-## 7. Per-stage docs gate (part of each close in PLAN §0.7)
+## 7. Per-stage docs gate (part of each stage close)
 | Stage | Docs that must be true at close |
 |---|---|
 | S0 | README skeleton (sections, `gen` markers, "under construction"); `v0-retrospective.md`; ADR-0001…0004; `architecture.md` v1; `third_party/README.md` |
