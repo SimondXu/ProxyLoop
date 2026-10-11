@@ -25,27 +25,27 @@ From `tasks/families/x-out-of-envelope-approval.yaml`: envelope $65/24 mo/$0 fee
 | 1 | Disclosure and identity (name, last4 recorded and voiced) | reached; but #7 (2fd267) and #9 (358c99) abandoned here: Slow never recorded the user's name/last4 |
 | 2 | Ask for a discount | reached |
 | 3 | save-1 $78 recorded and read back | #4 (ddc68c), #5 (266e2b) |
-| 4 | Ask the user for tenure; the fact goes public | #8 (6235ab) asked; recorded private (phrasing miss, fixed on `task/s1-sys-98`) |
-| 5 | Use the tenure or competitor lever | not reached |
-| 6 | save-2 $69 recorded and read back | not reached |
-| 7 | `request_approval` for save-2 (outside the $65 envelope, inside $72) | #5 requested approval for save-1 instead; the sim approver denied ($78 > $72) |
-| 8 | Approved; accept released and heard | not reached |
+| 4 | Ask the user for tenure; the fact goes public | Sonnet 4b9901, afa368 (public); 94bb0c recorded it private (phrasing miss, fixed on `task/s1-sys-98`) |
+| 5 | Use the tenure or competitor lever | Sonnet 4b9901, afa368 |
+| 6 | save-2 $69 recorded and read back | Sonnet 4b9901, afa368 |
+| 7 | `request_approval` for save-2 (outside the $65 envelope, inside $72) | Sonnet 4b9901 (granted), afa368 (granted twice) |
+| 8 | Approved; accept released and heard | **blocked**: 7 accepts queued over 4b9901 and afa368, 0 heard; every `COMMIT_AUTHORIZED` turned `NEEDS_REPLAN` before release, until the approval expired |
 | 9 | Confirmation number; `check_account` | not reached |
 | 10 | VERIFIED_COMPLETE | not reached |
 
-Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash via OpenRouter, Fast = Luna effort none): Slow effort low gave no reasoning and poor judgement; medium was best (first approval request); high was truncated by Slow's 1,500 max_tokens, fixed by #301 (8,192 runaway guard). After #298/#301 the blocker is Slow's judgement (unrecorded identity, unused tenure), not mechanism.
+Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash): the blocker was Slow's judgement (unrecorded identity, unused tenure). Sonnet smokes (2026-10-11, main 9bc9828, Slow = Sonnet 5.5 effort medium, Fast = Luna): 4b9901 and afa368 reached step 7, 94bb0c stopped at save-1. Slow made a tool call on every step; step latency median 1.8–1.9 s, p90 ≤ 3.3 s, max 5.5 s. The blocker is now mechanism at step 8. Two of the three runs were also ended by the $2 session cap (`budget`), because Slow input is priced at the upper-bound cache-write rate (~730k input tokens per 60-step run).
 
 ## Now / Next
 
-1. **Slow on Sonnet 5.5** (ADR-0027, S1-SYS-99): once the user has set `PL_ANTHROPIC_BASE_URL`/`PL_ANTHROPIC_API_KEY`, 3 live runs of `x-out-of-envelope-approval` at effort medium; check infra-clean steps, tool calls on most steps, step latency under 6 s, and the furthest step.
-2. Land `task/s1-sys-98` (tenure goes public in the phrasings users use; 39 lines, `slow/tools.py`): step 4.
-3. Offline scripted-Slow walk of the whole ladder (extend the SlowScript in `tests/support/web_demo.py` from save-1 + direct approval to tenure → save-2 → approval → accept → confirmation → `check_account`). Passing it shows the mechanism works and the block is Slow's judgement; failing it finds a mechanism bug offline.
+1. **Step 8, the accept is never heard** (Tier C, kernel/Guard): after approval, `accept_offer` queues the verbatim and status goes `COMMIT_AUTHORIZED`, but FastC keeps finishing its own turns ("I'll check with the account holder before making any decision"); the rep answers, and the commit is revalidated away (`NEEDS_REPLAN`). Reproduce offline first: extend the SlowScript in `tests/support/web_demo.py` from save-1 + direct approval to tenure → save-2 → approval → accept → confirmation → `check_account`, with the rep talking while the accept is queued. Evidence: 4b9901 (t 182–318 s), afa368.
+2. Land `task/s1-sys-98` (tenure goes public in the phrasings users use; 39 lines, `slow/tools.py`): step 4 (94bb0c).
+3. Price Anthropic calls from the cache split (cache read 0.1x, write 1.25x) instead of the upper bound, so the session cap stops runaways, not normal runs. This needs `Usage` cache fields (a contract change).
 4. One "heard" rule: move the GUIDE/ask-heard decision into one pure function in `guard/` and delete the copies in `obs/guides.py` and `obs/grading.py` (obs may import guard); acceptance: `diagnose` output byte-identical on the local `runs/` bundles.
 5. Then fix the step the latest clean runs stop at, 3 live runs per change.
 
 ## Waiting on the user
 
-- The Anthropic API key in `.env` (`PL_ANTHROPIC_BASE_URL`, `PL_ANTHROPIC_API_KEY`) from the Console organisation linked to the Max-plan monthly credit.
+- `.env` has `PL_ANTHROPIC_API_KEY` (workspace-scoped, works); add `PL_ANTHROPIC_BASE_URL=https://api.anthropic.com`. The OpenRouter key is `OPENROUTER_API_KEY` in `.env.local`; map it to `PL_OPENROUTER_API_KEY` (base `https://openrouter.ai/api`) when running.
 - The S0 principal session and the S1 U step (in person).
 - Root-run G steps parked until M1: `make pull-through MODE=full` for S1-CON-01/05/08.
 
