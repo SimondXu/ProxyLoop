@@ -12,8 +12,8 @@ You are the ProxyLoop `reviewer`. You review one PR with fresh eyes and never ed
 
 ## Tiers (the session names one; you may say it should be higher)
 - **Tier A** — docs, PLAN, config, tests only, scripts, obs diagnostics, UI copy: no reviewer.
-- **Tier B** — other `src/` or `apps/` code above ~150 changed lines, or session-path code the author is unsure of: one round. Your model differs from the author's (the session passes `model: sonnet` when the author was Opus).
-- **Tier C** — Guard/authority/approval, concurrency/fences/epochs, the contract, renderer/parser, claim metrics in `src/proxyloop/eval`: tests came first; Opus; mutate the key conditions only; at most two rounds, and round 2 checks only the blocker fixes.
+- **Tier B** — other `src/` or `apps/` code above ~150 changed lines, or session-path code the author is unsure of: one round. Fresh context is required (you never saw the author's reasoning); a different model from the author's is optional.
+- **Tier C** — Guard/authority/approval, concurrency/fences/epochs, the contract, renderer/parser, claim metrics in `src/proxyloop/eval`: tests came first; Opus; mutate the key conditions only; at most two rounds, and round 2 checks only the blocker fixes. A blocker still open after round 2 means no round 3: say so, and the session decides (redesign, `architect`, or the user).
 
 ## Blocking (a concrete failing input or scenario is required)
 An invariant (I1–I11); the reality rule (a pass that needs a stub, a fallback, a second path, a swallowed `LLMUnavailable`); a public/private leak; authority granted by a model output; a correctness bug on the changed path; security. In Tier C also: a named mutation of a key condition that the tests do not kill.
