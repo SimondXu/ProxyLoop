@@ -1,8 +1,9 @@
 """``SpendLedger``: prices every ``llm.call`` record and stops a runaway episode.
 
 Three pricing bases, so no call is ever silently priced at zero:
-- ``tokens``: relay models with a rate solved in ADR-0001 (Decision 7), and
-  OpenRouter models with a listed rate (``OPENROUTER_RATES``);
+- ``tokens``: relay models with a rate solved in ADR-0001 (Decision 7),
+  OpenRouter models with a listed rate (``OPENROUTER_RATES``), and Anthropic
+  models with a listed rate (``ANTHROPIC_RATES``, ADR-0027);
 - ``gpu_time``: vLLM calls. Modal bills the GPU per second, per job, outside
   any call; GPU $ come from Modal usage (PLAN §0.8), never from this ledger;
 - ``unpriced``: no measured rate (TeamRouter's Gemini, ADR-0005; GPT
@@ -59,6 +60,14 @@ OPENROUTER_RATES: Mapping[str, Rate] = {
     "google/gemini-3.8-flash": Rate(0.75, 3.75),
 }
 
+# Anthropic's first-party list prices (the claude-api reference, cached 2026-10-06;
+# ADR-0027). Input is charged at the 5-minute cache-write rate (1.25 x $2.00): the
+# record's ``prompt_tokens`` carries no cache split, so this is an upper bound,
+# never an under-count. The user's monthly API credit pays; the ledger still caps.
+ANTHROPIC_RATES: Mapping[str, Rate] = {
+    "claude-sonnet-5-5": Rate(2.50, 10.00),
+}
+
 
 class Charge(Frozen):
     """The ``spend.charged`` payload for one ``llm.call``."""
@@ -87,12 +96,17 @@ class SpendLedger:
         rates: Mapping[str, Rate] = RELAY_RATES,
         refs: Iterable[ModelRef] = (),
         openrouter_rates: Mapping[str, Rate] = OPENROUTER_RATES,
+        anthropic_rates: Mapping[str, Rate] = ANTHROPIC_RATES,
     ) -> None:
         """``refs``: the session's models, known at its start; ``rates`` and
         ``openrouter_rates``: the relay's and OpenRouter's, by model id."""
         if min(projected_tokens, projected_calls, cap_micro_usd) <= 0:
             raise ValueError("the episode projections and the cap must be positive")
-        self._tables = {"relay": rates, "openrouter": openrouter_rates}
+        self._tables = {
+            "relay": rates,
+            "openrouter": openrouter_rates,
+            "anthropic": anthropic_rates,
+        }
         priced = all(r.endpoint == "vllm" or self._rate(r) for r in refs)
         self.factor = RUNAWAY_FACTOR if priced else UNPRICED_FACTOR
         self.limit_micro_usd = cap_micro_usd

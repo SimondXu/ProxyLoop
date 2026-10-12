@@ -1,7 +1,7 @@
 [
  {
   "call_id": "slow:1",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -20,14 +20,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:2",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -66,14 +66,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:3",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -126,14 +126,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:4",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -206,14 +206,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:5",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -306,14 +306,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:6",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -420,14 +420,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:7",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -554,14 +554,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:8",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -688,14 +688,14 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]
  },
  {
   "call_id": "slow:9",
-  "max_tokens": 1500,
+  "max_tokens": 8192,
   "messages": [
    {
     "cache_breakpoint": false,
@@ -822,7 +822,7 @@
   ],
   "role": "slow",
   "temperature": null,
-  "tool_choice": "act",
+  "tool_choice": null,
   "tools": [
    "<ACT>"
   ]

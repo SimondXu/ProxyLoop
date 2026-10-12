@@ -34,7 +34,8 @@
         "relay",
         "teamrouter",
         "vllm",
-        "openrouter"
+        "openrouter",
+        "anthropic"
        ],
        "type": "string"
       },

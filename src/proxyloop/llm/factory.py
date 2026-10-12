@@ -15,6 +15,7 @@ from __future__ import annotations
 import httpx
 
 from proxyloop.contract.llm import AdapterKind, LLMClient, ModelRef
+from proxyloop.llm.anthropic import AnthropicClient
 from proxyloop.llm.http import Clock, RecordSink
 from proxyloop.llm.relay import ChatClient
 from proxyloop.llm.vllm import VLLMClient
@@ -44,6 +45,7 @@ class Redirect(httpx.AsyncBaseTransport):
         )
         request.headers["Host"] = request.url.netloc.decode("ascii")
         request.headers.pop("Authorization", None)
+        request.headers.pop("x-api-key", None)
         return await self._inner.handle_async_request(request)
 
     async def aclose(self) -> None:
@@ -70,5 +72,8 @@ def make_client(
         raise ValueError(f"src/ builds only real_http and baseline, not {ref.kind}")
     if base_url is not None:
         transport = Redirect(base_url, transport)
-    cls = VLLMClient if ref.endpoint == "vllm" else ChatClient
-    return cls(ref, clock, on_record, transport)
+    if ref.endpoint == "vllm":
+        return VLLMClient(ref, clock, on_record, transport)
+    if ref.endpoint == "anthropic":
+        return AnthropicClient(ref, clock, on_record, transport)
+    return ChatClient(ref, clock, on_record, transport)

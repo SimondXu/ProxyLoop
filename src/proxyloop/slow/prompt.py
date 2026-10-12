@@ -1,5 +1,6 @@
-"""Slow's system prompt, its one forced tool ``act`` (ADR-0001 Decision 4:
-structured output is one forced tool call) and its context notes (§8). The
+"""Slow's system prompt, its one tool ``act`` (ADR-0001 Decision 4; since ADR-0027
+the prompt, not ``tool_choice``, steers the call, as Sonnet 5.5 refuses a forced
+tool) and its context notes (§8). The
 ``relay_only`` prompt (ablation A5) is ``SYSTEM`` as it was; the ``transcript``
 prompt swaps whole sentences of it (ADR-0016)."""
 
@@ -35,7 +36,11 @@ TOOLS = (
     *("share_fact", "propose_mandate", "tighten_mandate", "revoke"),
     *("request_approval", "accept_offer", "decline_offer", "check_account", "finish"),
 )
-MAX_TOKENS = 1_500
+# A runaway guard, not a length budget (S1-SYS-97): on OpenRouter's Gemini the
+# reasoning tokens count against max_tokens, and at 1_500 every high-effort Slow
+# call ended finish_reason "length" (~1,442 reasoning tokens, no tool call: 4/4
+# in runs/20260929T111005Z-b2deb5; 2/35 at medium, runs/20260929T110406Z-266e2b).
+MAX_TOKENS = 8_192
 SYSTEM = f"""You are the case agent behind an AI assistant that works for a user. \
 Two voices act for you: a chat voice that talks with the user, and a phone voice on \
 a live call with a company representative. You never hear either conversation. You \
