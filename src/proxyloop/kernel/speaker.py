@@ -84,10 +84,10 @@ class Speaker:
         try:
             if fresh is not None and not fresh():  # stale on the floor: not said
                 return False
-            last, heard = await self._deliver(lines, interruptible)
+            _, heard = await self._deliver(lines, interruptible)
         finally:
             self._lock.release()
-        self._send(last, heard)
+        self._send(heard)
         return True
 
     async def verbatim(self, said: Event) -> None:
@@ -114,7 +114,7 @@ class Speaker:
                 k.authority.move(heard_as, last.event_id)
         finally:
             self._lock.release()
-        self._send(last, heard)
+        self._send(heard)
 
     async def _floor_revalidated(self, cap: str | None, text: str) -> str | None:
         """Take the floor, then revalidate ``cap``: why the line may not go out.
@@ -193,12 +193,12 @@ class Speaker:
 
     async def _deliver(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool
-    ) -> tuple[Event | None, list[str]]:
+    ) -> tuple[Event | None, list[tuple[Event, str]]]:
         k, realtime = self._k, self.lane == "cp"
         self._barge.clear()
         self.speaking, self._stale = realtime, self._channel.busy
         self._channel.floor(False, k.now())
-        heard: list[str] = []
+        heard: list[tuple[Event, str]] = []  # each line's utt.delivered, as heard
         last: Event | None = None
         for utt_id, text, cause in lines:
             if realtime and k.closed:
@@ -207,7 +207,7 @@ class Speaker:
             out = {"lane": self.lane, "utt_id": utt_id, "text_generated": text}
             out |= {"text_heard": said, "interrupted": said != text}
             last = k.emit("utt.delivered", "kernel", out, [cause])
-            heard.append(said)
+            heard.append((last, said))
             if said != text:
                 cut = {"lane": self.lane, "utt_id": utt_id}
                 k.emit("chan.barge_in", "kernel", cut, [last.event_id])
@@ -216,11 +216,12 @@ class Speaker:
         self._channel.floor(True, k.now())
         return last, heard
 
-    def _send(self, last: Event | None, heard: list[str]) -> None:
-        k, text = self._k, " ".join(h for h in heard if h)
-        if last is not None and text:
-            utt_id = str(last.payload["utt_id"])
-            k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
+    def _send(self, heard: list[tuple[Event, str]]) -> None:
+        """Hand the turn as heard to the partner (``Channel.hear``): the sim
+        rep hears each line as its own utterance (S1-SYS-102), others one
+        message. Nothing when no word of it was heard."""
+        if any(said for _, said in heard):
+            self._k.spawn(self._channel.hear(heard, self._k.now()))
 
     @asynccontextmanager
     async def partner_turn(self) -> AsyncGenerator[None]:
