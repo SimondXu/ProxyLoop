@@ -164,3 +164,12 @@ def test_the_playbook_puts_a_lever_before_the_read_back_outside_the_mandate() ->
     assert only < pb.index("read-back", only) < pb.index("request_approval", only)
     assert "read-back only of an offer you mean to accept" in pb
     assert "a lever comes first" in prompt.SYSTEM
+
+
+def test_the_info_only_playbook_pulls_levers_before_the_final_offer() -> None:
+    # run 66518e: the info_only playbook had no lever step, so Slow asked for
+    # the final offer with mention_tenure available and closed on rung 1 (E)
+    pb = prompt.PLAYBOOK["info_only"]
+    lever = pb.index("available lever")
+    only = pb.index("Only when no lever is available")
+    assert lever < only < pb.index("guide_fast(ask_final_offer)")

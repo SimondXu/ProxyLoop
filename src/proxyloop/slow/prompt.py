@@ -197,7 +197,12 @@ _SYSTEM_TRANSCRIPT = _swapped(SYSTEM)
 
 PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "info_only": "CLOSE PLAYBOOK (info_only: report the offers, accept nothing): "
-    "record each offer the representative states and ask for its read-back; then "
+    "record each offer the representative states and ask for its read-back. "
+    "While the levers line lists an available lever, guide_fast one before the "
+    "final offer: one lever per rep reply; while one is sent and the rep has not "
+    "answered it, wait. Asking again for a lower price or for a final offer is "
+    "the same request the rep already answered: it adds no pressure and is no "
+    "lever. Only when no lever is available: "
     "guide_fast(ask_final_offer). Once the close line shows the rep's closing "
     "reply (or the rep answered it with no new offer), tell_user every offer's "
     "terms as recorded (naming any slot not stated) and finish(info_only, "

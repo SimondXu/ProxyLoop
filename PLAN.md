@@ -14,7 +14,7 @@ State, not a log. It is updated inside the PR that changes it; the PR descriptio
 - **M2:** each of the 4 S1 families has at least one live, infra-clean run that passes `evidence-check MODE=claim` and gets its family's right tier from `python -m proxyloop.obs.diagnose` (ADR-0023): `x-out-of-envelope-approval` and `cp-hidden-fee-readback` A or B (a verified deal); `cp-direct-discount` (`info_only`) a verified close graded C or D, not E; `x-user-mind-change` S (stopped by the user, no commit after the stop). No run may be X.
 - **M3:** the battery: 10 runs per family, success rate reported with infra ends separate (ADR-0023 tiers).
 
-Status: **M1 reached 2026-10-12**: run `runs/20261012T060408Z-fc41ec` (main cf616b0) ended VERIFIED_COMPLETE, `evidence-check MODE=claim` ok, `diagnose` tier B (approval). One success, not a rate: M3 measures the rate. **M2: 1 of 4 families done** (x-out-of-envelope-approval).
+Status: **M1 reached 2026-10-12**: run `runs/20261012T060408Z-fc41ec` (main cf616b0) ended VERIFIED_COMPLETE, `evidence-check MODE=claim` ok, `diagnose` tier B (approval). One success, not a rate: M3 measures the rate. **M2: 2 of 4 families done**: x-out-of-envelope-approval (fc41ec, B); cp-direct-discount (`runs/20261012T063402Z-9a1849` at b6c1076: both rungs, $75 then $68 on the tenure lever, nothing accepted, `diagnose` C, `evidence-check MODE=claim` ok). Before the fix (S1-SYS-106: the `info_only` playbook pulls an available lever before the final offer), 66518e closed on rung 1 with `mention_tenure` available (E). af5744 (same sha, C) failed the claim check only because OpenRouter reported zero usage on one Fast call.
 
 ## Trajectory ledger: `x-out-of-envelope-approval`
 
@@ -27,7 +27,6 @@ How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add
 ## Now / Next
 
 1. **M2**, one live run each, in this order, diagnose any failure to the step and fix it (stop rule: 3 PRs on one step without progress → a one-page rethink for the user):
-   - `cp-direct-discount` (default mode `info_only`, gold `ledger+no_deal`): expect a verified close (C or D).
    - `cp-hidden-fee-readback` (`full`, gold `ledger`): the rep hides a fee; the read-back must surface it before any accept (A or B).
    - `x-user-mind-change` (`full`, scripted `stop` after the card, gold `no_commit_after_stop`): the queued accept must be revoked, tier S; also confirms #313 did not break the scripted stop.
 2. **FastC after a commit** (a CON task, contract + ADR, a new `pl_cp` profile version): after the accept is heard FastC still says "I can't accept the offer on Marcus's behalf" (aebf80 231 s): its prompt shows `CASE STATUS: COMMITTED` with no meaning, and satisfied GUIDEs stay. Render COMMIT_AUTHORIZED/COMMITTED so FastC stops stalling, and retire satisfied GUIDEs. Coordinate the profile version with the model side (training data is bound to the profile).
