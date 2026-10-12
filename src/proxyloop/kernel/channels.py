@@ -45,6 +45,10 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
 
 
 class Channel:  # The base: a partner that never speaks first and has no clock
+    # True: each line of a turn reaches it as its own utterance, in delivery
+    # order (``Speaker._send``); False: the turn's lines joined, as one message.
+    HEARS_LINES = False
+
     def __init__(self) -> None:
         self.incoming: asyncio.Queue[Incoming] = asyncio.Queue()
         self._composing, self._quiet = 0, asyncio.Event()
@@ -109,6 +113,8 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     """A strike's kind by the rep call that made it: a heard utterance strikes
     only for identity, a tick only for the clock (``env.counterparty.policy``).
     A rep turn's end kind and strikes (each with its cause) pass through."""
+
+    HEARS_LINES = True  # S1-SYS-102: the Ear names one act per utterance
 
     def __init__(self, rep: SimRep) -> None:
         super().__init__()

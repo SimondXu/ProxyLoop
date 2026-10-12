@@ -193,12 +193,12 @@ class Speaker:
 
     async def _deliver(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool
-    ) -> tuple[Event | None, list[str]]:
+    ) -> tuple[Event | None, list[tuple[Event, str]]]:
         k, realtime = self._k, self.lane == "cp"
         self._barge.clear()
         self.speaking, self._stale = realtime, self._channel.busy
         self._channel.floor(False, k.now())
-        heard: list[str] = []
+        heard: list[tuple[Event, str]] = []  # each line's utt.delivered, as heard
         last: Event | None = None
         for utt_id, text, cause in lines:
             if realtime and k.closed:
@@ -207,7 +207,7 @@ class Speaker:
             out = {"lane": self.lane, "utt_id": utt_id, "text_generated": text}
             out |= {"text_heard": said, "interrupted": said != text}
             last = k.emit("utt.delivered", "kernel", out, [cause])
-            heard.append(said)
+            heard.append((last, said))
             if said != text:
                 cut = {"lane": self.lane, "utt_id": utt_id}
                 k.emit("chan.barge_in", "kernel", cut, [last.event_id])
@@ -216,8 +216,18 @@ class Speaker:
         self._channel.floor(True, k.now())
         return last, heard
 
-    def _send(self, last: Event | None, heard: list[str]) -> None:
-        k, text = self._k, " ".join(h for h in heard if h)
+    def _send(self, last: Event | None, heard: list[tuple[Event, str]]) -> None:
+        """Hand the turn as heard to the partner: one message, or for a channel
+        that ``HEARS_LINES`` (the sim rep) each line as its own utterance, so a
+        lever and an ask said in one turn are each heard (S1-SYS-102)."""
+        k = self._k
+        if self._channel.HEARS_LINES:
+            for ev, said in heard:
+                if said:
+                    utt_id = str(ev.payload["utt_id"])
+                    k.spawn(self._channel.send(said, utt_id, ev.event_id, k.now()))
+            return
+        text = " ".join(said for _, said in heard if said)
         if last is not None and text:
             utt_id = str(last.payload["utt_id"])
             k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
