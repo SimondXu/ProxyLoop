@@ -14,8 +14,9 @@ from types import CoroutineType
 from typing import Any, Literal
 
 from proxyloop.contract.config import SessionConfig
-from proxyloop.contract.events import Event
+from proxyloop.contract.events import ApprovalPost, Event
 from proxyloop.contract.llm import LLMClient, LLMRole
+from proxyloop.contract.state import ApprovalCard, Mandate
 from proxyloop.env.counterparty.ear import Heard
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.schema import Task
@@ -92,6 +93,11 @@ class SimUserChannel(Channel):  # replies delay_s after each message
     @property
     def approver(self) -> Approver | None:  # the principal's approval button
         return self._user.approver
+
+    def decided(self, subject: ApprovalCard | Mandate, post: ApprovalPost) -> None:
+        """The sim approver decided ``subject``: the user's chat knows their own
+        answer before any reply or trigger after it (ADR-0028)."""
+        self._user.on_decided(subject, post)
 
     async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
         async with self._lock:  # one reply at a time, in message order

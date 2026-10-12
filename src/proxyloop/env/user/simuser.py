@@ -21,8 +21,14 @@ kernel reports that a card was issued (``after_card``) or the rep made an offer
 From the moment it fires the approver denies every card and mandate after a
 stop, and uses the changed facts after a mind change.
 
+One principal, one answer (ADR-0028): the button decides approvals and limits,
+and the chat voice never does. When the approver decides a card or a mandate,
+``on_decided`` puts the user's own answer in their chat (a ``Card:`` line), and
+the prompt keeps their replies to it; only the scripted stop changes their mind.
+
 Kernel side (S1-SYS-02/05, not wired here): on ``approval.requested`` first
-``approver.decide`` the card, then ``await on_trigger("after_card", event_id)``;
+``approver.decide`` the card and ``on_decided`` it, then ``await
+on_trigger("after_card", event_id)``;
 on a ``rep.policy`` whose intent is ``offer``/``final_offer``, ``await
 on_trigger("after_offer", event_id)``. Serialise it with ``on_agent_message``
 (``SimUserChannel``'s lock) and deliver a returned reply ``delay_s`` later, as
@@ -45,6 +51,7 @@ from typing import Literal, Self
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from proxyloop.contract.base import Frozen
+from proxyloop.contract.events import ApprovalPost
 from proxyloop.contract.llm import (
     ChatMessage,
     LLMClient,
@@ -52,6 +59,7 @@ from proxyloop.contract.llm import (
     ToolRequest,
     ToolSpec,
 )
+from proxyloop.contract.state import ApprovalCard, Mandate
 from proxyloop.env import world
 from proxyloop.env.tasks.schema import STOP_DELAY_S, Stop, Task
 from proxyloop.env.user.approver import Approver
@@ -81,7 +89,30 @@ sentences by calling `reply`. Always answer a question. A status update needs no
 answer: to stay silent, call `reply` with silent true, no text and nothing \
 revealed. Share a fact only when asked or useful. When your text contains a fact, \
 copy its value exactly and list it in `revealed` under its key. Never invent \
-facts."""
+facts. You approve or decline an offer or a limit only on the approval card, never \
+in chat: do not approve or reject an offer in a chat reply. A chat line that starts \
+"Card:" is your own answer on that card; keep to it. Only an instruction that \
+starts "Now, in this reply:" changes your mind."""
+
+
+def _usd(minor_units: int) -> str:
+    return f"${minor_units // 100}.{minor_units % 100:02d}"
+
+
+def card_line(subject: ApprovalCard | Mandate, granted: bool) -> str:
+    """The chat line for the user's own decision on ``subject`` (ADR-0028)."""
+
+    verb = "approved" if granted else "declined"
+    if isinstance(subject, ApprovalCard):
+        return f"Card: you {verb} these terms: {subject.readback_text.strip()}"
+    m, said = subject, list[str]()
+    if m.max_monthly_price_minor is not None:
+        said.append(f"at most {_usd(m.max_monthly_price_minor)} a month")
+    if m.max_term_months is not None:
+        said.append(f"at most {m.max_term_months} months")
+    if m.max_one_time_fees_minor is not None:
+        said.append(f"at most {_usd(m.max_one_time_fees_minor)} in one-time fees")
+    return f"Card: you {verb} these limits: {'; '.join(said) or 'none stated'}"
 
 
 class SimOut(Frozen):
@@ -187,6 +218,13 @@ class SimUser:
         if stop is None or self._fired or stop.trigger != trigger:
             return None
         return await self._reply(False, cause, stop, STOP_DELAY_S)
+
+    def on_decided(self, subject: ApprovalCard | Mandate, post: ApprovalPost) -> None:
+        """The user's own approval button (the shared ``approver``) decided
+        ``subject``: their chat gains that answer at once, before any trigger
+        it fires, so their next reply keeps to the card (ADR-0028)."""
+
+        self._chat.append(card_line(subject, post.decision == "granted"))
 
     def request(
         self,

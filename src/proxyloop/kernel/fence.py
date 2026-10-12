@@ -29,13 +29,14 @@
   at the bus clock's now (N-c). A decision is ``approval.post`` then its
   ``approval.decided``/``mandate.decided``; a refusal is the restrict-only
   ``action.denied{intent: approval.post}`` citing the card or proposal (M1).
-- **The sim approver** (#143) decides a card at once, then the SimUser's
-  ``after_card`` trigger runs; the grant is posted ``delay_s`` after the card,
-  never before that stop is delivered (N6), and never before every user fence
-  up at its delivery has cleared (S1-SYS-84): a Slow step saw FastU's turn on
-  the stop, so a relayed revoke has staled the card first. The wait ends at
-  the card's expiry (the post is then refused). Ordering only: no grant
-  lands earlier, and with no stop nothing waits.
+- **The sim approver** (#143) decides a card at once, the SimUser's chat
+  gains that answer (ADR-0028), then its ``after_card`` trigger runs; the
+  grant is posted ``delay_s`` after the card, never before that stop is
+  delivered (N6), and never before every user fence up at its delivery has
+  cleared (S1-SYS-84): a Slow step saw FastU's turn on the stop, so a relayed
+  revoke has staled the card first. The wait ends at the card's expiry (the
+  post is then refused). Ordering only: no grant lands earlier, and with no
+  stop nothing waits.
 - **Status.** A decided card moves AWAITING_APPROVAL back to IN_CALL, and
   NEEDS_REPLAN goes back to IN_CALL once Slow completed a step that saw it.
   A pending card an ``authority.epoch`` stales moves AWAITING_APPROVAL to
@@ -274,11 +275,14 @@ class Authority:
         if not isinstance(user, SimUserChannel) or (approver := user.approver) is None:
             return
         if e.type == "mandate.proposed":
-            post = approver.decide_mandate(Mandate.model_validate(e.payload))
+            mandate = Mandate.model_validate(e.payload)
+            post = approver.decide_mandate(mandate)
+            user.decided(mandate, post.post)  # ADR-0028: the chat knows its answer
             k.spawn(self._later(post, e.t_ms, None))
             return
         card = ApprovalCard.model_validate(e.payload)
         post = approver.decide(card, k.bb.public.offers[card.offer_ref])  # first
+        user.decided(card, post.post)  # then the chat knows it, before the trigger
         stop = user.trigger("after_card", e.event_id, e.t_ms)
         k.spawn(self._later(post, e.t_ms, stop, card.expires_ms))
 
