@@ -9,8 +9,11 @@ from typing import Any
 
 import httpx
 import pytest
-from tests.contract.llm_conformance import assert_tool_conformance
-from tests.llm.wire import KEY, Recorder, counter_clock, set_env
+from tests.contract.llm_conformance import (
+    assert_tool_conformance,
+    check_text_items,
+)
+from tests.llm.wire import KEY, Recorder, counter_clock, set_env, sse, stream_response
 
 from proxyloop.contract.llm import (
     AdapterKind,
@@ -258,19 +261,122 @@ def test_effort_maps_to_thinking(
     assert sent.get("output_config") == output_config
 
 
-def test_minimal_effort_and_text_streams_are_refused(monkeypatch: Any) -> None:
+def test_minimal_effort_and_a_prompt_are_refused(monkeypatch: Any) -> None:
     llm = client(monkeypatch, Recorder(), sonnet("minimal"))
     with pytest.raises(ValueError, match="minimal"):
         asyncio.run(llm.chat_tools(SLOW))
-    text = TextRequest(
-        call_id="t",
-        role="slow",
-        messages=SLOW.messages[:2],
-        max_tokens=10,
-        temperature=0,
+    prompt = TextRequest(
+        call_id="t", role="fast_cp", prompt="P", max_tokens=10, temperature=0
     )
-    with pytest.raises(ValueError, match="tool calls only"):
-        llm.stream_text(text)
+    with pytest.raises(ValueError, match="not a prompt"):
+        llm.stream_text(prompt)
+
+
+def test_an_unlisted_model_has_no_thinking_off(monkeypatch: Any) -> None:
+    ref = sonnet("none").model_copy(update={"model_id": "claude-opus-5-5"})
+    with pytest.raises(ValueError, match="no thinking-off"):
+        asyncio.run(client(monkeypatch, Recorder(), ref).chat_tools(SLOW))
+
+
+def haiku(effort: ReasoningEffort | None) -> ModelRef:
+    return sonnet(effort).model_copy(update={"model_id": "claude-haiku-5-5"})
+
+
+FAST = TextRequest(  # the probe's Fast request: the kernel's sampling, 16384 guard
+    call_id="fast_cp:7",
+    role="fast_cp",
+    messages=(
+        ChatMessage(role="system", content="F"),
+        ChatMessage(role="user", content="rep: $78 a month"),
+    ),
+    max_tokens=16384,
+    temperature=0.3,
+    top_p=0.9,
+    seed=11,
+)
+
+
+def events(*texts: str) -> list[dict[str, Any]]:
+    usage = {"input_tokens": 120, "cache_read_input_tokens": 0, "output_tokens": 1}
+    start = {"id": "msg_02", "model": "claude-haiku-5-5", "usage": usage}
+    think = {"type": "thinking_delta", "thinking": "hm"}
+    return [
+        {"type": "message_start", "message": start},
+        {"type": "ping"},
+        {"type": "content_block_delta", "index": 0, "delta": think},
+        *(
+            {
+                "type": "content_block_delta",
+                "index": 1,
+                "delta": {"type": "text_delta", "text": t},
+            }
+            for t in texts
+        ),
+        {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 30},
+        },
+        {"type": "message_stop"},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("effort", "thinking", "output_config"),
+    [
+        ("none", {"type": "disabled"}, None),
+        ("medium", {"type": "adaptive"}, {"effort": "medium"}),
+    ],
+)
+def test_a_haiku_text_stream_speaks_the_text_deltas_only(
+    monkeypatch: Any,
+    effort: ReasoningEffort,
+    thinking: object,
+    output_config: object,
+) -> None:
+    wire = Recorder(
+        stream_response(sse(*events("Could you ", "read that back?"), done=False))
+    )
+    llm = client(monkeypatch, wire, haiku(effort))
+
+    async def stream() -> list[str | LLMCallRecord]:
+        return [item async for item in llm.stream_text(FAST)]
+
+    items = asyncio.run(stream())
+    record = check_text_items(llm.ref, FAST, items)
+    sent = wire.body()
+    assert sent["stream"] is True and sent["system"] == "F"
+    assert sent["messages"] == [
+        {"role": "user", "content": [{"type": "text", "text": "rep: $78 a month"}]}
+    ]
+    assert sent.get("thinking") == thinking
+    assert sent.get("output_config") == output_config
+    assert not {"temperature", "top_p", "seed"} & sent.keys()  # Haiku: defaults only
+    assert (
+        "".join(i for i in items if isinstance(i, str)) == "Could you read that back?"
+    )
+    assert record.usage == Usage(
+        prompt_tokens=120,
+        completion_tokens=30,
+        cache_read_tokens=0,
+        cache_write_tokens=0,
+    )
+    assert record.finish_reason == "end_turn" and record.request_id == "msg_02"
+    assert record.served_model_echo == "claude-haiku-5-5"
+    assert record.sampling_sent == {}
+
+
+def test_a_stream_without_a_stop_reason_is_unavailable(monkeypatch: Any) -> None:
+    cut = [e for e in events("Could") if e["type"] != "message_delta"]
+    wire = Recorder(stream_response(sse(*cut, done=False)))
+    llm = client(monkeypatch, wire, haiku("none"))
+
+    async def drain() -> None:
+        async for _ in llm.stream_text(FAST):
+            pass
+
+    with pytest.raises(LLMUnavailable):
+        asyncio.run(drain())
 
 
 def test_sonnet_is_priced_from_the_cache_split(monkeypatch: Any) -> None:
