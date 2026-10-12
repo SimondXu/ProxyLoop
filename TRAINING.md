@@ -38,7 +38,7 @@ Fast does **not** learn negotiation decisions; those are Slow's. Labels come fro
 ### 2.1 Teacher-in-harness episodes (wall clock)
 | Field | Value |
 |---|---|
-| `fast_user`, `fast_cp` | `deepseek-flash` via TeamRouter (served echo `deepseek-v4-1-flash-260910`; ADR-0022 amendment, S1-MOD-10), temperature 0.7, `max_tokens` 16384 as a runaway guard with labels ≤ 160 Qwen tokens (D7), no tools; effort medium (user, 2026-10-12; useful/127 in the re-test under the candidate profiles, `docs/decisions/data/teacher-select-report-retest.md`: none 77, medium 93, high 92) |
+| `fast_user`, `fast_cp` | `deepseek-flash` via TeamRouter (served echo `deepseek-v4-1-flash-260910`; ADR-0022 amendment, S1-MOD-10), temperature 0.3 (the live Fast sampling and the probe's; user, 2026-10-12), `max_tokens` 16384 as a runaway guard with labels ≤ 160 Qwen tokens (D7), no tools; effort medium (user, 2026-10-12; useful/127 in the re-test under the candidate profiles, `docs/decisions/data/teacher-select-report-retest.md`: none 77, medium 93, high 92) |
 | `slow` | `claude-sonnet-5-5` at effort medium (ADR-0027), the same as in evaluation |
 | world | Gemini Flash Ear/Mouth/SimUser; piloted (S3) or train-split (S4) families only |
 | clock | wall. The teacher's slower TTFS is real to the world. `teacher_ttfs` vs `student_ttfs` and cp strikes per episode are reported (RISKS R5) |
@@ -63,7 +63,7 @@ Recorded per trajectory:
 - world version, `family@version`, instance hash, persona;
 - `verifier_version`, `filter_version`;
 - source (`teacher_exec` | `relabel` | `hard_case`), `counterfactual`, `disagreement`;
-- label provenance (`teacher_raw` | `opus_rewrite`; Opus subagents filter labels and rewrite the ones they judge wrong, ADR-0022 amendment), with the rewrite share reported per dataset;
+- label provenance (`teacher_raw` | `reviewer_edit` | `reviewer_rewrite`; two independent Sonnet 5.5 reviewers, ADR-0022 amendment 2), with the edit, rewrite and drop shares reported per dataset and per class;
 - `gen_params` and the cfg hash;
 - spend by role.
 
