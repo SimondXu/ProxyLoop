@@ -1,6 +1,6 @@
 # ProxyLoop v3: North Star
 
-**Goal.** A small but real Pine-AI-style agent. One self-hosted **Qwen3.5-9B Fast** (vLLM, the same weights on two lanes) chats asynchronously with the **user** and talks in real time to a **counterparty**, while **gemini-3.8-flash Slow** (via TeamRouter) plans from both conversations and Fast's typed relays. The repo shows the whole ML cycle through the real serving path: teacher-in-harness distillation → BF16 LoRA SFT → held-out evaluation → vLLM serving. It also shows traceable records and, later, durability, voice, browser compilation and memory.
+**Goal.** A small but real Pine-AI-style agent. One self-hosted **Qwen3.5-9B Fast** (vLLM, the same weights on two lanes) chats asynchronously with the **user** and talks in real time to a **counterparty**, while **claude-sonnet-5-5 Slow** (Anthropic API, ADR-0027) plans from both conversations and Fast's typed relays. The repo shows the whole ML cycle through the real serving path: teacher-in-harness distillation → BF16 LoRA SFT → held-out evaluation → vLLM serving. It also shows traceable records and, later, durability, voice, browser compilation and memory.
 
 **Architecture in one sentence.** One asyncio kernel (`run_session`) appends typed, causally linked events to `events.jsonl`. It folds them into a blackboard split into **public** and **private** state, and renders three views from it: `FastView[user]` (public + private), `FastView[cp]` (public only) and a `SlowView` of both transcripts as heard. Guard-minted capabilities release authority-bearing lines only after revalidation at release time, and only the evidence-bound verifier sets a `VERIFIED_*` status.
 
@@ -28,7 +28,7 @@
 | S1 | "Concurrent dual-lane agent: one Qwen3.5-9B serves an async user chat and a real-time counterparty call while Sonnet plans from typed relays. Approvals are bound to read-back terms and authority epochs, and a user's 'stop' fences queued commitments; this is tested under concurrency and live." |
 | S2 | "Built and human-audited the simulator instruments: a class-stratified Ear audit with precision/recall on rare harms, and repaired outcome metrics (blocked vs realised, generated vs heard). Reproduced TalkAct base rows in its original harness." |
 | S3 | "Sized the talker's causal headroom with paired ablations, then ran an SFT learning curve of served LoRAs at 100/300/1,000 episodes, scored leave-one-family-out." Numbers, or the honest negative. |
-| S4 | "Distilled a Sonnet 5 teacher, run under Fast-role constraints in the same harness, into a BF16 LoRA on Qwen3.5-9B. On never-piloted held-out families, safe success moved A→B (paired 95 % CI); the pre-registered bar {passed/failed}; the model is served through vLLM. TalkAct rows are our reproduction; PrincipalBench is a diagnostic subset." |
+| S4 | "Distilled a DeepSeek teacher, run under Fast-role constraints in the same harness, into a BF16 LoRA on Qwen3.5-9B. On never-piloted held-out families, safe success moved A→B (paired 95 % CI); the pre-registered bar {passed/failed}; the model is served through vLLM. TalkAct rows are our reproduction; PrincipalBench is a diagnostic subset." |
 | S5+ | Voice (cp lane), durable cases, workflow compilation ("independently implemented"), memory: each line only after its own measured gate. |
 
 ## Non-goals

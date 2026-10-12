@@ -38,8 +38,8 @@ Fast does **not** learn negotiation decisions; those are Slow's. Labels come fro
 ### 2.1 Teacher-in-harness episodes (wall clock)
 | Field | Value |
 |---|---|
-| `fast_user`, `fast_cp` | `sonnet-as-fast` (`claude-sonnet-5` via the relay, temperature 0.7, `max_tokens=160`, no tools) |
-| `slow` | `claude-sonnet-5`, the same as in evaluation |
+| `fast_user`, `fast_cp` | `deepseek-flash` via TeamRouter (served echo `deepseek-v4-1-flash-260910`; ADR-0022 amendment, S1-MOD-10), temperature 0.7, `max_tokens` 16384 as a runaway guard with labels ≤ 160 Qwen tokens (D7), no tools; the effort is still open (none and medium probed, the high arm pending) |
+| `slow` | `claude-sonnet-5-5` at effort medium (ADR-0027), the same as in evaluation |
 | world | Gemini Flash Ear/Mouth/SimUser; piloted (S3) or train-split (S4) families only |
 | clock | wall. The teacher's slower TTFS is real to the world. `teacher_ttfs` vs `student_ttfs` and cp strikes per episode are reported (RISKS R5) |
 | decision points | K = 3 candidates [E] at kernel-detected points: a rep offer relayed, a PIN request heard, a pending approval, a user correction or stop. One candidate that passes the view-local filters is **executed**; the others are stored with `counterfactual=true` and are **not trained** in v3 |
@@ -48,7 +48,7 @@ Fast does **not** learn negotiation decisions; those are Slow's. Labels come fro
 
 ### 2.2 Student rollouts relabelled offline (S3 on)
 1. The student (C2 base, then the latest curve adapter) plays both lanes on fresh piloted/train instances, and **execution follows the student**.
-2. For every student `fast.request`, the stored `FastView` is re-rendered and the teacher is queried offline (`render_messages` → Sonnet → parse).
+2. For every student `fast.request`, the stored `FastView` is re-rendered and the teacher is queried offline (`render_messages` → the teacher → parse).
 3. The label is kept if it passes the **view-local** filters (§4: F1, F2, F3, F4-lexical, F5, F6, F7). Rows get `source=relabel, counterfactual=true`.
 
 A relabel row whose teacher output differs materially from the student's action (a different directive set, a different relayed value, or a hold vs no hold) is flagged `disagreement=true`. These are the states v2 feared the student would visit without supervision.
@@ -63,6 +63,7 @@ Recorded per trajectory:
 - world version, `family@version`, instance hash, persona;
 - `verifier_version`, `filter_version`;
 - source (`teacher_exec` | `relabel` | `hard_case`), `counterfactual`, `disagreement`;
+- label provenance (`teacher_raw` | `opus_rewrite`; Opus subagents filter labels and rewrite the ones they judge wrong, ADR-0022 amendment), with the rewrite share reported per dataset;
 - `gen_params` and the cfg hash;
 - spend by role.
 
@@ -106,7 +107,7 @@ That is 18 LOFO adapters plus 1 in-family adapter at n = 300 (B's check). One re
  "split":"train","lane":"cp","profile":"pl_cp_v1","fingerprint":"…","view_sha":"…",
  "completion":"Could you read me back every charge, including any one-time fees?\n@hold offer",
  "source":"teacher_exec|relabel|hard_case","counterfactual":false,"disagreement":false,"decision_point":true,
- "filters_passed":["F1",…],"teacher":{"model":"claude-sonnet-5","request_id":"…"}}
+ "filters_passed":["F1",…],"teacher":{"model":"deepseek-flash","request_id":"…"}}
 ```
 ```python
 view    = FastView.model_validate_json(bundle.prompts[row.view_sha])
@@ -142,7 +143,7 @@ Loss is on completion tokens only. P5 runs on the first batch of every run and a
 | `full` | the renderer fingerprint changed, or a new stage opens | (1) choose ≤ 60 real Fast turns from the latest `evidence/` bundles whose fingerprint equals the current one. **S0: base-9B turns** (teacher runs are not allowed before S1's Guard; PLAN §9 E1). **S1 on: teacher turns.** (2) Build rows through §6 and run P5. (3) Train the pull-through recipe on Modal. (4) Load the adapter into the vLLM LoRA slot `Qwen3.5-9B-pl-pt-<fp8>`. (5) Liveness: the mean `prompt_logprobs` difference from base on 5 fixed pairs exceeds 1e-3 nats. (6) Run one product-path session with both lanes on the adapter. (7) `evidence-check --claim`. (8) Write `docs/results/pull-through.json` `{fingerprint, dataset_hash, adapter_shards, liveness, run_id, claim: "none"}` |
 | `verify` | any other contract change | steps 4–8 with the existing adapter |
 
-**Label source (user risk decision 2026-09-28, ADR-0022):** hosted-model outputs may be SFT labels (the Sonnet teacher for real SFT; Luna turns in development, pull-through `PT_SOURCE=hosted`, S1-MOD-07); adapters trained on them are not published.
+**Label source (user risk decision 2026-09-28, ADR-0022):** hosted-model outputs may be SFT labels (the DeepSeek teacher for real SFT, amendment 2026-09-29; Luna turns in development, pull-through `PT_SOURCE=hosted`, S1-MOD-07); adapters trained on them are not published.
 
 ## 10. Export and serving artefacts
 - `adapters/<id>/` contains the PEFT config, the adapter files and `adapter_card.json` (dataset hash, recipe, fingerprint, **shard sha256s**, dev results).
