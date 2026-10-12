@@ -8,7 +8,10 @@ Every wake source, by its fixed reason (never text):
   steer the call before the rep's first line; while the cp call is open
   (``chan.opened{cp}`` to ``chan.closed{cp}``) ``rep_turn`` (a partner
   ``utt.final``, below) and ``strike`` (``chan.strike``); ``call_closed``
-  (``chan.closed{cp}``); ``timer`` and ``heartbeat`` (below);
+  (``chan.closed{cp}``); ``evidence`` (``evidence.recorded``, in the call or
+  not: the evidence that allows ``finish(completed)`` is read by a next step,
+  even after the call when nothing else wakes Slow; S1-SYS-104); ``timer`` and
+  ``heartbeat`` (below);
 - in ``kernel.fence.Authority``: ``fence`` (a ``user.msg`` fence is bound),
   ``replan`` (NEEDS_REPLAN), ``approval.decided``, ``mandate.decided``,
   ``speak.revoked`` and ``approval_denied`` (``action.denied{approval.post}``).
@@ -46,7 +49,7 @@ if TYPE_CHECKING:
 HEARTBEAT_S = 15  # root decision (S1-SYS-29): under the rep's hold_s of 30 s
 REASONS = frozenset(
     {"relay", "call_opened", "rep_turn", "strike", "call_closed", "timer"}
-    | {"heartbeat"}
+    | {"heartbeat", "evidence"}
     | {"fence", "replan", "approval.decided", "mandate.decided", "speak.revoked"}
     | {"approval_denied"}
 )
@@ -91,6 +94,8 @@ class Wakes:
             self._wake("rep_turn")
         elif e.type == "chan.strike" and self._call:
             self._wake("strike")
+        elif e.type == "evidence.recorded":
+            self._wake("evidence")
         elif e.type == "slow.step.started":  # it sees every line said so far
             self._armed, self._due, self._held = self._armed + 1, None, None
             self._wait, self._done, self._stepping = None, False, True
