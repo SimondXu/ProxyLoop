@@ -8,8 +8,9 @@ unscored. Offline: no key, no model call. ``profile_check`` stays as pinned
 - H5: a standing hold, new guidance that is not a hold move: no ``@hold``;
 - H7: stalling speech and a ``@hold`` go together, where no hold stands (lexical).
 
-    python -m scripts.mod.cp_table --evidence runs --views-manifest <json> \
-        --report <probe json>... --out <json>
+    python -m scripts.mod.cp_table --evidence runs \
+        (--views-manifest <json> | --views-file <json>) --report <probe json>... \
+        --out <json>
 """
 
 from __future__ import annotations
@@ -109,17 +110,19 @@ def tally(cs: Sequence[Json]) -> Json:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.mod.cp_table")
     parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--views-manifest", type=Path)
+    src = parser.add_mutually_exclusive_group()
+    src.add_argument("--views-manifest", type=Path)
+    src.add_argument("--views-file", type=Path, help="constructed views (cp_sets)")
     parser.add_argument("--max-views", type=int, default=pss.HUGE)
     parser.add_argument("--report", type=Path, action="append", required=True)
     parser.add_argument("--out", type=Path, required=True)
     a = parser.parse_args(argv)
-    a.views_file, a.no_reference = None, False
+    a.no_reference = a.views_file is not None  # a views file has no reference
     views, funnel = ts.views_of(a)
     at = {(v.run_id, v.turn): v for v in views}
     tok, doc = cast(ts.Tok, load_tokenizer()), {"funnel": funnel, "arms": {}}
     for path in a.report:
-        arms, _, _ = ts.load([path], views)
+        arms, _, _ = ts.load([path], views, a.no_reference)
         for arm, rows in arms.items():
             cs = [check(r, at[k], tok) for k, r in rows.items()]
             doc["arms"].setdefault(arm, tally(cs))
