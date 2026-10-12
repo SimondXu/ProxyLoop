@@ -108,9 +108,20 @@ class ToolRequest(Frozen):
 
 
 class Usage(Frozen):
-    prompt_tokens: int = Field(ge=0)
+    prompt_tokens: int = Field(ge=0)  # the whole input, cached parts included
     completion_tokens: int = Field(ge=0)
     reasoning_tokens: int | None = None  # as the provider reports it
+    # Of prompt_tokens, as the provider reports them (Anthropic, ADR-0027); None:
+    # not reported, so the input cannot be priced from the split.
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _within_prompt(self) -> Self:
+        cached = (self.cache_read_tokens or 0) + (self.cache_write_tokens or 0)
+        if cached > self.prompt_tokens:
+            raise ValueError("cache tokens are part of prompt_tokens")
+        return self
 
 
 class LLMCallRecord(Frozen):
