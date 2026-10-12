@@ -24,10 +24,11 @@ from proxyloop.contract.llm import (
     ToolCall,
     ToolRequest,
     ToolSpec,
+    Usage,
 )
 from proxyloop.llm.anthropic import AnthropicClient
 from proxyloop.llm.factory import make_client
-from proxyloop.llm.spend import SpendLedger
+from proxyloop.llm.spend import ANTHROPIC_RATES, SpendLedger
 
 
 def sonnet(effort: ReasoningEffort | None = "medium") -> ModelRef:
@@ -118,7 +119,9 @@ def test_slow_request_maps_to_messages_and_the_response_folds_back(
     assert wire.requests[0].url.path == "/v1/messages"
     assert headers["x-api-key"] == KEY and headers["anthropic-version"] == "2023-06-01"
     assert "authorization" not in headers
-    assert sent["system"] == "S"
+    assert sent["system"] == [  # the one breakpoint: the stable prefix ends here
+        {"type": "text", "text": "S", "cache_control": {"type": "ephemeral"}}
+    ]
     assert sent["messages"] == [
         {"role": "user", "content": [{"type": "text", "text": "TASK head"}]},
         {
@@ -155,7 +158,7 @@ def test_slow_request_maps_to_messages_and_the_response_folds_back(
     ]
     assert "tool_choice" not in sent and "temperature" not in sent
     assert "fallbacks" not in sent and "stream" not in sent
-    assert sent["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in sent  # a breakpoint on the history never hits
     assert sent["thinking"] == {"type": "adaptive"}
     assert sent["output_config"] == {"effort": "medium"}
     assert response.text == "ok"
@@ -164,6 +167,10 @@ def test_slow_request_maps_to_messages_and_the_response_folds_back(
     record = response.record
     assert record.usage and record.usage.prompt_tokens == 5000  # cache read + write
     assert record.usage.completion_tokens == 50
+    assert (record.usage.cache_read_tokens, record.usage.cache_write_tokens) == (
+        4000,
+        900,
+    )
     assert record.finish_reason == "tool_use" and record.request_id == "msg_01"
     assert record.served_model_echo == "claude-sonnet-5-5"
     assert record.sampling_sent == {}
@@ -266,10 +273,24 @@ def test_minimal_effort_and_text_streams_are_refused(monkeypatch: Any) -> None:
         llm.stream_text(text)
 
 
-def test_sonnet_is_priced_at_the_upper_bound_rate(monkeypatch: Any) -> None:
+def test_sonnet_is_priced_from_the_cache_split(monkeypatch: Any) -> None:
     wire = Recorder(httpx.Response(200, json=body()))
     response = asyncio.run(client(monkeypatch, wire).chat_tools(SLOW))
     ledger = SpendLedger(projected_tokens=200_000, projected_calls=40, refs=[sonnet()])
     charge = ledger.price(response.record)
     assert charge.basis == "tokens"
-    assert charge.micro_usd == 5000 * 2.50 + 50 * 10.00  # $2.50/M in, $10/M out
+    # 100 plain x $2 + 4000 read x $0.20 + 900 write x $2.50 + 50 out x $10
+    assert charge.micro_usd == 100 * 2.00 + 4000 * 0.20 + 900 * 2.50 + 50 * 10.00
+
+
+def test_without_a_cache_split_input_is_priced_at_the_upper_bound() -> None:
+    rate = ANTHROPIC_RATES["claude-sonnet-5-5"]
+    plain = Usage(prompt_tokens=1000, completion_tokens=10)
+    assert rate.micro_usd(plain) == 1000 * 2.50 + 10 * 10.00
+    with pytest.raises(ValueError, match="part of prompt_tokens"):
+        Usage(
+            prompt_tokens=10,
+            completion_tokens=0,
+            cache_read_tokens=8,
+            cache_write_tokens=8,
+        )

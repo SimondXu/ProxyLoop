@@ -29,7 +29,7 @@ from typing import Literal
 from pydantic import Field
 
 from proxyloop.contract.base import Frozen
-from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole, ModelRef
+from proxyloop.contract.llm import Endpoint, LLMCallRecord, LLMRole, ModelRef, Usage
 from proxyloop.contract.state import Spend
 
 RUNAWAY_FACTOR = 3  # was 10 (S0-SYS-04)
@@ -41,6 +41,21 @@ SESSION_CAP_MICRO_USD = 2_000_000  # $2 per session, whatever the projection
 class Rate:
     usd_per_m_input: float
     usd_per_m_output: float
+    # Cached input, when the provider reports the split (Usage.cache_*_tokens).
+    usd_per_m_cache_read: float | None = None
+    usd_per_m_cache_write: float | None = None
+
+    def micro_usd(self, usage: Usage) -> int:  # USD per 1M == micro-USD per token
+        read, write = usage.cache_read_tokens, usage.cache_write_tokens
+        cr, cw = self.usd_per_m_cache_read, self.usd_per_m_cache_write
+        if cr is None or cw is None:  # no cache rates: every input token at input
+            prompt = usage.prompt_tokens * self.usd_per_m_input
+        elif read is None or write is None:  # rates but no split: the upper bound
+            prompt = usage.prompt_tokens * max(cw, self.usd_per_m_input)
+        else:
+            plain = usage.prompt_tokens - read - write
+            prompt = plain * self.usd_per_m_input + read * cr + write * cw
+        return round(prompt + usage.completion_tokens * self.usd_per_m_output)
 
 
 # ADR-0001 Decision 7: solved from the relay's total_usage deltas (USD per 1M tokens).
@@ -61,11 +76,11 @@ OPENROUTER_RATES: Mapping[str, Rate] = {
 }
 
 # Anthropic's first-party list prices (the claude-api reference, cached 2026-10-06;
-# ADR-0027). Input is charged at the 5-minute cache-write rate (1.25 x $2.00): the
-# record's ``prompt_tokens`` carries no cache split, so this is an upper bound,
-# never an under-count. The user's monthly API credit pays; the ledger still caps.
+# ADR-0027): input $2.00, cache read 0.1x, 5-minute cache write 1.25x, output $10.
+# Priced from the record's cache split; without one, input at the write rate (an
+# upper bound). The user's monthly API credit pays; the ledger still caps.
 ANTHROPIC_RATES: Mapping[str, Rate] = {
-    "claude-sonnet-5-5": Rate(2.50, 10.00),
+    "claude-sonnet-5-5": Rate(2.00, 10.00, 0.20, 2.50),
 }
 
 
@@ -128,10 +143,7 @@ class SpendLedger:
             basis = "gpu_time"
         elif rate is not None and usage is not None:
             basis = "tokens"
-            micro = round(
-                usage.prompt_tokens * rate.usd_per_m_input
-                + usage.completion_tokens * rate.usd_per_m_output
-            )  # USD per 1M tokens == micro-USD per token
+            micro = rate.micro_usd(usage)
         else:
             basis = "unpriced"
         return Charge(
