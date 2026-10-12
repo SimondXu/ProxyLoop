@@ -84,10 +84,10 @@ class Speaker:
         try:
             if fresh is not None and not fresh():  # stale on the floor: not said
                 return False
-            last, heard = await self._deliver(lines, interruptible)
+            _, heard = await self._deliver(lines, interruptible)
         finally:
             self._lock.release()
-        self._send(last, heard)
+        self._send(heard)
         return True
 
     async def verbatim(self, said: Event) -> None:
@@ -114,7 +114,7 @@ class Speaker:
                 k.authority.move(heard_as, last.event_id)
         finally:
             self._lock.release()
-        self._send(last, heard)
+        self._send(heard)
 
     async def _floor_revalidated(self, cap: str | None, text: str) -> str | None:
         """Take the floor, then revalidate ``cap``: why the line may not go out.
@@ -216,21 +216,12 @@ class Speaker:
         self._channel.floor(True, k.now())
         return last, heard
 
-    def _send(self, last: Event | None, heard: list[tuple[Event, str]]) -> None:
-        """Hand the turn as heard to the partner: one message, or for a channel
-        that ``HEARS_LINES`` (the sim rep) each line as its own utterance, so a
-        lever and an ask said in one turn are each heard (S1-SYS-102)."""
-        k = self._k
-        if self._channel.HEARS_LINES:
-            for ev, said in heard:
-                if said:
-                    utt_id = str(ev.payload["utt_id"])
-                    k.spawn(self._channel.send(said, utt_id, ev.event_id, k.now()))
-            return
-        text = " ".join(said for _, said in heard if said)
-        if last is not None and text:
-            utt_id = str(last.payload["utt_id"])
-            k.spawn(self._channel.send(text, utt_id, last.event_id, k.now()))
+    def _send(self, heard: list[tuple[Event, str]]) -> None:
+        """Hand the turn as heard to the partner (``Channel.hear``): the sim
+        rep hears each line as its own utterance (S1-SYS-102), others one
+        message. Nothing when no word of it was heard."""
+        if any(said for _, said in heard):
+            self._k.spawn(self._channel.hear(heard, self._k.now()))
 
     @asynccontextmanager
     async def partner_turn(self) -> AsyncGenerator[None]:

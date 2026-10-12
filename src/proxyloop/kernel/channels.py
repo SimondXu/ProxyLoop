@@ -8,13 +8,15 @@ from __future__ import annotations
 import asyncio
 import sys
 import threading
-from collections.abc import Coroutine, Mapping
+from collections.abc import Coroutine, Mapping, Sequence
 from dataclasses import dataclass
 from types import CoroutineType
 from typing import Any, Literal
 
 from proxyloop.contract.config import SessionConfig
+from proxyloop.contract.events import Event
 from proxyloop.contract.llm import LLMClient, LLMRole
+from proxyloop.env.counterparty.ear import Heard
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
 from proxyloop.env.tasks.schema import Task
 from proxyloop.env.user.approver import Approver
@@ -45,10 +47,6 @@ class Incoming:  # One partner turn: lines with the world event behind each, if 
 
 
 class Channel:  # The base: a partner that never speaks first and has no clock
-    # True: each line of a turn reaches it as its own utterance, in delivery
-    # order (``Speaker._send``); False: the turn's lines joined, as one message.
-    HEARS_LINES = False
-
     def __init__(self) -> None:
         self.incoming: asyncio.Queue[Incoming] = asyncio.Queue()
         self._composing, self._quiet = 0, asyncio.Event()
@@ -68,6 +66,16 @@ class Channel:  # The base: a partner that never speaks first and has no clock
 
     async def send(self, text: str | None, utt_id: str, cause: str, t_ms: int) -> None:
         return None
+
+    def hear(
+        self, turn: Sequence[tuple[Event, str]], t_ms: int
+    ) -> Coroutine[Any, Any, None]:
+        """An agent turn as heard (each line's ``utt.delivered`` and its text as
+        heard; some heard): by default one message, its lines joined, sent as
+        its last line (``Speaker._send``)."""
+        last = turn[-1][0]
+        text = " ".join(said for _, said in turn if said)
+        return self.send(text, str(last.payload["utt_id"]), last.event_id, t_ms)
 
     async def tick(self, t_ms: int) -> None:
         return None
@@ -114,8 +122,6 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
     only for identity, a tick only for the clock (``env.counterparty.policy``).
     A rep turn's end kind and strikes (each with its cause) pass through."""
 
-    HEARS_LINES = True  # S1-SYS-102: the Ear names one act per utterance
-
     def __init__(self, rep: SimRep) -> None:
         super().__init__()
         self._rep = rep
@@ -125,6 +131,17 @@ class SimRepChannel(Channel):  # hears text_heard; ticks on a free floor
             self._rep.on_agent_utterance(utt_id, text, cause, t_ms) if text else None
         )
         return self._run(heard, "identity")
+
+    def hear(self, turn: Sequence[tuple[Event, str]], t_ms: int) -> Turn:
+        """Each line heard as its own utterance, the turn's lines as one block:
+        the Ear names one act per utterance, so a lever and an ask said in one
+        turn are both heard (S1-SYS-102, ADR-0021)."""
+        said = [
+            Heard(str(ev.payload["utt_id"]), text, ev.event_id, t_ms)
+            for ev, text in turn
+            if text
+        ]
+        return self._run(self._rep.on_agent_turn(said), "identity")
 
     def tick(self, t_ms: int) -> Turn:
         return self._run(self._rep.tick(t_ms), "timer")

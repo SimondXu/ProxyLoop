@@ -1,7 +1,8 @@
 """SimRep: Ear -> policy -> Mouth, emitting the world events (§4.2, §10.1).
 
 Per heard block (ADR-0021: every agent utterance heard while a rep turn was in
-flight, in delivery order; one utterance when none queued): ``llm.call``s,
+flight, in delivery order, each line of an agent turn its own utterance; one
+utterance when none queued): ``llm.call``s,
 then per utterance a ``rep.ear`` [its ``utt.delivered``, the calls]; per
 decision ``rep.policy`` [its utterance's ``rep.ear``], on a commit
 ``rep.commit_heard`` and ``ledger.write``, then ``llm.call``s and
@@ -15,9 +16,9 @@ was voiced once), and the end.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Any, Literal
+from typing import Literal
 
 from proxyloop.contract.llm import LLMClient
 from proxyloop.env import world
@@ -59,19 +60,20 @@ class SimRep:
         self._turn = asyncio.Lock()
         self._heard: list[Heard] = []  # heard, not yet taken by a rep turn
 
-    def on_agent_utterance(
+    async def on_agent_utterance(
         self, utt_id: str, text_heard: str, event_id: str, t_ms: int
-    ) -> Coroutine[Any, Any, RepTurn]:
-        """React to the agent's utterances as heard (their ``utt.delivered``):
-        the turn takes every one heard so far as one block. The utterance is
-        heard when this is called, so the lines of one agent turn handed over
-        together form one block (S1-SYS-102). A call whose utterance an earlier
-        turn already took returns an empty turn."""
+    ) -> RepTurn:
+        """React to an agent utterance as heard (its ``utt.delivered``)."""
 
-        self._heard.append(Heard(utt_id, text_heard, event_id, t_ms))
-        return self._take()
+        return await self.on_agent_turn([Heard(utt_id, text_heard, event_id, t_ms)])
 
-    async def _take(self) -> RepTurn:
+    async def on_agent_turn(self, said: Sequence[Heard]) -> RepTurn:
+        """React to the agent's utterances as heard: every line of one agent
+        turn joins the backlog at once, in delivery order (S1-SYS-102), and the
+        turn takes every one heard so far as one block. A call whose utterances
+        an earlier turn already took returns an empty turn."""
+
+        self._heard.extend(said)
         async with self._turn:
             block, self._heard = self._heard, []
             if not block or self.policy.done:

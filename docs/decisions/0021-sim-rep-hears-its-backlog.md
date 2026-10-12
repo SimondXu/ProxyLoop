@@ -4,6 +4,7 @@
 - **Date:** 2026-09-28
 - **Task:** S1-SYS-63
 - **Amends:** ADR-0005 Decision 5 ("one classify per utterance" becomes one classify call per heard block, one act per utterance).
+- **Amended by S1-SYS-102 (2026-10-11, user decision "方案A"):** each line of an agent turn reaches the sim rep as its own utterance (its own `utt.delivered`, as heard), in delivery order, and the lines of one turn join the backlog together, so they fall in one block under D1–D6. The kernel no longer joins a turn's lines into one utterance for the rep, where one act had to stand for a lever and an ask said together and the lever was dropped (run `20261012T032545Z-6ebdc0`). Other partners (the SimUser, people) still hear a turn as one message. Test: `tests/kernel/test_turn_lines.py`.
 
 ## Context
 `SimRep` ran one Ear → policy → Mouth round per agent turn, first in, first out, under one lock. A round takes world-model time, and the agent speaks faster than that, so the queue grew through the ungraded smoke `runs/20260928T041542Z-bdfcc0` (not committed). Read-back asks were still queued behind older discount asks when the session ended, and the rep kept answering stale turns. The Ear labelled every utterance it received correctly. A listener hears everything said while they compose, so the backlog is a simulator artefact, not caller behaviour.
