@@ -181,6 +181,39 @@ def test_a_fenced_accept_holding_fastc_is_still_revoked(
     arun(case())
 
 
+@pytest.mark.parametrize("why", ["fence", "epoch"])
+def test_a_second_hold_then_a_revoke_leaves_fastc_free_to_speak(
+    tmp_path: Path, why: str
+) -> None:
+    """Review of #308: the rep speaks again while the accept holds FastC off the
+    floor, so the line takes the floor and holds a second time; a revoke then
+    ends it. Every hold is given back: FastC's held turn is said, and nothing
+    stays queued (a leaked count would silence FastC for the rest of the call)."""
+
+    async def case() -> None:
+        rep = HearingRep()
+        sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
+        _, held = await _fenced_while_fastc_waits(sim, rep)
+        sim.rep_says("And one more thing about that offer.")
+        await sim.vt.run_for(2_000)  # a second bound fence: the line holds again
+        assert not sim.k.speakers["cp"].speaking and line_ends(sim) == []
+        if why == "fence":
+            sim.user_says("Stop, do not accept anything.")
+        else:
+            sim.revoke()
+        await sim.vt.run_for(100)
+        (end,) = line_ends(sim)
+        assert end.type == "speak.revoked" and end.payload["reason"] == why
+        speaker = sim.k.speakers["cp"]
+        assert speaker._queued == 0  # pyright: ignore[reportPrivateUsage]
+        await sim.vt.run_for(FAST_MS + 15_000)
+        said = sim.of("utt.delivered", utt_id=held.payload["utt_id"])
+        assert said, "FastC never spoke again"
+        await sim.stop()
+
+    arun(case())
+
+
 def test_relay_only_an_unbound_fence_lets_fastc_s_held_turn_speak(
     tmp_path: Path,
 ) -> None:
