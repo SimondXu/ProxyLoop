@@ -420,32 +420,32 @@ FORMATS = [
     ("I've been a customer for 12 Years now.", TENURE, "12", "12"),
     ("I've been with you for 1 year", TENURE, "1", "1"),
     ("I've been with you for 06 years", TENURE, "06", "06"),  # as written
-    # round 4: first person only, and never with a negation
-    ("been a customer for 12 Years now.", TENURE, "12", None),
-    ("We have been with you for 1 year", TENURE, "1", None),
-    ("my wife has been a customer for 20 years", TENURE, "20", None),
-    ("I have never been a customer for 3 years", TENURE, "3", None),
-    ("I haven't been with you for 6 years", TENURE, "6", None),
-    ("I haven\u2019t been with you for 6 years", TENURE, "6", None),
-    ("we've been with you for 6 years", TENURE, "6", None),
-    ("been with you for 6 years", TENURE, "6", None),
-    ("I've been with you for 6 years? not really", TENURE, "6", None),
-    ("I've been with you for 6 years, isn't that enough", TENURE, "6", None),
-    ("AI've been with you for 6 years", TENURE, "6", None),
-    ("I ve been with you for 6 years", TENURE, "6", None),
-    ("I`ve been with you for 6 years", TENURE, "6", None),
-    # #153 round 3: tenure outside its context, or next to an age word
+    # round 4 (first person, no negation) was dropped by S1-SYS-105: any phrasing
+    ("been a customer for 12 Years now.", TENURE, "12", "12"),
+    ("We have been with you for 1 year", TENURE, "1", "1"),
+    ("my wife has been a customer for 20 years", TENURE, "20", "20"),
+    ("I have never been a customer for 3 years", TENURE, "3", "3"),
+    ("I haven't been with you for 6 years", TENURE, "6", "6"),
+    ("I haven\u2019t been with you for 6 years", TENURE, "6", "6"),
+    ("we've been with you for 6 years", TENURE, "6", "6"),
+    ("been with you for 6 years", TENURE, "6", "6"),
+    ("I've been with you for 6 years? not really", TENURE, "6", "6"),
+    ("I've been with you for 6 years, isn't that enough", TENURE, "6", "6"),
+    ("AI've been with you for 6 years", TENURE, "6", "6"),
+    ("I ve been with you for 6 years", TENURE, "6", "6"),
+    ("I`ve been with you for 6 years", TENURE, "6", "6"),
+    # never an age or a time ago; any other "<n> years" is tenure (S1-SYS-105)
     ("I'm 36 years old", TENURE, "36", None),
     ("I am 36 years of age", TENURE, "36", None),
-    ("my kid is 12 years", TENURE, "12", None),
-    ("my contract is 2 years", TENURE, "2", None),
+    ("my kid is 12 years", TENURE, "12", "12"),
+    ("my contract is 2 years", TENURE, "2", "2"),
     ("I moved here 6 years ago", TENURE, "6", None),
-    ("6 years", TENURE, "6", None),
-    ("I've been with you for 6 years, I'm 36 years old", TENURE, "6", None),
-    ("been with you for 6 years since I was 20, aged 26", TENURE, "6", None),
-    ("I'll stay with you for 2 years", TENURE, "2", None),
-    ("customer for 2 years if the price is right", TENURE, "2", None),
-    ("2 years with you max", TENURE, "2", None),
+    ("6 years", TENURE, "6", "6"),
+    ("I've been with you for 6 years, I'm 36 years old", TENURE, "6", "6"),
+    ("been with you for 6 years since I was 20, aged 26", TENURE, "6", "6"),
+    ("I'll stay with you for 2 years", TENURE, "2", "2"),
+    ("customer for 2 years if the price is right", TENURE, "2", "2"),
+    ("2 years with you max", TENURE, "2", "2"),
     ("I've been with you for 6 years", TENURE, "36", None),
     ("I've been with you for 36 years", TENURE, "6", None),
     ("I've been with you for 1.6 years", TENURE, "6", None),
@@ -454,26 +454,26 @@ FORMATS = [
     ("I've been with you for 6 years", TENURE, "06", None),
     ("I've been with you for 6 years", TENURE, "6 years", None),
     ("I've been with you for 6years", TENURE, "6", None),
-    ("I've been with you for 6  years", TENURE, "6", None),
-    ("I've been with you for 6\u00a0years", TENURE, "6", None),
+    ("I've been with you for 6  years", TENURE, "6", "6"),
+    ("I've been with you for 6\u00a0years", TENURE, "6", "6"),
     ("I've been with you for 6 yearsx", TENURE, "6", None),
     ("I've been with you for 6 year-old", TENURE, "6", None),
     ("I've been with you for 6 yea\u0280s", TENURE, "6", None),
-    ("I've been with you for 6 year\u017f", TENURE, "6", None),
+    ("I've been with you for 6 year\u017f", TENURE, "6", "6"),  # \u017f folds to s
     ("I've been with you for \uff16 years", TENURE, "\uff16", None),
     ("I've been with you for \uff16 years", TENURE, "6", None),
     ("I've been with you for \u0666 years", TENURE, "6", None),
     ("I've been with you for six years", TENURE, "six", None),
-    ("I've been with you for 36 years \u043eld", TENURE, "36", None),
-    ("I've been with you for 36 years, \u0430ged 36", TENURE, "36", None),
+    ("I've been with you for 36 years \u043eld", TENURE, "36", "36"),
+    ("I've been with you for 36 years, \u0430ged 36", TENURE, "36", "36"),
     ("I\u2019ve been with you for 6 years", TENURE, "6", "6"),
-    ("I've BEEN WITH YOU FOR 6 YEARS", TENURE, "6", None),
+    ("I've BEEN WITH YOU FOR 6 YEARS", TENURE, "6", "6"),
     ("I've been with you for 6 years-old", TENURE, "6", None),
-    ("I've been with youfor 6 years", TENURE, "6", None),
+    ("I've been with youfor 6 years", TENURE, "6", "6"),
     ("I've been with you for 6 lines", TENURE, "6", None),
     # S1-SYS-20: the first person starts the message or a sentence
-    ("She said I've been with you for 6 years", TENURE, "6", None),
-    ("my wife says I've been with you for 6 years", TENURE, "6", None),
+    ("She said I've been with you for 6 years", TENURE, "6", "6"),
+    ("my wife says I've been with you for 6 years", TENURE, "6", "6"),
     ("I've been with you for 6 years.", TENURE, "6", "6"),
     ("Thanks. I've been with you for 6 years", TENURE, "6", "6"),
     ("Thanks!  I've been with you for 6 years", TENURE, "6", "6"),
@@ -661,69 +661,36 @@ def test_a_hold_for_decision_renders_as_checking_with_the_customer() -> None:
     assert "check with your customer (@hold decision)" in rendered
 
 
-# S1-SYS-94 R6 (root decision, I4 review): the object of the first-person
-# tenure widens to "them" and the case's company name or a leading
-# whole-word prefix of it (any case); the number stays bound to the user's
-# own first-person statement
+# User decision 2026-10-12 (S1-SYS-105): tenure is not confidential, so any
+# phrasing of "<n> years" in the user's own message publishes it; the number
+# stays bound to that message (I4). Phrasings from live runs 6235ab, 94bb0c and
+# 9a7dd3 (the last recorded private before this change).
 COMPANY_TENURE = [
     ("I've been with them for 6 years", "", "6", "6"),
-    ("I've been with Northwind for 6 years", "Northwind", "6", "6"),
-    ("I've been with Crestline for 8 years", "Crestline", "8", "8"),
-    ("I've been with Northwind Mobile for 6 years.", "Northwind Mobile", "6", "6"),
-    ("Hi. I've been with northwind mobile for 6 years", "Northwind Mobile", "6", "6"),
-    ("I've been with Brightwave for 6 years", "Northwind Mobile", "6", None),
-    # the full name or a leading whole-word prefix of it (root, R6)
-    ("I've been with Northwind for 6 years", "Northwind Mobile", "6", "6"),
     ("I've been with Crestline for 8 years", "Crestline Wireless", "8", "8"),
-    ("I've been with Lumen for 4 years", "Lumen Home Internet", "4", "4"),
-    ("I've been with Lumen Home for 4 years", "Lumen Home Internet", "4", "4"),
-    ("I've been with Mobile for 6 years", "Northwind Mobile", "6", None),
-    ("I've been with Wireless for 8 years", "Crestline Wireless", "8", None),
-    ("I've been with Home Internet for 4 years", "Lumen Home Internet", "4", None),
-    ("I've been with Crestlinex for 8 years", "Crestline Wireless", "8", None),
-    ("I've been with Crest for 8 years", "Crestline Wireless", "8", None),
-    ("I've been with Crestline for 8 years", "", "8", None),  # no company
-    ("I've been with Northwindx for 6 years", "Northwind", "6", None),
-    ("I haven't been with them for 6 years", "", "6", None),  # negation
-    ("I've never been with Crestline for 8 years", "Crestline", "8", None),
-    ("He has been with them for 6 years", "", "6", None),  # third person
-    ("My wife says I've been with them for 6 years", "", "6", None),
-    ("I've been with them for 6 months", "", "6", None),  # not years
-    ("I've been with them for six years", "", "six", None),
-    ("I've been with them for 36 years, I'm 60 years old", "", "36", None),
-    # S1-SYS-98: "a customer with/of/at <who>" and a clause after a comma
     ("I have been a customer with Crestline for 8 years.", "Crestline", "8", "8"),
-    ("I've been a customer with Crestline for 8 years", "Crestline", "8", "8"),
-    ("I have been a customer of Northwind for 6 years", "Northwind", "6", "6"),
-    ("I've been a customer at them for 6 years", "", "6", "6"),
-    ("I've been a customer with you for 6 years", "", "6", "6"),
-    ("Brightwave is offering 60, and I've been with Northwind for 6 years",
-     "Northwind", "6", "6"),
-    ("Brightwave is offering 60, I've been with them for 6 years", "", "6", "6"),
-    ("It is 60, but I've been a customer for 6 years", "", "6", "6"),
-    ("Fine, so I've been with them for 6 years", "", "6", "6"),
-    ("I've been a customer with Brightwave for 8 years", "Crestline", "8", None),
-    ("I've been a customer with Crestline for 8 years", "", "8", None),
-    ("I've been a customer with Crestline for 8 months", "Crestline", "8", None),
-    ("I've been a customer since 2018, so 6 years", "", "6", None),
-    ("I've not been a customer with Crestline for 8 years", "Crestline", "8", None),
-    ("Sure, and I've never been with them for 6 years", "", "6", None),
-    ("She said I've been with them for 6 years", "", "6", None),  # reported
-    ("she said, and I've been with them for 6 years", "", "6", None),
-    ("he told me, I've been a customer for 6 years", "", "6", None),
-    ("he says, I've been with them for 6 years", "", "6", None),
-    ("The rep mentioned 60, and I've been with them for 6 years", "", "6", None),
-    ("She told me. I've been with them for 6 years", "", "6", "6"),  # own sentence
-    ("Sure, and he's been with them for 6 years", "", "6", None),
-    ("Sure, and I've been with them for 6 years old", "", "6", None),
-    # live run 94bb0c (2026-10-11): the user's own words, recorded private then
     ("The account is under Marcus Bell, the last four digits are 5190, and I've "
      "been with Crestline for 8 years.", "Crestline Wireless", "8", "8"),
+    ("I've had service with Crestline for 8 years.", "Crestline Wireless", "8", "8"),
+    ("I\u2019ve had service with Crestline for 8 years.", "", "8", "8"),
+    ("About 8 years now.", "", "8", "8"),
+    ("It has been 8 yrs", "", "8", "8"),
+    ("I've been with Brightwave for 6 years", "Northwind Mobile", "6", "6"),
+    ("She said I've been with them for 6 years", "", "6", "6"),
+    ("I'm 60 and have been with them 36 years", "", "36", "36"),
+    # the number must be said as years, by itself
+    ("I've been with them for 6 months", "", "6", None),
+    ("I've been with them for six years", "", "six", None),
+    ("I'm 36 years old", "", "36", None),
+    ("I've been with them for 18 years", "", "8", None),
+    ("I've been with them for 6.5 years", "", "5", None),
+    ("I've been with them for 6 years", "", "7", None),
+    ("I've been with them for 123 years", "", "123", None),
 ]  # fmt: skip
 
 
 @pytest.mark.parametrize(("text", "company", "value", "published"), COMPANY_TENURE)
-def test_r6_tenure_with_them_or_the_company_goes_public(
+def test_tenure_said_as_years_goes_public(
     text: str, company: str, value: str, published: str | None
 ) -> None:
     bb = _named(text)
