@@ -38,7 +38,7 @@ Fast does **not** learn negotiation decisions; those are Slow's. Labels come fro
 ### 2.1 Teacher-in-harness episodes (wall clock)
 | Field | Value |
 |---|---|
-| `fast_user`, `fast_cp` | `deepseek-flash` via TeamRouter (served echo `deepseek-v4-1-flash-260910`; ADR-0022 amendment, S1-MOD-10), temperature 0.7, `max_tokens` 16384 as a runaway guard with labels ≤ 160 Qwen tokens (D7), no tools; the effort is still open (useful/127 in the re-test under the candidate profiles, `docs/decisions/data/teacher-select-report-retest.md`: none 77, medium 93, high 92) |
+| `fast_user`, `fast_cp` | `deepseek-flash` via TeamRouter (served echo `deepseek-v4-1-flash-260910`; ADR-0022 amendment, S1-MOD-10), temperature 0.7, `max_tokens` 16384 as a runaway guard with labels ≤ 160 Qwen tokens (D7), no tools; effort medium (user, 2026-10-12; useful/127 in the re-test under the candidate profiles, `docs/decisions/data/teacher-select-report-retest.md`: none 77, medium 93, high 92) |
 | `slow` | `claude-sonnet-5-5` at effort medium (ADR-0027), the same as in evaluation |
 | world | Gemini Flash Ear/Mouth/SimUser; piloted (S3) or train-split (S4) families only |
 | clock | wall. The teacher's slower TTFS is real to the world. `teacher_ttfs` vs `student_ttfs` and cp strikes per episode are reported (RISKS R5) |

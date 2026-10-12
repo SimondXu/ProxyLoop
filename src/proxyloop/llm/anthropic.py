@@ -1,20 +1,24 @@
 """Claude over Anthropic's native ``/v1/messages`` (ADR-0027): Slow on
 ``claude-sonnet-5-5``, billed to the user's monthly API credit.
 
-Tool calls only: one non-streamed response per call; ``stream_text`` is not
-served. Leading system messages become the ``system`` field; a later one stays a
-``system`` message. An assistant turn's tool calls become ``tool_use`` blocks and
+Tool calls: one non-streamed response per call. Text (S1-MOD-11, Haiku as a Fast
+candidate in the same-state probe): one streamed call, the text deltas yielded,
+thinking deltas dropped, so the first token is the first spoken one. Leading
+system messages become the ``system`` field; a later one stays a ``system``
+message. An assistant turn's tool calls become ``tool_use`` blocks and
 each ``tool`` message a ``tool_result`` block of the following user turn. Thinking
 blocks are never replayed: ``ChatMessage`` carries none, and Slow's context is
 windowed, so a replayed block could not pass the history-editing check. Empty
 turns and whitespace-only text are not sent; adjacent same-role turns merge.
 
-Effort: ``none`` is ``thinking: between_tools`` (Sonnet 5.5's lowest setting);
+Effort: ``none`` turns thinking off as the model allows (``THINKING_OFF``);
 ``low``, ``medium`` and ``high`` are adaptive thinking at that effort; ``minimal``
-has no counterpart and is refused. ``tool_choice`` and sampling pass through as
-asked: Sonnet 5.5 answers a forced tool or a non-default temperature with a 400,
-which is ``LLMUnavailable``, never a quietly relaxed request. No ``fallbacks``
-parameter is ever sent (AGENTS rule 6).
+has no counterpart and is refused. ``tool_choice`` and a tool call's sampling pass
+through as asked: Sonnet 5.5 answers a forced tool or a non-default temperature
+with a 400, which is ``LLMUnavailable``, never a quietly relaxed request. A text
+call sends no sampling to a model in ``NO_SAMPLING``, and its record's
+``sampling_sent`` says so (ADR-0019). No ``fallbacks`` parameter is ever sent
+(AGENTS rule 6).
 
 Prompt caching: one breakpoint, at the end of the system prompt (tools and system
 are the stable prefix). Slow's history cannot be cached: the newest message is
@@ -43,12 +47,33 @@ from proxyloop.llm.http import Attempt, EndpointError, HTTPAdapter, Json
 
 PATH = "/v1/messages"
 VERSION = "2023-06-01"
+# Source: the claude-api skill's model table (cached 2026-10-06). Sonnet 5.5 refuses
+# ``disabled`` and offers ``between_tools``; Haiku 5.5 takes ``disabled`` at effort
+# high or below (its default is medium). Both answer non-default sampling with a 400.
+THINKING_OFF: dict[str, Json] = {
+    "claude-sonnet-5-5": {"type": "between_tools"},
+    "claude-haiku-5-5": {"type": "disabled"},
+}
+NO_SAMPLING = frozenset({"claude-sonnet-5-5", "claude-haiku-5-5"})
 
 
 class MessagesAttempt(Attempt):
     def body(self, chunk: Json) -> None:
-        """The fields of a Messages API response."""
+        """A Messages API response, or one event of its stream: ``message_start``
+        carries the id, the model and the input usage, ``message_delta`` the stop
+        reason and the final output count; the other events carry text only."""
 
+        kind = chunk.get("type")
+        if kind == "message_start":
+            chunk = chunk["message"]
+        elif kind == "message_delta":
+            if self.usage is None:
+                raise EndpointError("message_delta before message_start")
+            out = chunk["usage"]["output_tokens"]
+            self.usage = self.usage.model_copy(update={"completion_tokens": out})
+            chunk = chunk["delta"]
+        elif kind != "message":
+            return
         self.request_id = self.request_id or chunk.get("id")
         self.echo = self.echo or chunk.get("model")
         usage: Json | None = chunk.get("usage")
@@ -132,6 +157,15 @@ def _tools(body: Json) -> str:
     return tool_response_content(text, calls)
 
 
+def _delta_text(chunk: Json) -> str | None:
+    """The spoken text of one stream event; thinking deltas are not spoken."""
+
+    delta: Json = chunk.get("delta") or {}
+    if chunk.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+        return str(delta["text"])
+    return None
+
+
 class AnthropicClient(HTTPAdapter):
     ENDPOINTS = ("anthropic",)
     ATTEMPT = MessagesAttempt
@@ -146,13 +180,31 @@ class AnthropicClient(HTTPAdapter):
         if effort == "minimal":
             raise ValueError("the anthropic endpoint has no 'minimal' effort")
         if effort == "none":
-            body["thinking"] = {"type": "between_tools"}
+            if self.ref.model_id not in THINKING_OFF:
+                raise ValueError(f"no thinking-off setting for {self.ref.model_id}")
+            body["thinking"] = THINKING_OFF[self.ref.model_id]
         else:
             body["thinking"] = {"type": "adaptive"}
             body["output_config"] = {"effort": effort}
 
     def stream_text(self, request: TextRequest) -> AsyncIterator[str | LLMCallRecord]:
-        raise ValueError("the anthropic endpoint serves tool calls only (ADR-0027)")
+        if not request.messages:
+            raise ValueError("the anthropic endpoint takes messages, not a prompt")
+        system, turns = _messages(request.messages)
+        body: Json = {
+            "model": self.ref.model_id,
+            "max_tokens": request.max_tokens,
+            "messages": turns,
+            "stream": True,
+        }
+        if system:
+            body["system"] = system
+        if self.ref.model_id not in NO_SAMPLING:
+            body["temperature"] = request.temperature
+            if request.top_p != 1.0:
+                body["top_p"] = request.top_p
+        self._effort(body)
+        return self._call(request, PATH, body, _delta_text)
 
     async def chat_tools(self, request: ToolRequest) -> ToolResponse:
         system, turns = _messages(request.messages)
