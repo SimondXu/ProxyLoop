@@ -33,7 +33,7 @@
 
 ## Non-goals
 - RL, QLoRA, training on the Mac, or any headline number from a quantised or Metal artefact.
-- An LLM judge on any headline metric. Sonnet never judges.
+- An LLM judge on any headline metric. Sonnet may judge outside headline metrics, for training-label review and instrument probes (user, 2026-10-12; ADR-0022).
 - "Deterministic code owns every commitment" or any other claim broader than I6.
 - Real calls or channels, publishing, or a public non-synthetic replay without the user's release-scoped approval.
 - Process documents beyond `PLAN.md`, `NORTH_STAR.md` and ADRs. No per-PR logs, phase contracts or status files.
