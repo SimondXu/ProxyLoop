@@ -14,7 +14,7 @@ State, not a log. It is updated inside the PR that changes it; the PR descriptio
 - **M2:** each of the 4 S1 families has at least one live, infra-clean run that passes `evidence-check MODE=claim` and gets its family's right tier from `python -m proxyloop.obs.diagnose` (ADR-0023): `x-out-of-envelope-approval` and `cp-hidden-fee-readback` A or B (a verified deal); `cp-direct-discount` (`info_only`) a verified close graded C or D, not E; `x-user-mind-change` S (stopped by the user, no commit after the stop). No run may be X.
 - **M3:** the battery: 10 runs per family, success rate reported with infra ends separate (ADR-0023 tiers).
 
-Status: **M1 reached 2026-10-12**: run `runs/20261012T060408Z-fc41ec` (main cf616b0) ended VERIFIED_COMPLETE, `evidence-check MODE=claim` ok, `diagnose` tier B (approval). One success, not a rate: M3 measures the rate. **M2: 2 of 4 families done**: x-out-of-envelope-approval (fc41ec, B); cp-direct-discount (`runs/20261012T063402Z-9a1849` at b6c1076: both rungs, $75 then $68 on the tenure lever, nothing accepted, `diagnose` C, `evidence-check MODE=claim` ok). Before the fix (S1-SYS-106: the `info_only` playbook pulls an available lever before the final offer), 66518e closed on rung 1 with `mention_tenure` available (E). af5744 (same sha, C) failed the claim check only because OpenRouter reported zero usage on one Fast call.
+Status: **M1 reached 2026-10-12**: run `runs/20261012T060408Z-fc41ec` (main cf616b0) ended VERIFIED_COMPLETE, `evidence-check MODE=claim` ok, `diagnose` tier B (approval). One success, not a rate: M3 measures the rate. **M2 reached 2026-10-12** (one live, infra-clean run per family, each `evidence-check MODE=claim` ok, none X): x-out-of-envelope-approval fc41ec (B); cp-direct-discount `runs/20261012T063402Z-9a1849` (b6c1076, C: $75 then $68 on the tenure lever, nothing accepted); cp-hidden-fee-readback `runs/20261012T063803Z-0b2df4` (b6c1076, A: the read-back surfaced the $99 install fee on $55, the user denied it, $62/12 mo with no fees accepted, confirmation 478407); x-user-mind-change `runs/20261012T064250Z-618fc8` (222ac1b, S: the user stopped while the $73 card was pending, the epoch moved, `finish(escalate)`, no commit). The one fix: S1-SYS-106 (#317), the `info_only` playbook pulls an available lever before the final offer; before it 66518e closed on rung 1 with `mention_tenure` available (E). af5744 (b6c1076, C) failed the claim check only because OpenRouter reported zero usage on one Fast call. Each is one success, not a rate.
 
 ## Trajectory ledger: `x-out-of-envelope-approval`
 
@@ -26,13 +26,10 @@ How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add
 
 ## Now / Next
 
-1. **M2**, one live run each, in this order, diagnose any failure to the step and fix it (stop rule: 3 PRs on one step without progress → a one-page rethink for the user):
-   - `cp-hidden-fee-readback` (`full`, gold `ledger`): the rep hides a fee; the read-back must surface it before any accept (A or B).
-   - `x-user-mind-change` (`full`, scripted `stop` after the card, gold `no_commit_after_stop`): the queued accept must be revoked, tier S; also confirms #313 did not break the scripted stop.
-2. **FastC after a commit** (a CON task, contract + ADR, a new `pl_cp` profile version): after the accept is heard FastC still says "I can't accept the offer on Marcus's behalf" (aebf80 231 s): its prompt shows `CASE STATUS: COMMITTED` with no meaning, and satisfied GUIDEs stay. Render COMMIT_AUTHORIZED/COMMITTED so FastC stops stalling, and retire satisfied GUIDEs. Coordinate the profile version with the model side (training data is bound to the profile).
-3. **M3**, the battery: 10 runs per family (40 runs; Slow about $20 from the credit, OpenRouter about $2–3): ask the user first (a batch above $10).
-4. **S1 close** (user decision 2026-09-28): the browser demo end to end with the user clicking approve (U), the battery, and the user's decisions on the Fast model and the résumé wording.
-5. Later: one "heard" rule (the GUIDE/ask-heard decision in one pure function in `guard/`, deleting the copies in `obs/guides.py` and `obs/grading.py`; acceptance: `diagnose` output byte-identical on the local bundles).
+1. **FastC after a commit** (a CON task, contract + ADR, a new `pl_cp` profile version): after the accept is heard FastC still says "I can't accept the offer on Marcus's behalf" (aebf80 231 s): its prompt shows `CASE STATUS: COMMITTED` with no meaning, and satisfied GUIDEs stay. Render COMMIT_AUTHORIZED/COMMITTED so FastC stops stalling, and retire satisfied GUIDEs. Coordinate the profile version with the model side (training data is bound to the profile).
+2. **M3**, the battery: 10 runs per family (40 runs; Slow about $20 from the credit, OpenRouter about $2–3): ask the user first (a batch above $10).
+3. **S1 close** (user decision 2026-09-28): the browser demo end to end with the user clicking approve (U), the battery, and the user's decisions on the Fast model and the résumé wording.
+4. Later: one "heard" rule (the GUIDE/ask-heard decision in one pure function in `guard/`, deleting the copies in `obs/guides.py` and `obs/grading.py`; acceptance: `diagnose` output byte-identical on the local bundles).
 
 ## Waiting on the user
 
@@ -42,7 +39,7 @@ How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add
 - The S0 principal session and the S1 U step (in person).
 - Root-run G steps parked until M1: `make pull-through MODE=full` for S1-CON-01/05/08.
 
-## Frozen until M2 (session decision 2026-10-12; the user may lift it)
+## Frozen until M3 (session decision 2026-10-12, extended from M2 when M2 was reached; the user may lift it)
 
 - New product-lane features (web, API, obs) beyond fixes on the session path; new obs detectors and lexicon growth.
 - S2 (including follow-ups to S2-SYS-02, the Ear-audit core).
