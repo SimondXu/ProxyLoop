@@ -95,7 +95,7 @@ class LaggingRep(Channel):
         return hear()
 
 
-async def _fastc_holds_the_floor(sim: Sim, accept: bool = True) -> Event:
+async def fastc_holds_the_floor(sim: Sim, accept: bool = True) -> Event:
     """FastC answers the rep with ten seconds of speech; the rep is idle."""
     await sim.start()
     if accept:
@@ -115,19 +115,19 @@ async def _fastc_holds_the_floor(sim: Sim, accept: bool = True) -> Event:
     return fast
 
 
-def _heard(sim: Sim, line: Event) -> Event:
+def delivery(sim: Sim, line: Event) -> Event:
     (e,) = sim.of("utt.delivered", utt_id=line.payload["utt_id"])
     return e
 
 
-def _ends(sim: Sim) -> list[Event]:  # of the accept or decline line
+def line_ends(sim: Sim) -> list[Event]:  # of the accept or decline line
     kinds = ("accept", "decline")
     lines = {e.event_id for k in kinds for e in sim.of("speak.verbatim", kind=k)}
     ends = sim.of("speak.released") + sim.of("speak.revoked")
     return [e for e in ends if e.cause_ids[0] in lines]
 
 
-def _said(sim: Sim, kind: str) -> Event:
+def verbatim_of(sim: Sim, kind: str) -> Event:
     (e,) = sim.of("speak.verbatim", kind=kind)
     return e
 
@@ -160,23 +160,23 @@ def test_a_verbatim_queued_while_fastc_holds_the_floor_is_released(
     async def case() -> None:
         rep = HearingRep()
         sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
-        fast = await _fastc_holds_the_floor(sim, accept=kind == "accept")
+        fast = await fastc_holds_the_floor(sim, accept=kind == "accept")
         rep.heard.clear()  # from here the rep is still hearing FastC's line
         rep.answer = REPLY  # and answers it: FastC would speak again
         tool = "accept_offer" if kind == "accept" else "decline_offer"
         out = sim.act({"tool": tool, "offer_ref": "o1"})
         assert "queued" in out[0], out
         await sim.vt.run_for(15_000)
-        heard = _heard(sim, fast)
-        assert _ends(sim) == [] and rep.busy  # the rep hears FastC's line
+        heard = delivery(sim, fast)
+        assert line_ends(sim) == [] and rep.busy  # the rep hears FastC's line
         (said,) = sim.of("utt.final", text=REPLY)
         rep.heard.set()
         await sim.vt.run_for(100)
-        (released,) = _ends(sim)
+        (released,) = line_ends(sim)
         assert released.type == "speak.released"
         assert released.seq > said.seq > heard.seq
         resumed = await _fastc_resumes(sim, released)  # the line, then FastC
-        (line,) = sim.of("utt.delivered", utt_id=f"{kind}-{_said(sim, kind).seq}")
+        (line,) = sim.of("utt.delivered", utt_id=f"{kind}-{verbatim_of(sim, kind).seq}")
         assert line.payload["interrupted"] is False
         after = [e for e in sim.of("fast.sentence", lane="cp") if e.seq > said.seq]
         assert after and not any(_heard_before(sim, e, line.seq) for e in after)
@@ -199,7 +199,7 @@ def test_an_accept_still_waits_for_a_pending_rep_turn(
     async def case() -> None:
         rep = HearingRep()
         sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
-        fast = await _fastc_holds_the_floor(sim)
+        fast = await fastc_holds_the_floor(sim)
         if partner == "composed":
             sim.rep_composes()
         elif partner == "queued":
@@ -211,11 +211,11 @@ def test_an_accept_still_waits_for_a_pending_rep_turn(
         await sim.vt.run_for(12_000)
         assert sim.of("utt.delivered", utt_id=fast.payload["utt_id"])
         if partner == "composed":
-            assert _ends(sim) == [] and sim.rep.busy
+            assert line_ends(sim) == [] and sim.rep.busy
             sim.rep_done(REPLY)
             await sim.vt.run_for(100)
         (said,) = sim.of("utt.final", text=REPLY)
-        assert all(e.seq > said.seq for e in _ends(sim)), _ends(sim)
+        assert all(e.seq > said.seq for e in line_ends(sim)), line_ends(sim)
         await sim.stop()
 
     arun(case())
@@ -228,17 +228,17 @@ def test_the_accept_is_revalidated_after_it_takes_the_floor(tmp_path: Path) -> N
     async def case() -> None:
         rep = HearingRep()
         sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
-        fast = await _fastc_holds_the_floor(sim)
+        fast = await fastc_holds_the_floor(sim)
         rep.heard.clear()
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(1_000)
         sim.revoke()
         await sim.vt.run_for(12_000)
-        heard = _heard(sim, fast)
-        assert _ends(sim) == []  # still waiting: the rep hears FastC's line
+        heard = delivery(sim, fast)
+        assert line_ends(sim) == []  # still waiting: the rep hears FastC's line
         rep.heard.set()
         await sim.vt.run_for(100)
-        (revoked,) = _ends(sim)
+        (revoked,) = line_ends(sim)
         assert revoked.type == "speak.revoked" and revoked.payload["reason"] == "epoch"
         assert revoked.seq > heard.seq
         await sim.stop()
@@ -285,12 +285,12 @@ def test_a_decline_queued_while_the_rep_lags_is_released(tmp_path: Path) -> None
         assert "queued" in out[0], out
         silent = most = 0
         for _ in range(1_000):  # 100 s in 100 ms steps
-            if _ends(sim):
+            if line_ends(sim):
                 break
             silent = silent + _silent_ms(sim) if _silent_ms(sim) else 0
             most = max(most, silent)
             await sim.vt.run_for(100)
-        (released,) = _ends(sim)
+        (released,) = line_ends(sim)
         assert released.type == "speak.released"
         waited = released.t_ms - queued_at
         assert waited <= FAST_MS + (backlog + 1) * LAG_MS, (waited, backlog)
@@ -326,7 +326,7 @@ def test_fastc_is_held_silent_at_most_the_rep_s_backlog(tmp_path: Path) -> None:
         backlog = rep.backlog
         sim.act({"tool": "decline_offer", "offer_ref": "o1"})
         await sim.vt.run_for(FAST_MS + (backlog + 1) * LAG_MS)
-        (released,) = _ends(sim)
+        (released,) = line_ends(sim)
         fast = [e for e in sim.of("utt.delivered", lane="cp") if e.seq < released.seq]
         paused = released.t_ms - fast[-1].t_ms
         assert 0 < paused <= (backlog + 1) * LAG_MS, (paused, backlog)
@@ -341,9 +341,10 @@ def test_fastc_is_held_silent_at_most_the_rep_s_backlog(tmp_path: Path) -> None:
 def test_an_accept_queued_while_the_rep_lags_ends(tmp_path: Path) -> None:
     """An accept in the 45d7ed shape takes the floor (on main it never did:
     the case stayed on ``accept_in_flight``) and ends in exactly one terminal
-    event after revalidation. (Today that is ``expired``: while the partner
-    fence its rep lines raise holds it (S1-SYS-23, unchanged), FastC speaks,
-    so its capability runs out first; fail closed.)"""
+    event after revalidation. (Today that is ``expired``: the accept is minted
+    late, so its capability ends with the grant's TTL, and the rep's backlog,
+    a line per LAG_MS, outlasts it; FastC stays off the floor meanwhile,
+    S1-SYS-101; fail closed.)"""
 
     async def case() -> None:
         rep = LaggingRep()
@@ -351,8 +352,8 @@ def test_an_accept_queued_while_the_rep_lags_ends(tmp_path: Path) -> None:
         await _chatter(sim, rep, accept=True)
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(60_000)
-        (end,) = _ends(sim)
-        assert end.seq > _said(sim, "accept").seq
+        (end,) = line_ends(sim)
+        assert end.seq > verbatim_of(sim, "accept").seq
         await sim.stop()
 
     arun(case())
@@ -408,9 +409,9 @@ def test_the_real_rep_does_not_strike_while_a_decline_waits(tmp_path: Path) -> N
         assert "queued" in out[0], out
         for _ in range(200):
             await sim.vt.run_for(1_000)
-            if _ends(sim):
+            if line_ends(sim):
                 break
-        (released,) = _ends(sim)
+        (released,) = line_ends(sim)
         assert released.type == "speak.released"
         assert sim.of("chan.strike") == [] and sim.of("chan.closed") == []
         intents = [str(e.payload["intent"]) for e in sim.of("rep.policy")]
@@ -445,7 +446,7 @@ def test_fastc_waiting_behind_a_verbatim_yields_to_the_next(tmp_path: Path) -> N
         ]
         assert "queued" in sim.act({"tool": "decline_offer", "offer_ref": "o2"})[0]
         await sim.vt.run_for(20_000)
-        first, second = _ends(sim)
+        first, second = line_ends(sim)
         assert first.type == second.type == "speak.released"
         (line,) = [e for e in sim.events if e.event_id == first.cause_ids[0]]
         (said,) = sim.of("utt.delivered", utt_id=f"decline-{line.seq}")
@@ -477,21 +478,21 @@ def test_a_session_end_while_fastc_waits_on_a_verbatim_ends_cleanly(
         waiting: list[Event] = []
         for _ in range(300):  # until FastC's next turn waits behind it
             await sim.vt.run_for(100)
-            if waiting := _unheard(sim):
+            if waiting := unheard(sim):
                 break
-        assert waiting and _ends(sim) == [] and rep.busy
+        assert waiting and line_ends(sim) == [] and rep.busy
         rep.incoming.put_nowait(Incoming((), end="hangup"))
         await sim.vt.run_for(5 * LAG_MS)
         assert sim.k.ended
         (ended,) = sim.of("session.ended")
         assert ended.payload["reason"] == "abandoned"
-        assert _ends(sim) == [] and _unheard(sim) == waiting
+        assert line_ends(sim) == [] and unheard(sim) == waiting
         await sim.stop()
 
     arun(case())
 
 
-def _unheard(sim: Sim) -> list[Event]:  # FastC lines generated, not said
+def unheard(sim: Sim) -> list[Event]:  # FastC lines generated, not said
     lines = sim.of("fast.sentence", lane="cp")
     return [e for e in lines if not sim.of("utt.delivered", utt_id=e.payload["utt_id"])]
 
@@ -522,11 +523,11 @@ def test_a_held_fastc_turn_older_than_a_released_decline_is_cancelled(
         sim.act({"tool": "decline_offer", "offer_ref": "o1"})
         for _ in range(1_000):
             await sim.vt.run_for(100)
-            if _ends(sim):
+            if line_ends(sim):
                 break
-        (released,) = _ends(sim)
+        (released,) = line_ends(sim)
         assert released.type == "speak.released"
-        held = {_gen(e.payload["utt_id"]) for e in _unheard(sim)}
+        held = {_gen(e.payload["utt_id"]) for e in unheard(sim)}
         assert held, "no FastC turn waited behind the decline"
         assert all(_basis(sim, g) < released.seq for g in held)
         resumed = await _fastc_resumes(sim, released)
@@ -561,18 +562,18 @@ def test_a_held_fastc_turn_behind_a_revoked_line_is_said(tmp_path: Path) -> None
     async def case() -> None:
         rep = HearingRep()
         sim = Sim(tmp_path, {"fast_cp": [LONG]}, rep=rep)
-        await _fastc_holds_the_floor(sim)
+        await fastc_holds_the_floor(sim)
         rep.heard.clear()
         rep.answer = REPLY  # FastC answers it while the accept waits
         assert sim.accept().startswith("accept_offer: accept line queued")
         await sim.vt.run_for(1_000)
         sim.revoke()
         await sim.vt.run_for(12_000)
-        held = _unheard(sim)
-        assert held and _ends(sim) == []
+        held = unheard(sim)
+        assert held and line_ends(sim) == []
         rep.heard.set()
         await sim.vt.run_for(2 * FAST_MS)  # the rep's reply lands, then FastC's
-        (revoked,) = _ends(sim)
+        (revoked,) = line_ends(sim)
         assert revoked.type == "speak.revoked"
         assert all(_heard_before(sim, e, len(sim.events)) for e in held)
         assert not [

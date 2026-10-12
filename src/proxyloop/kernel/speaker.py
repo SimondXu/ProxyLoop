@@ -21,7 +21,11 @@ has the partner's turn (I6 timing). A wait past the capability's expiry ends
 the line ``expired`` there. While a verbatim line waits for the floor, Fast
 starts no new turn (it finishes the one it is speaking): the partner's
 backlog drains, and the line takes the floor as its last reply lands
-(S1-SYS-56)."""
+(S1-SYS-56). So too while an accept waits for partner fences to clear, as long
+as each is bound (a Slow step alone clears it; always so under ``transcript``):
+otherwise FastC's held turn takes the floor, its line draws the rep's next
+reply and fence, and the accept expires (S1-SYS-101). An unbound fence
+(``relay_only``) needs a new FastC turn, so FastC speaks then."""
 
 from __future__ import annotations
 
@@ -116,24 +120,44 @@ class Speaker:
         """Take the floor, then revalidate ``cap``: why the line may not go out.
         Under partner fences only, give the floor back and wait until a fence
         or the epoch moves, or the line would end past its capability's
-        expiry. A user fence raised while it waits revokes it ``fence``."""
+        expiry. A user fence raised while it waits revokes it ``fence``. While
+        every partner fence is bound, Fast starts no new turn meanwhile."""
         k, speech, users = self._k, round(1000 * speech_s(text)), None
-        while True:
-            await self._floor_after_partner()
-            end = k.now() + speech
-            why = "call_closed" if k.closed else None
-            if why is None and cap is not None:
-                why = revalidate(k.bb, cap, end)
-            if why in (None, "fence") and users not in (None, k.authority.user_fences):
-                return "fence"  # a user fence rose (even if it cleared) meanwhile
-            if why != "fence" or cap is None or not k.authority.partner_only():
-                return why
-            users = k.authority.user_fences if users is None else users
-            expires = k.bb.capabilities[cap].expires_ms  # revalidate found it
-            if expires <= end:
-                return "expired"
-            self._lock.release()
-            await self._first(k.authority.moved(), k.sleep((expires - end) / 1000))
+        held = False  # counted in _queued over the fence wait
+        try:
+            while True:
+                await self._floor_after_partner()
+                if held:  # the floor is this line's: Fast waits for the lock
+                    held = self._queue(-1)
+                end = k.now() + speech
+                why = "call_closed" if k.closed else None
+                if why is None and cap is not None:
+                    why = revalidate(k.bb, cap, end)
+                rose = users not in (None, k.authority.user_fences)
+                if why in (None, "fence") and rose:
+                    return "fence"  # a user fence rose (even if it cleared) meanwhile
+                if why != "fence" or cap is None or not k.authority.partner_only():
+                    return why
+                users = k.authority.user_fences if users is None else users
+                expires = k.bb.capabilities[cap].expires_ms  # revalidate found it
+                if expires <= end:
+                    return "expired"
+                if k.authority.partner_bound():  # no FastC turn needed to clear
+                    held = self._queue(1)
+                self._lock.release()
+                await self._first(k.authority.moved(), k.sleep((expires - end) / 1000))
+        finally:
+            if held:
+                self._queue(-1)
+
+    def _queue(self, n: int) -> bool:
+        """``n`` more verbatim lines wait for the floor; whether this one does."""
+        self._queued += n
+        if self._queued:
+            self._no_queued.clear()
+        else:
+            self._no_queued.set()
+        return n > 0
 
     @staticmethod
     async def _first(*waits: Awaitable[object]) -> None:
@@ -152,8 +176,7 @@ class Speaker:
         """Take the floor (the lock, acquired) with no partner turn pending: not
         begun, queued, or being composed, as a reply the stale path (ROOT-05 i)
         would not let cut the line. Meanwhile Fast starts no new turn."""
-        self._queued += 1
-        self._no_queued.clear()
+        self._queue(1)
         try:
             while True:
                 await self._partner_idle.wait()
@@ -166,9 +189,7 @@ class Speaker:
                     return
                 self._lock.release()  # a partner turn began while this line queued
         finally:
-            self._queued -= 1
-            if not self._queued:
-                self._no_queued.set()
+            self._queue(-1)
 
     async def _deliver(
         self, lines: Sequence[tuple[str, str, str]], interruptible: bool
