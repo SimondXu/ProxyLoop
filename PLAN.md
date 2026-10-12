@@ -38,8 +38,7 @@ Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash): the blocker was Slow's jud
 ## Now / Next
 
 1. **Step 8, the accept is never heard** (Tier C, kernel/Guard): after approval, `accept_offer` queues the verbatim and status goes `COMMIT_AUTHORIZED`, but FastC keeps finishing its own turns ("I'll check with the account holder before making any decision"); the rep answers, and the commit is revalidated away (`NEEDS_REPLAN`). Reproduce offline first: extend the SlowScript in `tests/support/web_demo.py` from save-1 + direct approval to tenure → save-2 → approval → accept → confirmation → `check_account`, with the rep talking while the accept is queued. Evidence: 4b9901 (t 182–318 s), afa368.
-2. Land `task/s1-sys-98` (tenure goes public in the phrasings users use; 39 lines, `slow/tools.py`): step 4 (94bb0c).
-3. Price Anthropic calls from the cache split (cache read 0.1x, write 1.25x) instead of the upper bound, so the session cap stops runaways, not normal runs. This needs `Usage` cache fields (a contract change).
+2. After step 8 is fixed: 3 live runs of `x-out-of-envelope-approval`, with #303 (tenure phrasings, step 4) and S1-SYS-100 (system-prompt cache breakpoint, Anthropic calls priced from the cache split) in.
 4. One "heard" rule: move the GUIDE/ask-heard decision into one pure function in `guard/` and delete the copies in `obs/guides.py` and `obs/grading.py` (obs may import guard); acceptance: `diagnose` output byte-identical on the local `runs/` bundles.
 5. Then fix the step the latest clean runs stop at, 3 live runs per change.
 

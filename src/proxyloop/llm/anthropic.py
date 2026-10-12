@@ -16,9 +16,12 @@ asked: Sonnet 5.5 answers a forced tool or a non-default temperature with a 400,
 which is ``LLMUnavailable``, never a quietly relaxed request. No ``fallbacks``
 parameter is ever sent (AGENTS rule 6).
 
-Prompt caching: the request's top-level ``cache_control`` (the API's automatic
-breakpoint). ``prompt_tokens`` is the whole input: uncached, cache read and cache
-write.
+Prompt caching: one breakpoint, at the end of the system prompt (tools and system
+are the stable prefix). Slow's history cannot be cached: the newest message is
+stubbed once it is history and the window slides, so a breakpoint on it was a
+cache write every step and never a read (measured on run 4b9901, 2026-10-11).
+``prompt_tokens`` is the whole input; ``cache_read_tokens`` and
+``cache_write_tokens`` are its cached parts.
 """
 
 from __future__ import annotations
@@ -50,12 +53,13 @@ class MessagesAttempt(Attempt):
         self.echo = self.echo or chunk.get("model")
         usage: Json | None = chunk.get("usage")
         if usage:
-            cached = (usage.get("cache_read_input_tokens") or 0) + (
-                usage.get("cache_creation_input_tokens") or 0
-            )
+            read = usage.get("cache_read_input_tokens") or 0
+            write = usage.get("cache_creation_input_tokens") or 0
             self.usage = Usage(
-                prompt_tokens=usage["input_tokens"] + cached,
+                prompt_tokens=usage["input_tokens"] + read + write,
                 completion_tokens=usage["output_tokens"],
+                cache_read_tokens=read,
+                cache_write_tokens=write,
             )
         if reason := chunk.get("stop_reason"):
             self.finish_reason = reason
@@ -164,10 +168,11 @@ class AnthropicClient(HTTPAdapter):
                 }
                 for t in request.tools
             ],
-            "cache_control": {"type": "ephemeral"},
         }
-        if system:
-            body["system"] = system
+        if system:  # the one breakpoint: the history after it changes every step
+            body["system"] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
         if request.tool_choice is not None:
             body["tool_choice"] = {"type": "tool", "name": request.tool_choice}
         if request.temperature is not None:

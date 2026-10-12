@@ -691,6 +691,34 @@ COMPANY_TENURE = [
     ("I've been with them for 6 months", "", "6", None),  # not years
     ("I've been with them for six years", "", "six", None),
     ("I've been with them for 36 years, I'm 60 years old", "", "36", None),
+    # S1-SYS-98: "a customer with/of/at <who>" and a clause after a comma
+    ("I have been a customer with Crestline for 8 years.", "Crestline", "8", "8"),
+    ("I've been a customer with Crestline for 8 years", "Crestline", "8", "8"),
+    ("I have been a customer of Northwind for 6 years", "Northwind", "6", "6"),
+    ("I've been a customer at them for 6 years", "", "6", "6"),
+    ("I've been a customer with you for 6 years", "", "6", "6"),
+    ("Brightwave is offering 60, and I've been with Northwind for 6 years",
+     "Northwind", "6", "6"),
+    ("Brightwave is offering 60, I've been with them for 6 years", "", "6", "6"),
+    ("It is 60, but I've been a customer for 6 years", "", "6", "6"),
+    ("Fine, so I've been with them for 6 years", "", "6", "6"),
+    ("I've been a customer with Brightwave for 8 years", "Crestline", "8", None),
+    ("I've been a customer with Crestline for 8 years", "", "8", None),
+    ("I've been a customer with Crestline for 8 months", "Crestline", "8", None),
+    ("I've been a customer since 2018, so 6 years", "", "6", None),
+    ("I've not been a customer with Crestline for 8 years", "Crestline", "8", None),
+    ("Sure, and I've never been with them for 6 years", "", "6", None),
+    ("She said I've been with them for 6 years", "", "6", None),  # reported
+    ("she said, and I've been with them for 6 years", "", "6", None),
+    ("he told me, I've been a customer for 6 years", "", "6", None),
+    ("he says, I've been with them for 6 years", "", "6", None),
+    ("The rep mentioned 60, and I've been with them for 6 years", "", "6", None),
+    ("She told me. I've been with them for 6 years", "", "6", "6"),  # own sentence
+    ("Sure, and he's been with them for 6 years", "", "6", None),
+    ("Sure, and I've been with them for 6 years old", "", "6", None),
+    # live run 94bb0c (2026-10-11): the user's own words, recorded private then
+    ("The account is under Marcus Bell, the last four digits are 5190, and I've "
+     "been with Crestline for 8 years.", "Crestline Wireless", "8", "8"),
 ]  # fmt: skip
 
 
