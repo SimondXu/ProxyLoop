@@ -44,9 +44,15 @@ _YEARS = re.compile(r"[0-9]{1,2}")
 _TENURE = (  # #153 rounds 3-4: first person, in context, one space;
     # S1-SYS-20: "I" starts the message or a sentence ("She said I've..." never);
     # S1-SYS-94 (R6): "with" you, them or the case's company (its name or a
-    # leading whole-word prefix, any case)
-    r"(?:^|(?<=[.!?])\s+)I(?:'ve|\u2019ve| have) been (?:with (?:you|them{})|a "
-    r"customer) (?:for )?([0-9]{{1,2}}) [Yy]ears?(?![\w'\u2019-])"
+    # leading whole-word prefix, any case); S1-SYS-98: "a customer" takes an
+    # optional "with|of|at <who>", and "I" may start a clause after a comma
+    r"(?:^|(?<=[.!?])\s+|(?<=,)\s+(?:(?:and|but|so)\s+)?)I(?:'ve|\u2019ve| have) been "
+    r"(?:with (?:you|them{0})|a customer(?: (?:with|of|at) (?:you|them{0}))?) "
+    r"(?:for )?([0-9]{{1,2}}) [Yy]ears?(?![\w'\u2019-])"
+)
+_REPORTED = re.compile(  # a reporting verb earlier in the clause's own sentence
+    r"(?i)\b(?:say|says|said|saying|tell|tells|told|telling|mention\w*|claim\w*"
+    r"|state[sd]?|add(?:s|ed)?|explain\w*|ask(?:s|ed)?)\b"
 )
 _AGE = re.compile(r"(?i)\b(?:old|age|aged|ago)\b")  # "36 years old": no tenure
 _NEGATION = re.compile(r"(?i)\b(?:not|never)\b|n['\u2019]t\b")
@@ -514,7 +520,11 @@ def _years(value: str, message: str, _: object, company: str = "") -> str | None
     words = company.split()  # the full name or a leading whole-word prefix
     names = [" ".join(words[:n]) for n in range(len(words), 0, -1)]
     who = "".join(f"|(?i:{re.escape(n)})" for n in names)
-    said = {m.group(1) for m in re.finditer(_TENURE.format(who), message)}
+    said = {
+        m.group(1)
+        for m in re.finditer(_TENURE.format(who), message)
+        if not _REPORTED.search(re.split(r"[.!?]", message[: m.start()])[-1])
+    }
     return value if value in said else None
 
 
