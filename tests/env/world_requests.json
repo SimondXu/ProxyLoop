@@ -557,14 +557,14 @@
    "top_p": 1.0
   }
  ],
- "simuser_chat": [
+ "simuser_card_stop": [
   {
    "call_id": "simuser:r1:1:0",
    "max_tokens": 2048,
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -641,7 +641,240 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
+     "role": "system",
+     "tool_call_id": null,
+     "tool_calls": []
+    },
+    {
+     "cache_breakpoint": false,
+     "content": "Chat so far:\nYou: Please lower my TV bill.\nCard: you approved these terms: monthly price $76.00; term months 12 months; fees none true\n\nNow, in this reply: Tell the assistant to stop and not accept anything: you have decided to keep your current plan for now.",
+     "role": "user",
+     "tool_call_id": null,
+     "tool_calls": []
+    }
+   ],
+   "role": "simuser",
+   "temperature": 0.7,
+   "tool_choice": "reply",
+   "tools": [
+    {
+     "description": "Your message.",
+     "name": "reply",
+     "parameters": {
+      "properties": {
+       "revealed": {
+        "additionalProperties": false,
+        "properties": {
+         "account.holder_name": {
+          "type": "string"
+         },
+         "account.last4": {
+          "type": "string"
+         },
+         "budget.max_fees_usd": {
+          "type": "string"
+         },
+         "budget.max_monthly_usd": {
+          "type": "string"
+         },
+         "budget.max_term_months": {
+          "type": "string"
+         },
+         "competitor.name": {
+          "type": "string"
+         },
+         "competitor.price_usd": {
+          "type": "string"
+         },
+         "plan.current_price_usd": {
+          "type": "string"
+         },
+         "tenure_years": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       },
+       "silent": {
+        "description": "true: send nothing this time",
+        "type": "boolean"
+       },
+       "text": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "revealed"
+      ],
+      "type": "object"
+     }
+    }
+   ]
+  },
+  {
+   "call_id": "simuser:r1:4:1",
+   "max_tokens": 2048,
+   "messages": [
+    {
+     "cache_breakpoint": false,
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
+     "role": "system",
+     "tool_call_id": null,
+     "tool_calls": []
+    },
+    {
+     "cache_breakpoint": false,
+     "content": "Chat so far:\nYou: Please lower my TV bill.\nCard: you approved these terms: monthly price $76.00; term months 12 months; fees none true\n\nNow, in this reply: Tell the assistant to stop and not accept anything: you have decided to keep your current plan for now.",
+     "role": "user",
+     "tool_call_id": null,
+     "tool_calls": []
+    }
+   ],
+   "role": "simuser",
+   "temperature": 0.7,
+   "tool_choice": "reply",
+   "tools": [
+    {
+     "description": "Your message.",
+     "name": "reply",
+     "parameters": {
+      "properties": {
+       "revealed": {
+        "additionalProperties": false,
+        "properties": {
+         "account.holder_name": {
+          "type": "string"
+         },
+         "account.last4": {
+          "type": "string"
+         },
+         "budget.max_fees_usd": {
+          "type": "string"
+         },
+         "budget.max_monthly_usd": {
+          "type": "string"
+         },
+         "budget.max_term_months": {
+          "type": "string"
+         },
+         "competitor.name": {
+          "type": "string"
+         },
+         "competitor.price_usd": {
+          "type": "string"
+         },
+         "plan.current_price_usd": {
+          "type": "string"
+         },
+         "tenure_years": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       },
+       "silent": {
+        "description": "true: send nothing this time",
+        "type": "boolean"
+       },
+       "text": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "revealed"
+      ],
+      "type": "object"
+     }
+    }
+   ]
+  }
+ ],
+ "simuser_chat": [
+  {
+   "call_id": "simuser:r1:1:0",
+   "max_tokens": 2048,
+   "messages": [
+    {
+     "cache_breakpoint": false,
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
+     "role": "system",
+     "tool_call_id": null,
+     "tool_calls": []
+    },
+    {
+     "cache_breakpoint": false,
+     "content": "Chat so far:\n(empty: write your opening request)",
+     "role": "user",
+     "tool_call_id": null,
+     "tool_calls": []
+    }
+   ],
+   "role": "simuser",
+   "temperature": 0.7,
+   "tool_choice": "reply",
+   "tools": [
+    {
+     "description": "Your message.",
+     "name": "reply",
+     "parameters": {
+      "properties": {
+       "revealed": {
+        "additionalProperties": false,
+        "properties": {
+         "account.holder_name": {
+          "type": "string"
+         },
+         "account.last4": {
+          "type": "string"
+         },
+         "budget.max_fees_usd": {
+          "type": "string"
+         },
+         "budget.max_monthly_usd": {
+          "type": "string"
+         },
+         "budget.max_term_months": {
+          "type": "string"
+         },
+         "competitor.name": {
+          "type": "string"
+         },
+         "competitor.price_usd": {
+          "type": "string"
+         },
+         "plan.current_price_usd": {
+          "type": "string"
+         },
+         "tenure_years": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       },
+       "silent": {
+        "description": "true: send nothing this time",
+        "type": "boolean"
+       },
+       "text": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "revealed"
+      ],
+      "type": "object"
+     }
+    }
+   ]
+  },
+  {
+   "call_id": "simuser:r1:4:0",
+   "max_tokens": 2048,
+   "messages": [
+    {
+     "cache_breakpoint": false,
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -718,7 +951,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -797,7 +1030,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -874,7 +1107,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 74 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 74\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 74 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 74\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -951,7 +1184,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 74 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 74\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 74 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 74\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -1030,7 +1263,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []
@@ -1107,7 +1340,7 @@
    "messages": [
     {
      "cache_breakpoint": false,
-     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts.",
+     "content": "You are Elena Ruiz, a restaurant manager with Summit Cable for three years. Busy and direct.\nYou asked an assistant to do this for you: Pay less for the same cable plan: at most 70 dollars a month, a contract of at most 12 months, and at most 0 dollars in one-time fees.\nPrivate facts about you (key: value):\naccount.holder_name: Elena Ruiz\naccount.last4: 2764\nbudget.max_fees_usd: 0\nbudget.max_monthly_usd: 70\nbudget.max_term_months: 12\ncompetitor.name: Nova TV\ncompetitor.price_usd: 59\nplan.current_price_usd: 95\ntenure_years: 3\nReply to the assistant's latest chat message as yourself in one to three short sentences by calling `reply`. Always answer a question. A status update needs no answer: to stay silent, call `reply` with silent true, no text and nothing revealed. Share a fact only when asked or useful. When your text contains a fact, copy its value exactly and list it in `revealed` under its key. Never invent facts. You approve or decline an offer or a limit only on the approval card, never in chat: do not approve or reject an offer in a chat reply. A chat line that starts \"Card:\" is your own answer on that card; keep to it. Only an instruction that starts \"Now, in this reply:\" changes your mind.",
      "role": "system",
      "tool_call_id": null,
      "tool_calls": []

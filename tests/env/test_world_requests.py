@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 from tests.env.bus_sink import BusSink
+from tests.env.cards import card as _card
+from tests.env.cards import offer as _offer
 from tests.support.fakes import ScriptedLLM, fake_ref
 
 from proxyloop.contract.base import canonical_json
@@ -147,6 +149,7 @@ def _mouth(kind: str) -> Callable[[BusSink, Capturing], None]:
 # -- the SimUser --------------------------------------------------------------
 
 CHANGE = {"budget.max_monthly_usd": "74"}
+CARD_TERMS = "monthly price $76.00; term months 12 months; fees none true"
 
 
 def _mind_change_task() -> Task:
@@ -167,6 +170,17 @@ def _simuser_chat(sink: BusSink, client: Capturing) -> None:
 def _simuser_stop(sink: BusSink, client: Capturing) -> None:
     user = SimUser(USER, client, sink.world, seed=7)
     asyncio.run(user.on_agent_message(None, sink.heard("(open)", "user").event_id))
+    asyncio.run(user.on_trigger("after_card", sink.heard("(card)").event_id))
+
+
+def _simuser_card_stop(sink: BusSink, client: Capturing) -> None:
+    """S1-SYS-103: the approver grants the card (its ``Card:`` line joins the
+    chat), then the after_card stop fires, regenerated once (no stop cue)."""
+    user = SimUser(USER, client, sink.world, seed=7)
+    asyncio.run(user.on_agent_message(None, sink.heard("(open)", "user").event_id))
+    assert user.approver is not None
+    card = _card(readback_text=CARD_TERMS)
+    user.on_decided(card, user.approver.decide(card, _offer(7600, 12)).post)
     asyncio.run(user.on_trigger("after_card", sink.heard("(card)").event_id))
 
 
@@ -193,6 +207,11 @@ SIM_REPLIES = {
         _tool("reply", text="Please lower my TV bill.", revealed={}),
         _tool("reply", text="Stop, keep my current plan.", revealed={}),
     ],
+    "simuser_card_stop": [
+        _tool("reply", text="Please lower my TV bill.", revealed={}),
+        _tool("reply", text="Sure, go ahead.", revealed={}),
+        _tool("reply", text="Stop, keep my current plan.", revealed={}),
+    ],
     "simuser_mind_change": [
         _tool("reply", silent=True, revealed={}),
         _tool("reply", text="Actually, up to 74 a month is fine.", revealed=CHANGE),
@@ -217,6 +236,7 @@ CASES: dict[str, tuple[Callable[[BusSink, Capturing], None], list[str]]] = {
     "simuser_chat": (_simuser_chat, SIM_REPLIES["simuser_chat"]),
     "simuser_stop": (_simuser_stop, SIM_REPLIES["simuser_stop"]),
     "simuser_mind_change": (_simuser_mind_change, SIM_REPLIES["simuser_mind_change"]),
+    "simuser_card_stop": (_simuser_card_stop, SIM_REPLIES["simuser_card_stop"]),
 }
 
 
@@ -288,6 +308,7 @@ def _user(
 
 
 OPENED = ["You: Please lower my TV bill."]
+CARD_LINE = f"Card: you approved these terms: {CARD_TERMS}"
 MIND = _mind_change_task()
 TURNS = [f"Assistant: {t}" for t in SIM_AGENT]
 REPLIED = [*TURNS[:2], "You: Actually, up to 74 a month is fine.", TURNS[2]]
@@ -303,6 +324,10 @@ BUILDS: dict[str, list[Build]] = {
         *[_user(USER, [*OPENED, "Assistant: What is the account name?"])] * 2,
     ],
     "simuser_stop": [_user(USER, []), _user(USER, OPENED, stop=True)],
+    "simuser_card_stop": [
+        _user(USER, []),
+        *[_user(USER, [*OPENED, CARD_LINE], stop=True)] * 2,
+    ],
     "simuser_mind_change": [
         _user(MIND, TURNS[:1]),
         _user(MIND, TURNS[:2], changed=True, stop=True),
