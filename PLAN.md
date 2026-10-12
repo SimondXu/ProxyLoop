@@ -11,44 +11,39 @@ State, not a log. It is updated inside the PR that changes it; the PR descriptio
 ## Milestones
 
 - **M1:** one live, infra-clean `x-out-of-envelope-approval` run that ends VERIFIED_COMPLETE and passes `make evidence-check RUN=<dir> MODE=claim`.
-- **M2:** each of the 4 S1 families (`cp-direct-discount`, `cp-hidden-fee-readback`, `x-out-of-envelope-approval`, `x-user-mind-change`) has at least one such run.
+- **M2:** each of the 4 S1 families has at least one live, infra-clean run that passes `evidence-check MODE=claim` and gets its family's right tier from `python -m proxyloop.obs.diagnose` (ADR-0023): `x-out-of-envelope-approval` and `cp-hidden-fee-readback` A or B (a verified deal); `cp-direct-discount` (`info_only`) a verified close graded C or D, not E; `x-user-mind-change` S (stopped by the user, no commit after the stop). No run may be X.
 - **M3:** the battery: 10 runs per family, success rate reported with infra ends separate (ADR-0023 tiers).
 
-Status: **M1 not reached.** 0 of the local live bundles has ended `completed`.
+Status: **M1 reached 2026-10-12**: run `runs/20261012T060408Z-fc41ec` (main cf616b0) ended VERIFIED_COMPLETE, `evidence-check MODE=claim` ok, `diagnose` tier B (approval). One success, not a rate: M3 measures the rate. **M2: 1 of 4 families done** (x-out-of-envelope-approval).
 
 ## Trajectory ledger: `x-out-of-envelope-approval`
 
 From `tasks/families/x-out-of-envelope-approval.yaml`: envelope $65/24 mo/$0 fees; unstated approval limit $72; ladder save-1 $78 → save-2 $69; levers tenure 8 years, Orbit Mobile $62.
 
-| # | Step | Furthest clean run that reached it |
-|---|---|---|
-| 1 | Disclosure and identity (name, last4 recorded and voiced) | reached; but #7 (2fd267) and #9 (358c99) abandoned here: Slow never recorded the user's name/last4 |
-| 2 | Ask for a discount | reached |
-| 3 | save-1 $78 recorded and read back | #4 (ddc68c), #5 (266e2b) |
-| 4 | Ask the user for tenure; the fact goes public | Sonnet 4b9901, afa368 (public); 94bb0c recorded it private (phrasing miss, fixed on `task/s1-sys-98`) |
-| 5 | Use the tenure or competitor lever | Sonnet 4b9901, afa368 |
-| 6 | save-2 $69 recorded and read back | Sonnet 4b9901, afa368 |
-| 7 | `request_approval` for save-2 (outside the $65 envelope, inside $72) | Sonnet 4b9901 (granted), afa368 (granted twice) |
-| 8 | Approved; accept released and heard | **blocked**: 7 accepts queued over 4b9901 and afa368, 0 heard; every `COMMIT_AUTHORIZED` turned `NEEDS_REPLAN` before release, until the approval expired |
-| 9 | Confirmation number; `check_account` | not reached |
-| 10 | VERIFIED_COMPLETE | not reached |
+Every step was reached in fc41ec: identity (31 s), save-1 $78 (62 s), tenure public and the lever heard, save-2 $69 (112 s), approval granted (218 s), accept heard (237 s), confirmation 387558 and `ledger.write` (240 s), `check_account` and the evidence wake (260 s), `finish(completed)` (262 s). The fixes that got there, in order: #305 Slow on Sonnet 5.5, #307 cache and pricing, #303 and #315 tenure goes public (any phrasing, user decision), #308 a queued accept keeps FastC off the floor, #311 the sim rep hears each line, #313 the sim user agrees with its card, #314 Slow wakes on evidence. Recent live runs and where they stopped: 6ebdc0 (Ear lost a two-line lever, fixed by #311), 99c310 (sim user contradicted its card, #313), aebf80 (no wake after evidence, #314), 9a7dd3 (tenure phrasing, #315), fc41ec (success).
 
-Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash): the blocker was Slow's judgement (unrecorded identity, unused tenure). Sonnet smokes (2026-10-11, main 9bc9828, Slow = Sonnet 5.5 effort medium, Fast = Luna): 4b9901 and afa368 reached step 7, 94bb0c stopped at save-1. Slow made a tool call on every step; step latency median 1.8–1.9 s, p90 ≤ 3.3 s, max 5.5 s. The blocker is now mechanism at step 8. Two of the three runs were also ended by the $2 session cap (`budget`), because Slow input is priced at the upper-bound cache-write rate (~730k input tokens per 60-step run).
+How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add --detach ../pl-wt/smoke origin/main`, then in it, with `.env` and `.env.local` sourced and `PL_ANTHROPIC_BASE_URL=https://api.anthropic.com`, `PL_OPENROUTER_API_KEY=$OPENROUTER_API_KEY`, `PL_OPENROUTER_BASE_URL=https://openrouter.ai/api` exported: `make smoke-live FAMILY=<family> FAST=openai/gpt-6-luna FAST_ENDPOINT=openrouter WORLD_MODEL=openrouter:google/gemini-3.8-flash`. Move the bundle from `../pl-wt/smoke/runs/` to `runs/` afterwards (never delete it). A run costs about $0.3–0.8 (Slow from the monthly credit).
 
 ## Now / Next
 
-1. **Step 8, the accept is never heard** (Tier C, kernel/Guard): after approval, `accept_offer` queues the verbatim and status goes `COMMIT_AUTHORIZED`, but FastC keeps finishing its own turns ("I'll check with the account holder before making any decision"); the rep answers, and the commit is revalidated away (`NEEDS_REPLAN`). Reproduce offline first: extend the SlowScript in `tests/support/web_demo.py` from save-1 + direct approval to tenure → save-2 → approval → accept → confirmation → `check_account`, with the rep talking while the accept is queued. Evidence: 4b9901 (t 182–318 s), afa368.
-2. After step 8 is fixed: 3 live runs of `x-out-of-envelope-approval`, with #303 (tenure phrasings, step 4) and S1-SYS-100 (system-prompt cache breakpoint, Anthropic calls priced from the cache split) in.
-4. One "heard" rule: move the GUIDE/ask-heard decision into one pure function in `guard/` and delete the copies in `obs/guides.py` and `obs/grading.py` (obs may import guard); acceptance: `diagnose` output byte-identical on the local `runs/` bundles.
-5. Then fix the step the latest clean runs stop at, 3 live runs per change.
+1. **M2**, one live run each, in this order, diagnose any failure to the step and fix it (stop rule: 3 PRs on one step without progress → a one-page rethink for the user):
+   - `cp-direct-discount` (default mode `info_only`, gold `ledger+no_deal`): expect a verified close (C or D).
+   - `cp-hidden-fee-readback` (`full`, gold `ledger`): the rep hides a fee; the read-back must surface it before any accept (A or B).
+   - `x-user-mind-change` (`full`, scripted `stop` after the card, gold `no_commit_after_stop`): the queued accept must be revoked, tier S; also confirms #313 did not break the scripted stop.
+2. **FastC after a commit** (a CON task, contract + ADR, a new `pl_cp` profile version): after the accept is heard FastC still says "I can't accept the offer on Marcus's behalf" (aebf80 231 s): its prompt shows `CASE STATUS: COMMITTED` with no meaning, and satisfied GUIDEs stay. Render COMMIT_AUTHORIZED/COMMITTED so FastC stops stalling, and retire satisfied GUIDEs. Coordinate the profile version with the model side (training data is bound to the profile).
+3. **M3**, the battery: 10 runs per family (40 runs; Slow about $20 from the credit, OpenRouter about $2–3): ask the user first (a batch above $10).
+4. **S1 close** (user decision 2026-09-28): the browser demo end to end with the user clicking approve (U), the battery, and the user's decisions on the Fast model and the résumé wording.
+5. Later: one "heard" rule (the GUIDE/ask-heard decision in one pure function in `guard/`, deleting the copies in `obs/guides.py` and `obs/grading.py`; acceptance: `diagnose` output byte-identical on the local bundles).
 
 ## Waiting on the user
 
-- `.env` has `PL_ANTHROPIC_API_KEY` (workspace-scoped, works); add `PL_ANTHROPIC_BASE_URL=https://api.anthropic.com`. The OpenRouter key is `OPENROUTER_API_KEY` in `.env.local`; map it to `PL_OPENROUTER_API_KEY` (base `https://openrouter.ai/api`) when running.
+- `.env` has `PL_ANTHROPIC_API_KEY` (workspace-scoped, works) but not `PL_ANTHROPIC_BASE_URL`; the OpenRouter key is `OPENROUTER_API_KEY` in `.env.local`. Export the mappings above when running (never read or print the files).
+- Competitor facts (Orbit Mobile $62) stay private by NORTH_STAR I11 as the code reads it (`slow/tools.py` FORMATS); whether a quote the user states may be used as a lever is the user's decision (a NORTH_STAR reading).
+- The battery spend (M3) before it runs.
 - The S0 principal session and the S1 U step (in person).
 - Root-run G steps parked until M1: `make pull-through MODE=full` for S1-CON-01/05/08.
 
-## Frozen until M1
+## Frozen until M2 (session decision 2026-10-12; the user may lift it)
 
 - New product-lane features (web, API, obs) beyond fixes on the session path; new obs detectors and lexicon growth.
 - S2 (including follow-ups to S2-SYS-02, the Ear-audit core).
@@ -60,6 +55,7 @@ Smokes #4–#9 (2026-09-29, Slow = Gemini 3.8 Flash): the blocker was Slow's jud
 - Fast in development: OpenRouter `openai/gpt-6-luna`, `reasoning_effort` none; Qwen enters only after fine-tuning (user, 2026-09-28).
 - Slow = `claude-sonnet-5-5` on the `anthropic` endpoint, effort medium, paid by the user's monthly API credit (user, 2026-10-11; ADR-0027). The world defaults to Gemini 3.8 Flash via OpenRouter (#297) and stays Gemini by the family rule (user, 2026-09-29); teacher = DeepSeek V4.1 Flash (`teamrouter:deepseek-flash`) at effort medium for every teacher run from now on (user, 2026-09-29; effort and the standing choice confirmed 2026-10-12 after the Haiku 5.5 probe arms, S1-MOD-11).
 - Live profiles `pl_cp_v3` / `pl_user_v1` (`kernel/lanes.py`); `semantics-v1` is not frozen yet (S3).
+- Tenure is not confidential: any "<n> years" in the user's own message publishes it (user, 2026-10-12; #315). Budget and approval limits stay private. The sim user's chat voice keeps to its approval card (ADR-0028). The sim rep hears each line of a turn (#311).
 - Training labels: hosted-model outputs may be SFT labels and Opus-rewritten text is allowed, with provenance; such adapters are not published (ADR-0022 and amendment).
 - Outcome tiers A–F, X, S and F-infra (ADR-0023); infra ends are reported apart from agent outcomes.
 - TeamRouter: not topped up; a run failing on the balance is F-infra (user, 2026-09-28). The headroom probe runs in S3, not S1.
