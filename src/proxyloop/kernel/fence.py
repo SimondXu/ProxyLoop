@@ -139,6 +139,12 @@ class Authority:
         lanes = {lane for lane, *_ in self._raised.values()}
         return lanes == {"cp"}
 
+    def partner_bound(self) -> bool:
+        """Every raised partner fence is bound: a Slow step alone clears it,
+        with no new FastC turn (always so under ``transcript``). Read-only."""
+        raised = self._raised.values()
+        return all(at is not None for lane, *_, at in raised if lane == "cp")
+
     def moved(self) -> Coroutine[Any, Any, bool]:
         """Until a fence is raised or cleared, the epoch moves or the call
         closes, after this call: bound to the current event now, not when the
