@@ -63,7 +63,7 @@ def test_with_no_lever_left_asking_again_comes_back(tmp_path: Path) -> None:
 # when no lever step is shown". Two read-backs that omitted slots keep their
 # facts; with a free lever the lever is the one next step, not a decline.
 
-STUCK = "read-back asked 2×, omitted from 2 read-backs: "  # noqa: RUF001
+STUCK = "read-back asked 2×, stuck: omitted from 2 read-backs: "  # noqa: RUF001
 DECLINE = "then decline_offer and guide_fast(ask_final_offer)"
 
 

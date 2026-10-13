@@ -89,9 +89,6 @@ class SlowTools:
         self.final_asks: list[str] = []  # ask_final_offer s2f msg ids (§9.3)
         self.guides: list[tuple[str, GuideMove]] = []  # cp GUIDEs sent: (msg id, move)
         self.told_at: int | None = None  # the cp length at the last tell_user
-        # the cp transcript length at every read-back ask of an offer
-        # revision (ADR-0018 V4, slow.state)
-        self.readbacks: dict[tuple[str, int], list[int]] = {}
         # every read-back ask of an open offer, any revision: its s2f msg id,
         # the call, the cp transcript length and the asked revision's terms
         # (field: value, record_offer's): Guard's read-back windows (ADR-0020)
@@ -353,7 +350,6 @@ class SlowTools:
         for ref in sorted(refs):
             if (o := bb.public.offers.get(ref)) is not None:
                 self.asked.setdefault((ref, o.revision), []).append(msg)
-                self.readbacks.setdefault((ref, o.revision), []).append(at)
                 if o.status == "open":
                     terms = {s.field: s.value for s in o.slots}
                     ask = (msg, self._call(), Ask(at, terms))

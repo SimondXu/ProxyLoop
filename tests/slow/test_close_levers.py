@@ -195,8 +195,9 @@ def test_f11_asks_are_counted_per_revision_and_two_stuck_read_backs_stop(
     assert b.readbacks[("save-2", 1)] == state.Readback(1, (), False)
     assert b.offer_note(o) == "read-back asked 1×"  # noqa: RUF001
     h.act(ASK)
-    got = _bar(h).readbacks[("save-2", 1)]  # the rep has not replied yet
-    assert got == state.Readback(2, (), False)
+    got = _bar(h).readbacks[("save-2", 1)]  # sent, not heard yet (ADR-0030 D1)
+    assert got == state.Readback(1, (), False, pending=True)
+    assert "reply pending: wait" in _bar(h).offer_note(h.bb.public.offers["save-2"])
     h.voice()
     h.rep("cp-3", REP_NO_EXPIRY)
     b = _bar(h)
@@ -308,8 +309,10 @@ def _asked_twice(tmp_path: Path, first: str, second: str) -> Host:
     h.rep("cp-1", TERMS)
     record = {"tool": "record_offer", "offer_ref": "save-2", "offer_slots": FULL}
     h.act(record, ASK)
+    h.voice()
     h.rep("cp-2", first)
     h.act(ASK)
+    h.voice()
     h.rep("cp-3", second)
     return h
 
@@ -493,3 +496,68 @@ def test_g2_a_later_heard_ask_moves_the_window_forward(tmp_path: Path) -> None:
     h.rep("cp-13", BEST)
     c = _agrees(h)
     assert (c.reply, c.reasons) == ("cp-13", ()) and h.ended == ["no_deal"]
+
+
+# ADR-0030 D1: the bar counts the read-back asks the rep heard, from the line
+# where it heard them (Guard's windows, ADR-0020); a reply still to come is
+# "pending", never stuck and never a decline (M3: 7 of 9 read-back declines
+# came before the rep had answered).
+
+
+def _recorded(tmp_path: Path) -> Host:
+    from tests.slow.test_authority import SLOTS as FULL
+    from tests.slow.test_authority import TERMS
+
+    h = Host(tmp_path)
+    h.call()
+    h.rep("cp-1", TERMS)
+    h.act({"tool": "record_offer", "offer_ref": "save-2", "offer_slots": FULL}, ASK)
+    return h
+
+
+def test_d1_asks_sent_but_not_heard_are_pending_not_stuck(tmp_path: Path) -> None:
+    h = _recorded(tmp_path)
+    h.act(ASK)  # the first one superseded unvoiced, the second not voiced yet
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(0, (), False, pending=True)
+    note = b.offer_note(h.bb.public.offers["save-2"])
+    assert note.endswith(state.PENDING) and "decline" not in note, note
+    assert not b.stuck(h.bb.public.offers["save-2"])
+
+
+def test_d1_one_omitting_reply_and_an_unheard_second_ask_do_not_stop(
+    tmp_path: Path,
+) -> None:
+    h = _recorded(tmp_path)
+    h.voice()
+    h.rep("cp-2", REP_NO_EXPIRY)
+    h.act(ASK)  # sent, not voiced yet
+    h.rep("cp-3", REP_NO_EXPIRY)  # said before the rep heard the second ask
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(1, (), False, pending=True)
+    assert "decline" not in b.offer_note(h.bb.public.offers["save-2"])
+
+
+def test_d1_ca1906_a_read_back_before_the_ask_is_heard_is_not_its_reply(
+    tmp_path: Path,
+) -> None:
+    """ca1906: the rep's read-back crossed Slow's next ask. It answers the
+    earlier ask only; the new one opens where the rep heard it."""
+    h = _recorded(tmp_path)
+    h.voice()
+    h.rep("cp-2", REP_NO_EXPIRY)
+    h.act(ASK)
+    h.rep("cp-3", REP_NO_EXPIRY)  # before the second ask was delivered
+    h.voice()  # heard now: no rep line since
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, (), False, pending=True)
+    h.rep("cp-4", REP_NO_EXPIRY)  # its reply, omitting the expiry again
+    b = _bar(h)
+    assert b.readbacks[("save-2", 1)] == state.Readback(2, ("expires",), False)
+    assert "stuck: omitted from 2" in b.offer_note(h.bb.public.offers["save-2"])
+
+
+def test_d1_an_ask_still_playing_is_pending(tmp_path: Path) -> None:
+    h = _recorded(tmp_path)
+    h.voice(deliver=False)  # voiced, its sentence not delivered yet
+    assert _bar(h).readbacks[("save-2", 1)] == state.Readback(0, (), False, True)
