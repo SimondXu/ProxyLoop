@@ -7,7 +7,9 @@ item's head. It counts only if what follows is clean: the end, a joiner into
 the same list's next item (whose tail then decides), account phrases
 (``PREPOSITIONS`` ... ``TARGETS``), a joiner and up to ``BRIDGE_MAX`` plain
 words into the next statement, or a joiner into a clause naming a role word
-(another field's, read per clause; its own field's is plain, so it voids).
+(another field's, read per clause; its own field's is plain, so it voids)
+with no amount, non-date number, condition or restriction. "at all" may
+follow an item.
 Anything else voids it and all after it; so does a ``HEDGES`` word before the
 first, a question, an off-form "everything ... same", or a change item
 modified by ``KINDS``. The role is denied only if every role word is negated.
@@ -57,17 +59,21 @@ TARGETS = frozenset({"plan", "plans", "account", "service", "services", "offer",
 # a negation or hedge: before the first statement it voids the sentence
 HEDGES = frozenset({"not", "never", "maybe", "might", "perhaps", "probably",
                     "think", "guess", "believe"})  # fmt: skip
-# a time, condition, restriction or time bound: never a clean tail (a contrast
-# word fails as no item, joiner or phrase: "no fees, but ...")
-QUALIFIERS = frozenset({
-    "day", "days", "week", "weeks", "month", "months", "year", "years", "hour",
-    "hours", "today", "now", "yet", "soon", "tomorrow",  # a time
-    "if", "while", "as", "provided", "assuming", "when", "once",  # a condition
-    "unless",
-    "only", "just", "exception", "save", "minus", "except", "excluding", "besides",
-    "apart", "aside", "than",  # a restriction
-    "after", "until", "till", "before", "through", "during", "within", "beyond",
-})  # fmt: skip
+# a time: never a clean tail
+TIMES = frozenset({"day", "days", "week", "weeks", "month", "months", "year",
+                   "years", "hour", "hours", "today", "now", "yet", "soon",
+                   "tomorrow"})  # fmt: skip
+# a condition: never a clean tail, nor in a clause on another term
+CONDITIONS = frozenset({"if", "while", "as", "provided", "assuming", "when", "once",
+                        "unless"})  # fmt: skip
+# a restriction: never a clean tail, nor in a clause on another term
+RESTRICTIONS = frozenset({"only", "just", "exception", "save", "minus", "except",
+                          "excluding", "besides", "apart", "aside",
+                          "than"})  # fmt: skip
+# a time bound: never a clean tail (a contrast word fails as no item or joiner)
+BOUNDS = frozenset({"after", "until", "till", "before", "through", "during",
+                    "within", "beyond"})  # fmt: skip
+QUALIFIERS = TIMES | CONDITIONS | RESTRICTIONS | BOUNDS
 # a sentence opening with one of them qualifies the one before ("No fees. Except")
 CONTINUERS = frozenset({"except", "apart", "aside", "besides", "beyond", "other",
                         "only", "just", "save", "minus", "excluding", "unless",
@@ -77,6 +83,13 @@ BRIDGE_MAX = 4  # plain words between a joiner and the next statement
 
 _TOKEN = re.compile(r"\$?\d[\d,.:]*\d|\$?\d|[a-z]+(?:['-][a-z]+)*|[,;:?!]")
 _AMOUNT = re.compile(r"\$?\d.*|dollars?|cents?")  # a number, a money word
+_MONTH = (r"(?:january|february|march|april|may|june|july|august|september|"
+          r"october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|"
+          r"dec)\.?")  # fmt: skip
+_DATE = re.compile(  # "june 30, 2026", "the 30th", "2026-06-30": one plain word
+    rf"\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?\b(?:,?\s+\d{{4}}\b)?"
+    r"|\b\d{1,2}(?:st|nd|rd|th)\b|\b\d{4}-\d{2}-\d{2}\b"
+)
 
 
 class Hit(NamedTuple):
@@ -96,7 +109,8 @@ class _Tok(NamedTuple):
 def _tokens(sentence: str) -> list[_Tok]:
     """Lower-cased tokens; "n't" is "not" ("won't" is "will not")."""
     out: list[_Tok] = []
-    for m in _TOKEN.finditer(sentence.lower().replace("\u2019", "'")):
+    text = _DATE.sub(lambda d: "d" * len(d.group()), sentence.lower())
+    for m in _TOKEN.finditer(text.replace("\u2019", "'")):
         w, a, b = m.group(), m.start(), m.end()
         stem = {"won't": "will", "can't": "can", "cannot": "can"}.get(w, w[:-3])
         neg = w == "cannot" or w.endswith("n't")
@@ -174,6 +188,7 @@ def _statement(toks: list[_Tok], i: int, role: Role) -> tuple[dict[int, int], in
                 toks[m].text for m in item[:-1]} & KINDS):  # fmt: skip
             return heads, -1
         heads |= {h: h for h in head}
+        k += 2 * ([t.text for t in toks[k : k + 2]] == ["at", "all"])  # intensifies
         j = k
         while j < n and toks[j].text in JOINERS - {"and"}:
             j += 1
@@ -200,8 +215,12 @@ def _next(toks: list[_Tok], k: int) -> tuple[int, bool]:
             return n, False
         if not _plain(toks[n].text):
             break
-    terms = {w for ws in ROLE_WORDS.values() for w in ws}  # own field's: plain
-    return (len(toks), False) if {t.text for t in toks[j:]} & terms else (-1, False)
+    rest = {t.text for t in toks[j:]}  # a clause on another term (own: plain)
+    term = rest & {w for ws in ROLE_WORDS.values() for w in ws}
+    clean = not rest & (CONDITIONS | RESTRICTIONS) and not any(
+        map(_AMOUNT.fullmatch, rest)
+    )
+    return (len(toks), False) if term and clean else (-1, False)
 
 
 def scan(sentence: str, role: Role) -> list[Hit]:

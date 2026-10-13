@@ -61,6 +61,11 @@ M3 = [  # (run id, fields the line confirms, the rep's line)
     ("f15e98", "fees_none changes_none", "The rate is 78.00 per month for a 24 month "
      "term with no added fees. There are no other changes to the account, and the "
      "price will not expire after the term ends."),
+    ("f480ee", "fees_none changes_none expires", "You've got it, that's just 62.00 a "
+     "month for a 12-month term! There are no fees, no expiry, and no other changes "
+     "at all."),  # "at all": an intensifier of the negation
+    ("365464", "fees_none", "It's just 62.00 a month for 12 months with no fees at "
+     "all! There are no other changes to the service, and this offer has no expiry."),
     ("365464", "changes_none expires", "It's just 55.00 a month with a 12 month "
      "term, plus a 99.00 installation fee. There are no service changes and the "
      "offer has no expiry!"),
@@ -85,8 +90,6 @@ M3_UNCONFIRMED = [
     ("daa474-to-worry-about", "It's just 55.00 a month with a 12-month term! "
      "There\u2019s an installation fee of 99.00, but no other service changes and no "
      "expiry date to worry about."),
-    ("f480ee-at-all", "You've got it, that's just 62.00 a month for a 12-month "
-     "term! There are no fees, no expiry, and no other changes at all."),
     ("571229-after-that", "It is just 55.00 a month for a 12-month term with a 99.00 "
      "installation fee. There is no expiry and no other changes after that!"),
 ]  # fmt: skip
@@ -186,6 +189,13 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
      "fees."),
     ("and-if", "fees_none", "No fees and no changes if you stay 24 months."),
     ("next-sentence", "fees_none", "No fees. Well, apart from the activation charge."),
+    # a clause on another term carrying an amount or a condition (#324 round 3)
+    ("expires-if-99", "fees_none", "No fees, and the offer expires if you add the $99 "
+     "install."),
+    ("expires-once-20", "fees_none", "No fees, and the offer expires once you pay the "
+     "20 dollar setup."),
+    ("at-all-if", "fees_none", "No fees at all if you stay 24 months."),
+    ("at-first", "fees_none", "No fees at first."),  # "at all" only intensifies
 ]  # fmt: skip
 
 
@@ -403,9 +413,22 @@ def test_a_clause_on_another_term_ends_the_sentence_cleanly() -> None:
     dated = "no fees, no other changes, and the offer expires on june 30, 2026"
     assert denied(dated, "fees") and denied(dated, "changes")
     assert not denied(dated, "expires")
-    assert denied("no expiry, and there's a $35 installation fee", "expires")
+    assert denied("no fees, and the offer expires on the 30th", "fees")
+    # the clause carries no amount, non-date number, condition or restriction
+    assert not denied("no expiry, and there's a $35 installation fee", "expires")
+    assert not denied("no fees, and the offer expires in 30 days", "fees")
+    assert not denied("no fees, and the offer expires unless you sign", "fees")
+    assert not denied("no other changes, and the offer expires just today", "changes")
     assert not denied("no fees, and the activation is $35", "fees")  # no other term
     assert not denied("no fees, and the installation charge is $99", "fees")  # same
+
+
+def test_at_all_intensifies_a_negated_item() -> None:
+    assert denied("no fees at all", "fees") and denied(
+        "no changes at all, and no fees", "changes"
+    )
+    assert not denied("no fees at all until may", "fees")
+    assert not denied("no fees at your store", "fees")  # "at" alone: a phrase
 
 
 def test_every_role_word_must_be_negated() -> None:
