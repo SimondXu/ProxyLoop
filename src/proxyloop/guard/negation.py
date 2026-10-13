@@ -3,17 +3,18 @@ expires=none): one deterministic rule over closed word classes, per sentence.
 
 A statement opens at ``OPENERS``, "not" + an ``EXISTS`` or ``SELF`` verb, or
 "everything (else) stays/remains the same"; a role word counts only as an
-item's head. It counts only if what follows is clean: the end, a joiner into
-the same list's next item (whose tail then decides), account phrases
-(``PREPOSITIONS`` ... ``TARGETS``), a joiner and up to ``BRIDGE_MAX`` plain
-words into the next statement, or a joiner into a clause naming a role word
-(another field's, read per clause; its own field's is plain, so it voids)
-with no amount, non-date number, condition or restriction. "at all" may
-follow an item.
-Anything else voids it and all after it; so does a ``HEDGES`` word before the
-first, a question, an off-form "everything ... same", or a change item
-modified by ``KINDS``. The role is denied only if every role word is negated.
-Fail closed; the classes are frozen.
+item's head, and every further item is headed by some field's role word. It
+counts only if what follows is clean: the end, a joiner into the same list's
+next item, account phrases (``PREPOSITIONS`` ...
+``TARGETS``), a joiner and up to ``BRIDGE_MAX`` plain words into the next
+statement, or a joiner into a clause naming a role word (another field's,
+read per clause; its own field's is plain, so it voids) with no qualifier,
+amount, number (in digits or ``NUMBER_WORDS``) or, for expiry, date. "at all"
+may follow an item. Anything else voids the whole sentence; so do a
+``HEDGES``, condition, restriction or bound word before the first statement,
+a time phrase opening the sentence, a question, an off-form "everything ...
+same", or a change item modified by ``KINDS``. The role is denied only if
+every role word is negated. Fail closed; the classes are frozen.
 """
 
 from __future__ import annotations
@@ -74,6 +75,13 @@ RESTRICTIONS = frozenset({"only", "just", "exception", "save", "minus", "except"
 BOUNDS = frozenset({"after", "until", "till", "before", "through", "during",
                     "within", "beyond"})  # fmt: skip
 QUALIFIERS = TIMES | CONDITIONS | RESTRICTIONS | BOUNDS
+# a number in words: an amount in a clause on another term ("runs ninety-nine")
+NUMBER_WORDS = frozenset({"zero", "one", "two", "three", "four", "five", "six",
+                          "seven", "eight", "nine", "ten", "eleven", "twelve",
+                          "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
+                          "eighteen", "nineteen", "twenty", "thirty", "forty",
+                          "fifty", "sixty", "seventy", "eighty", "ninety",
+                          "hundred", "thousand"})  # fmt: skip
 # a sentence opening with one of them qualifies the one before ("No fees. Except")
 CONTINUERS = frozenset({"except", "apart", "aside", "besides", "beyond", "other",
                         "only", "just", "save", "minus", "excluding", "unless",
@@ -178,15 +186,17 @@ def _statement(toks: list[_Tok], i: int, role: Role) -> tuple[dict[int, int], in
         return ({i + 1: i + 1} if mine else {}), i + 2
     k = i + 1 if w in OPENERS else i + 2
     k += int(w == "not" and k < n and toks[k].text in ARTICLES)
-    heads = dict[int, int]()
+    heads, first = dict[int, int](), True
     while True:
         item = list[int]()
         while k < n and len(item) <= MAX_MODIFIERS and _modifier(toks[k].text):
             item, k = [*item, k], k + 1
         head = _head(toks, item, role) if item else set[int]()
-        if not item or (role == "changes" and head and {
-                toks[m].text for m in item[:-1]} & KINDS):  # fmt: skip
+        named = item and any(_head(toks, item, r) for r in ROLE_WORDS)  # D
+        kinds = role == "changes" and head and {toks[m].text for m in item[:-1]} & KINDS
+        if not item or kinds or not (first or named):
             return heads, -1
+        first = False
         heads |= {h: h for h in head}
         k += 2 * ([t.text for t in toks[k : k + 2]] == ["at", "all"])  # intensifies
         j = k
@@ -197,48 +207,58 @@ def _statement(toks: list[_Tok], i: int, role: Role) -> tuple[dict[int, int], in
         k = j
 
 
-def _next(toks: list[_Tok], k: int) -> tuple[int, bool]:
-    """After a list ending at ``k``: the next statement and whether it continues
-    the same list; the end if the tail ends or is a clause on another term
-    ("..., and the offer expires June 30"); (-1, False) if it is not clean."""
+def _next(toks: list[_Tok], k: int, role: Role) -> int:
+    """After a list ending at ``k``: the next statement; the end if the tail
+    ends or is a clause on another term ("..., and the offer expires June 30");
+    -1 if it is not clean."""
     if k >= 0 and all(t.text == "!" for t in toks[k:]):
-        return len(toks), False
+        return len(toks)
     j = k
     while 0 <= j < len(toks) and toks[j].text in JOINERS:
         j += 1
     if k < 0 or j == k or j >= len(toks):
-        return -1, False
-    if _opens(toks, j):
-        return j, True
+        return -1
     for n in range(j, min(j + BRIDGE_MAX + 1, len(toks))):
         if _opens(toks, n):
-            return n, False
+            return n
         if not _plain(toks[n].text):
             break
     rest = {t.text for t in toks[j:]}  # a clause on another term (own: plain)
     term = rest & {w for ws in ROLE_WORDS.values() for w in ws}
-    clean = not rest & (CONDITIONS | RESTRICTIONS) and not any(
-        map(_AMOUNT.fullmatch, rest)
-    )
-    return (len(toks), False) if term and clean else (-1, False)
+    numbers = any(_AMOUNT.fullmatch(w) or {*w.split("-")} <= NUMBER_WORDS for w in rest)
+    dated = role == "expires" and any(set(w) == {"d"} for w in rest)  # a date (_DATE)
+    clean = not rest & QUALIFIERS and not numbers and not dated
+    return len(toks) if term and clean else -1
+
+
+def _timed(before: list[str]) -> bool:
+    """The sentence opens with a time phrase ("For the first 12 months, ...",
+    "This month ..."): a preposition or "this"/"next", then a time or number
+    before the first comma (C)."""
+    lead = before[: before.index(",")] if "," in before else before
+    times = any(w in TIMES or _AMOUNT.fullmatch(w) for w in lead)
+    return bool(lead) and lead[0] in PREPOSITIONS | {"this", "next"} and times
 
 
 def scan(sentence: str, role: Role) -> list[Hit]:
     """Every role word in ``sentence`` (and, for changes, every "everything
     stays the same"), with how the sentence states it."""
     toks = _tokens(sentence)
-    good, bad, group = dict[int, int](), dict[int, int](), dict[int, int]()
+    good, bad = dict[int, int](), dict[int, int]()
     i = next((k for k in range(len(toks)) if _opens(toks, k)), len(toks))
-    void = sentence.rstrip().endswith("?") or bool({t.text for t in toks[:i]} & HEDGES)
+    before = [t.text for t in toks[:i]]
+    void = (
+        sentence.rstrip().endswith("?")
+        or bool(set(before) & (HEDGES | CONDITIONS | RESTRICTIONS | BOUNDS))
+        or _timed(before)
+    )
     while i < len(toks):
         heads, k = _statement(toks, i, role)
-        group |= heads
-        i, same_list = _next(toks, -1 if k < 0 else _phrases(toks, k))
-        if i < 0:
-            bad |= group
+        good |= heads
+        i = _next(toks, -1 if k < 0 else _phrases(toks, k), role)
+        if i < 0:  # a bad tail voids the whole sentence (A)
+            good, bad = {}, good
             break
-        if not same_list:  # a new statement, on its own
-            good, group = good | group, {}
     words = [t.text for t in toks]
     void |= role == "changes" and any(
         w == "everything" and "same" in words[k:] and _same(toks, k) is None

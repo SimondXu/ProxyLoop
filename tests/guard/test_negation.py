@@ -58,14 +58,12 @@ M3 = [  # (run id, fields the line confirms, the rep's line)
     ("e0351c", "fees_none changes_none expires", "The offer is 69.00 a month for 24 "
      "months with no fees and no service changes. This offer does not have an "
      "expiry date."),
-    ("f15e98", "fees_none changes_none", "The rate is 78.00 per month for a 24 month "
+    ("f15e98", "fees_none", "The rate is 78.00 per month for a 24 month "
      "term with no added fees. There are no other changes to the account, and the "
      "price will not expire after the term ends."),
     ("f480ee", "fees_none changes_none expires", "You've got it, that's just 62.00 a "
      "month for a 12-month term! There are no fees, no expiry, and no other changes "
      "at all."),  # "at all": an intensifier of the negation
-    ("365464", "fees_none", "It's just 62.00 a month for 12 months with no fees at "
-     "all! There are no other changes to the service, and this offer has no expiry."),
     ("365464", "changes_none expires", "It's just 55.00 a month with a 12 month "
      "term, plus a 99.00 installation fee. There are no service changes and the "
      "offer has no expiry!"),
@@ -102,6 +100,28 @@ def test_m3_lines_with_an_unclean_tail_stay_unconfirmed(text: str) -> None:
     assert not _confirms(NO_EXPIRY, text)
 
 
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [  # #324 round 2 fixes: (A) the "after the term ends" tail voids the sentence,
+        # (C) "just" before the first statement is a restriction word
+        (
+            "changes_none",
+            "The rate is 78.00 per month for a 24 month term with no "
+            "added fees. There are no other changes to the account, and the price will "
+            "not expire after the term ends.",
+        ),
+        (
+            "fees_none",
+            "It's just 62.00 a month for 12 months with no fees at all! "
+            "There are no other changes to the service, and this offer has no expiry.",
+        ),
+    ],
+    ids=["f15e98-A", "365464-C-just"],
+)
+def test_m3_lines_voided_by_the_round_2_rules(field: str, text: str) -> None:
+    assert not _confirms(SLOTS[field], text)
+
+
 NEVER = [  # (case id, field, a line that must not confirm the field's "none")
     ("plus-fee", "fees_none", "There are no other changes, plus a $99 installation "
      "fee."),
@@ -124,6 +144,8 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
     ("question-no-fees", "fees_none", "So there are no fees?"),
     ("question-changes", "changes_none", "No other changes, right?"),
     ("question-expiry", "expires", "Does it have no expiry?"),
+    ("question-other-term", "fees_none", "So no fees, and the offer expires on June "
+     "30?"),
     ("beyond", "fees_none", "There are no additional fees beyond the setup charge."),
     ("apart-from", "changes_none", "No changes apart from the new router."),
     ("unless", "fees_none", "No fees unless you cancel early."),
@@ -196,6 +218,39 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
      "20 dollar setup."),
     ("at-all-if", "fees_none", "No fees at all if you stay 24 months."),
     ("at-first", "fees_none", "No fees at first."),  # "at all" only intensifies
+    # #324 round 2 (A): a bad tail voids the whole sentence
+    ("A-except", "fees_none", "No fees, it has no expiry date, except the activation."),
+    ("A-swap", "changes_none", "There are no other changes, there are no fees, "
+     "except we swap the router."),
+    # (B) a clause on another term carries no qualifier, nor (for expiry) a date
+    ("B-by-june", "expires", "There's no expiry date, and the change has to be "
+     "accepted by June 30."),
+    ("B-tomorrow", "expires", "No expiry, and the plan change locks in tomorrow."),
+    ("B-through", "expires", "There's no expiry date, and the fee waiver is good "
+     "through Friday."),
+    # (C) a qualifier before the first statement voids the sentence
+    ("C-unless", "fees_none", "Unless you cancel early, there are no fees."),
+    ("C-if", "fees_none", "If you sign up today, there's no activation fee."),
+    ("C-other-than", "fees_none", "Other than the activation, there are no fees."),
+    ("C-except-for", "changes_none", "Except for the router, there are no other "
+     "changes."),
+    ("C-once", "expires", "Once you accept, there's no expiration date."),
+    ("C-first-12", "fees_none", "For the first 12 months, there are no fees."),
+    ("C-this-month", "fees_none", "This month there are no fees."),
+    ("C-besides", "fees_none", "Besides the activation charge there are no fees."),
+    ("C-apart", "fees_none", "Apart from the activation, there are no fees."),
+    ("C-aside", "fees_none", "Aside from installation, there are no fees."),
+    ("C-before", "fees_none", "Before Friday, there are no fees."),
+    ("C-through", "changes_none", "Through the renewal, there are no other changes."),
+    ("bridge-besides", "fees_none", "No fees, and besides the activation there's no "
+     "expiry."),
+    # (D) a further list item is headed by a role word
+    ("D-activation-extra", "fees_none", "No fees, activation extra."),
+    ("D-installation-extra", "fees_none", "No monthly fees, installation extra."),
+    ("D-may-3", "expires", "No expiry date, May 3."),
+    # (E) number words are amounts in a clause on another term
+    ("E-ninety-nine", "fees_none", "No other fees, and the router change runs "
+     "ninety-nine."),
 ]  # fmt: skip
 
 
