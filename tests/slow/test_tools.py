@@ -678,6 +678,15 @@ COMPANY_TENURE = [
     ("I've been with Brightwave for 6 years", "Northwind Mobile", "6", "6"),
     ("She said I've been with them for 6 years", "", "6", "6"),
     ("I'm 60 and have been with them 36 years", "", "36", "36"),
+    # said in words, as people type it in the browser (live demo 75240d)
+    ("I've been with them eight years.", "", "8", "8"),
+    ("I've been with them for Twenty-one years", "", "21", "21"),
+    ("twenty one yrs with you", "", "21", "21"),
+    ("I've been with them for eighteen years", "", "8", None),
+    ("I've been with them for twenty-eight years", "", "8", None),
+    ("I've been with them for twenty eight years", "", "20", None),
+    ("I'm eight years old", "", "8", None),
+    ("I've been with them for one hundred years", "", "1", None),
     # the number must be said as years, by itself
     ("I've been with them for 6 months", "", "6", None),
     ("I've been with them for six years", "", "six", None),

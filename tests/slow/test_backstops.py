@@ -255,7 +255,7 @@ def test_d_mention_tenure_without_a_public_tenure_is_refused(tmp_path: Path) -> 
 
 def test_d_a_private_tenure_is_still_refused(tmp_path: Path) -> None:
     h = first.verified(tmp_path, 6500, {"max_term_months": 24}, tenure=False)
-    _tenure(h, "I have been with them for eight years.")  # not said as "8 years"
+    _tenure(h, "I have been with them a long time, eight I think.")  # no years
     assert h.bb.private.case_facts["tenure_years"].value == "8"
     for call in (TENURE, TENURE | {"slots": [SLOT]}):  # D2: no ask loop
         (got,) = h.act(call)
