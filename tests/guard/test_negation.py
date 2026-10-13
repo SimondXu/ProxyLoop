@@ -61,6 +61,9 @@ M3 = [  # (run id, fields the line confirms, the rep's line)
     ("f15e98", "fees_none changes_none", "The rate is 78.00 per month for a 24 month "
      "term with no added fees. There are no other changes to the account, and the "
      "price will not expire after the term ends."),
+    ("a84f71", "changes_none expires", "You've got it, that's just 55.00 a month "
+     "for 12 months with a 99.00 installation fee! Everything else stays the same "
+     "with no expiry, so we're all set."),
     ("daa474", "changes_none expires", "It's just 55.00 a month with a 12-month "
      "term! There\u2019s an installation fee of 99.00, but no other service changes "
      "and no expiry date to worry about."),
@@ -109,6 +112,24 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
     ("bill", "changes_none", "No changes to your bill."),
     ("deadline-before", "expires", "There's no deadline before Friday."),
     ("verb-change", "changes_none", "That won't change anything."),
+    ("same-except", "changes_none", "Everything else stays the same except the "
+     "router."),
+    ("same-rate", "changes_none", "Your rate and everything else stays the same."),
+    ("same-question", "changes_none", "Everything else stays the same?"),
+    ("same-until", "changes_none", "Everything else remains the same until May."),
+    # an un-negated role word in the sentence voids the none statement
+    ("plain-fee", "fees_none", "No fees today, but there's an installation fee."),
+    ("plain-change", "changes_none", "No other changes, but your plan changes to "
+     "Basic."),
+    ("plain-expiry", "expires", "There's no deadline, and the offer expires soon."),
+    # the role word must head its item
+    ("fee-waiver", "fees_none", "There's no fee waiver."),
+    ("change-fee", "changes_none", "There's no change fee."),
+    ("expiry-notice", "expires", "There's no expiry notice."),
+    # a temporal word after any role word voids it
+    ("fees-until", "fees_none", "No fees until next year."),
+    ("changes-until", "changes_none", "No changes until your renewal."),
+    ("fees-after", "fees_none", "There are no fees after the first month."),
 ]  # fmt: skip
 
 
@@ -129,14 +150,14 @@ def test_a_date_after_a_voided_expiry_is_the_date() -> None:
 
 def test_the_contradiction_stays_per_clause() -> None:
     line = "No fees today, but there is a $99 installation fee."
-    assert said(line.lower(), "fees_none") == {"true", "false"}
+    assert said(line.lower(), "fees_none") == {"false"}  # a plain "fee": void
     assert said("no other changes, plus a $99 installation fee", "fees_none") == {
         "false"
     }
     assert said("we will switch you to basic, no other changes", "changes_none") == {
         "true", "false"
     }  # fmt: skip
-    assert said("no expiry, but it expires friday", "expires") == {"none", "date?"}
+    assert said("no expiry, but it expires friday", "expires") == {"date?"}
 
 
 def test_the_list_and_its_breaks() -> None:
@@ -153,6 +174,10 @@ def test_the_list_and_its_breaks() -> None:
     assert not denied("no changes but a fee", "fees")
     assert not denied("no changes or $20 fees", "fees")  # an amount
     assert not denied("no great big extra new fees", "fees")  # 4 modifiers
+    assert denied("no expiry date", "expires") and denied("no expiry period", "expires")
+    assert not denied("no fee waiver", "fees")  # the role word must head its item
+    assert not denied("no change fee", "changes")
+    assert not denied("no fees, but a fee", "fees")  # a plain role word
 
 
 def test_not_with_an_existence_verb() -> None:
@@ -166,6 +191,13 @@ def test_not_with_an_existence_verb() -> None:
     assert not denied("i'm not sure about the fees", "fees")
     assert not denied("your plan won't change", "changes")  # the verb, not the noun
     assert not denied("that won't change any fees", "fees")  # "change" denies no fee
+
+
+def test_everything_stays_the_same_is_the_second_closed_form() -> None:
+    assert denied("everything else stays the same", "changes")
+    assert denied("everything remains the same", "changes")
+    assert not denied("everything else stays the same", "fees")
+    assert not denied("everything else will be the same", "changes")  # closed form
 
 
 def test_role_words_are_closed_classes() -> None:

@@ -190,7 +190,7 @@ def test_a_fee_named_otherwise_is_not_generic() -> None:
 def test_fees_none_with_a_paid_amount_is_a_contradiction() -> None:
     clause = "there are no additional fees beyond the $20 setup charge"
     assert said(clause, "fees_none") == {"false"}  # "beyond": the "no fees" is void
-    assert said("no fees, but a $20 setup charge", "fees_none") == {"true", "false"}
+    assert said("no fees, but a $20 setup charge", "fees_none") == {"false"}
     line = f"It is $68 a month on a 24-month term, {clause}, no other changes, "
     assert not _confirmed(offer(fee=None), line + "and it does not expire.")
 

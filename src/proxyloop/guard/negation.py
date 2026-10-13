@@ -1,18 +1,21 @@
 """Negation scope for the read-back "none" slots (fees_none, changes_none,
 expires=none): one deterministic rule over closed word classes, per sentence.
 
-A role word is negated when it sits in a list opened by an ``OPENERS`` word
-("no fees, changes, or expiry") or by "not" + an ``EXISTS`` verb ("doesn't
-have an expiration date"; "does not expire" negates the verb itself). An item
-is up to ``MAX_MODIFIERS`` modifiers and a head; items join by ``JOINERS``. A
-``BREAKS`` word, an exception, a temporal word, an amount or date, a word that
-is no modifier (``SUBJECTS``, ``PREPOSITIONS``), or a joiner followed by a
-``SUBJECTS`` word ("and your plan ...") ends the list. A sentence denies the
-role only if some role word is negated and no role word's statement is void:
-an exception after it, a temporal word within ``TEMPORAL_WINDOW`` tokens after
-an expiry word, a price word within ``PRICE_WINDOW`` tokens of a change word,
-or a question. Fail closed: nothing else confirms "none". The word classes are
-frozen; they are not phrase lists to grow.
+A role word is negated when it heads an item of a list opened by an
+``OPENERS`` word ("no fees, changes, or expiry") or by "not" + an ``EXISTS``
+verb ("doesn't have an expiration date"; "does not expire" negates the verb
+itself). An item is up to ``MAX_MODIFIERS`` modifiers and a head; the role
+word must be the head ("no fee waiver" denies no fee), or an expiry word
+before a ``EXPIRY_HEADS`` word ("no expiry date"). Items join by ``JOINERS``.
+A ``BREAKS`` word, an exception, a temporal word, an amount or date, a word
+that is no modifier (``SUBJECTS``, ``PREPOSITIONS``), or a joiner followed by
+a ``SUBJECTS`` word ("and your plan ...") ends the list. Changes have a second
+closed form: "everything (else) stays/remains the same". A sentence denies
+the role only if some role word is negated and every role word in it is
+negated and not void. Void: an exception after it, a temporal word within
+``TEMPORAL_WINDOW`` tokens after it, a price word within ``PRICE_WINDOW``
+tokens of a change, or a question. Fail closed: nothing else confirms "none".
+The word classes are frozen; they are not phrase lists to grow.
 """
 
 from __future__ import annotations
@@ -36,6 +39,10 @@ OPENERS = frozenset({"no", "without", "none", "nothing"})
 EXISTS = frozenset({"be", "is", "are", "was", "have", "has", "include", "includes",
                     "come", "comes", "apply", "applies", "carry",
                     "carries"})  # fmt: skip
+# after an expiry word, the item's head ("no expiry date")
+EXPIRY_HEADS = frozenset({"date", "period"})
+# "everything (else) stays/remains the same": nothing changes
+SAME = frozenset({"stays", "remains"})
 # after "not", deny the event they name; they open no list ("won't change any fees")
 SELF = frozenset({"expire", "expires", "change", "changes"})
 # may sit between "not" + verb and the list
@@ -48,7 +55,7 @@ BREAKS = frozenset({"but", "plus", "however", "although", "though", "while", "ye
 # an exception: after a negated word, its statement is void
 EXCEPTIONS = frozenset({"except", "unless", "besides", "beyond"})
 EXCEPTION_PAIRS = frozenset({("apart", "from"), ("aside", "from"), ("other", "than")})
-# a time bound: the list ends; after an expiry word, its statement is void
+# a time bound: the list ends; after a role word, its statement is void
 TEMPORAL = frozenset({"after", "when", "once", "until", "till", "before", "beyond",
                       "through"})  # fmt: skip
 # near a change word, the change is to the price: its statement is void
@@ -66,7 +73,7 @@ MONTHS = frozenset({"jan", "january", "feb", "february", "mar", "march", "apr",
                     "sep", "sept", "september", "oct", "october", "nov", "november",
                     "dec", "december"})  # fmt: skip
 MAX_MODIFIERS = 3  # words before an item's head
-TEMPORAL_WINDOW = 4  # tokens after an expiry word
+TEMPORAL_WINDOW = 4  # tokens after a role word
 PRICE_WINDOW = 3  # tokens either side of a change word
 
 _TOKEN = re.compile(r"\$?\d[\d,.:]*\d|\$?\d|[a-z]+(?:['-][a-z]+)*|[,;:?!]")
@@ -114,18 +121,27 @@ def _stops(toks: list[_Tok], k: int) -> bool:
     )  # fmt: skip
 
 
-def _list(toks: list[_Tok], k: int, words: frozenset[str]) -> set[int]:
-    """The role words in the negated list that starts at token ``k``."""
+def _head(toks: list[_Tok], item: list[int], role: Role) -> set[int]:
+    """The item's role word, if it heads the item."""
+    words = [toks[k].text for k in item]
+    if words and words[-1] in ROLE_WORDS[role]:
+        return {item[-1]}
+    expiry = role == "expires" and len(words) > 1 and words[-2] in ROLE_WORDS[role]
+    return {item[-2]} if expiry and words[-1] in EXPIRY_HEADS else set()
+
+
+def _list(toks: list[_Tok], k: int, role: Role) -> set[int]:
+    """The role words heading an item of the negated list that starts at ``k``."""
     found, n = set[int](), len(toks)
     while True:
-        size = 0
-        while k < n and size <= MAX_MODIFIERS:
+        item = list[int]()
+        while k < n and len(item) <= MAX_MODIFIERS:
             w = toks[k].text
             if w in JOINERS | OPENERS | SUBJECTS | PREPOSITIONS or _stops(toks, k):
                 break
-            found |= {k} if w in words else set()
-            size, k = size + 1, k + 1
-        if size == 0 or k >= n or toks[k].text not in JOINERS:
+            item, k = [*item, k], k + 1
+        found |= _head(toks, item, role)
+        if not item or k >= n or toks[k].text not in JOINERS:
             return found
         while k < n and toks[k].text in JOINERS:
             k += 1
@@ -133,40 +149,54 @@ def _list(toks: list[_Tok], k: int, words: frozenset[str]) -> set[int]:
             return found
 
 
-def _void(toks: list[_Tok], k: int, role: Role) -> bool:
-    """The statement about role word ``k`` is void (see the module docstring)."""
-    after = [t.text for t in toks[k + 1 :]]
+def _void(toks: list[_Tok], k: int, last: int, role: Role) -> bool:
+    """The statement about the role words ``k``..``last`` is void (see the
+    module docstring)."""
+    after = [t.text for t in toks[last + 1 :]]
     if set(after) & EXCEPTIONS or set(pairwise(after)) & EXCEPTION_PAIRS:
         return True
-    if role == "expires":
-        return bool(set(after[:TEMPORAL_WINDOW]) & TEMPORAL)
-    near = {t.text for t in toks[max(0, k - PRICE_WINDOW) : k + 1 + PRICE_WINDOW]}
+    if set(after[:TEMPORAL_WINDOW]) & TEMPORAL:
+        return True
+    near = {t.text for t in toks[max(0, k - PRICE_WINDOW) : last + 1 + PRICE_WINDOW]}
     return role == "changes" and bool(near & PRICE)
 
 
+def _same(toks: list[_Tok], i: int) -> int | None:
+    """The last token of "everything (else) stays/remains the same" at ``i``."""
+    w = [t.text for t in toks[i : i + 5]]
+    j = 2 if w[1:2] == ["else"] else 1
+    same = w[:1] == ["everything"] and w[j + 1 : j + 3] == ["the", "same"]
+    return i + j + 2 if same and w[j] in SAME else None
+
+
 def scan(sentence: str, role: Role) -> list[Hit]:
-    """Every role word in ``sentence``, with how the sentence states it."""
+    """Every role word in ``sentence`` (and, for changes, every "everything
+    stays the same"), with how the sentence states it."""
     toks, words = _tokens(sentence), ROLE_WORDS[role]
-    negated = set[int]()
+    negated = dict[int, int]()  # first token -> last token
     for i, t in enumerate(toks):
         verb = toks[i + 1].text if t.text == "not" and i + 1 < len(toks) else ""
         if t.text in OPENERS:
-            negated |= _list(toks, i + 1, words)
+            negated |= {k: k for k in _list(toks, i + 1, role)}
         elif role == "expires" and verb in SELF & words:  # "does not expire"
-            negated.add(i + 1)  # (changes: "won't change" names no change noun)
+            negated[i + 1] = i + 1  # (changes: "won't change" names no change noun)
         elif verb in EXISTS:
             j = i + 2 + int(i + 2 < len(toks) and toks[i + 2].text in ARTICLES)
-            negated |= _list(toks, j, words)
+            negated |= {k: k for k in _list(toks, j, role)}
+        elif role == "changes" and (last := _same(toks, i)) is not None:
+            negated[i] = last
     question = sentence.rstrip().endswith("?")
+    found = sorted({k for k, t in enumerate(toks) if t.text in words} | set(negated))
     return [
-        Hit(t.start, t.end, "plain" if k not in negated
-            else "void" if question or _void(toks, k, role) else "negated")
-        for k, t in enumerate(toks) if t.text in words
+        Hit(toks[k].start, toks[negated.get(k, k)].end, "plain" if k not in negated
+            else "void" if question or _void(toks, k, negated[k], role)
+            else "negated")
+        for k in found
     ]  # fmt: skip
 
 
 def denied(sentence: str, role: Role) -> bool:
-    """The sentence states that no ``role`` exists: some role word is negated
-    and none is void."""
+    """The sentence states that no ``role`` exists: some role word is negated,
+    and none is void or plain (said outside a negation)."""
     states = {h.state for h in scan(sentence, role)}
-    return "negated" in states and "void" not in states
+    return states == {"negated"}
