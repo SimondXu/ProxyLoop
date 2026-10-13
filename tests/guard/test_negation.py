@@ -61,12 +61,6 @@ M3 = [  # (run id, fields the line confirms, the rep's line)
     ("f15e98", "fees_none changes_none", "The rate is 78.00 per month for a 24 month "
      "term with no added fees. There are no other changes to the account, and the "
      "price will not expire after the term ends."),
-    ("a84f71", "changes_none expires", "You've got it, that's just 55.00 a month "
-     "for 12 months with a 99.00 installation fee! Everything else stays the same "
-     "with no expiry, so we're all set."),
-    ("daa474", "changes_none expires", "It's just 55.00 a month with a 12-month "
-     "term! There\u2019s an installation fee of 99.00, but no other service changes "
-     "and no expiry date to worry about."),
     ("365464", "changes_none expires", "It's just 55.00 a month with a 12 month "
      "term, plus a 99.00 installation fee. There are no service changes and the "
      "offer has no expiry!"),
@@ -80,6 +74,29 @@ M3 = [  # (run id, fields the line confirms, the rep's line)
 )
 def test_m3_paraphrases_confirm(field: str, text: str) -> None:
     assert _confirms(SLOTS[field], text)
+
+
+# M3 lines the inverted rule leaves unconfirmed, fail closed (#324 round 2): a
+# tail after the list that is no account phrase, joiner or end voids it
+M3_UNCONFIRMED = [
+    ("a84f71-so-all-set", "You've got it, that's just 55.00 a month for 12 months "
+     "with a 99.00 installation fee! Everything else stays the same with no expiry, "
+     "so we're all set."),
+    ("daa474-to-worry-about", "It's just 55.00 a month with a 12-month term! "
+     "There\u2019s an installation fee of 99.00, but no other service changes and no "
+     "expiry date to worry about."),
+    ("f480ee-at-all", "You've got it, that's just 62.00 a month for a 12-month "
+     "term! There are no fees, no expiry, and no other changes at all."),
+    ("571229-after-that", "It is just 55.00 a month for a 12-month term with a 99.00 "
+     "installation fee. There is no expiry and no other changes after that!"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("text", [t for _, t in M3_UNCONFIRMED],
+                         ids=[c for c, _ in M3_UNCONFIRMED])  # fmt: skip
+def test_m3_lines_with_an_unclean_tail_stay_unconfirmed(text: str) -> None:
+    assert not _confirms(CHANGES, text)
+    assert not _confirms(NO_EXPIRY, text)
 
 
 NEVER = [  # (case id, field, a line that must not confirm the field's "none")
@@ -114,7 +131,8 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
     ("verb-change", "changes_none", "That won't change anything."),
     ("same-except", "changes_none", "Everything else stays the same except the "
      "router."),
-    ("same-rate", "changes_none", "Your rate and everything else stays the same."),
+    ("same-except-rate", "changes_none", "Everything else stays the same except your "
+     "rate."),
     ("same-question", "changes_none", "Everything else stays the same?"),
     ("same-until", "changes_none", "Everything else remains the same until May."),
     # an un-negated role word in the sentence voids the none statement
@@ -130,6 +148,44 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
     ("fees-until", "fees_none", "No fees until next year."),
     ("changes-until", "changes_none", "No changes until your renewal."),
     ("fees-after", "fees_none", "There are no fees after the first month."),
+    # PR #324 round 1 blockers: an existence verb that is no denial ("include")
+    ("include-taxes", "fees_none", "That price doesn't include taxes and fees."),
+    ("include-or", "fees_none", "The price is 68.00, and it doesn't include taxes or "
+     "fees."),
+    ("include-any", "fees_none", "The plan doesn't include any fees."),
+    # time qualifiers past the old temporal words
+    ("another-week", "expires", "This offer won't expire for another week."),
+    ("48-hours", "expires", "It won't expire for 48 hours."),
+    ("30-days", "expires", "The offer doesn't expire for 30 days."),
+    ("first-12-months", "fees_none", "There are no fees for the first 12 months."),
+    ("first-year", "changes_none", "Nothing changes for the first year."),
+    ("same-12-months", "changes_none", "Everything stays the same for 12 months."),
+    # conditions and restrictions
+    ("etf-if", "fees_none", "No early termination fee if you stay 24 months."),
+    ("sign-up-today", "fees_none", "No activation fee if you sign up today."),
+    ("only-install", "fees_none", "No hidden fees, only the 99 install."),
+    ("only-activation", "fees_none", "No fees, only the activation."),
+    ("with-exception", "fees_none", "There are no fees, with the exception of the "
+     "activation."),
+    ("save-for", "fees_none", "No fees, save for the activation."),
+    # an enclosing negation or hedge
+    ("cant-promise", "fees_none", "I can't promise there won't be any fees."),
+    ("cant-confirm-none", "fees_none", "I can't confirm there are no other fees."),
+    ("not-sure", "fees_none", "I'm not sure there are no fees."),
+    ("cancel-without", "fees_none", "You can't cancel early without fees."),
+    ("not-everything", "changes_none", "Not everything stays the same."),
+    ("i-think", "fees_none", "I think there are no fees."),
+    # the void word is not next to the role word (the round 1 surviving mutants)
+    ("plan-until", "changes_none", "There are no changes to your plan until May."),
+    ("plan-unless", "fees_none", "No fees on this plan unless you cancel early."),
+    ("services-other-than", "changes_none", "No changes to your services other than "
+     "the router swap."),
+    ("under-review", "changes_none", "Everything else remains under review."),
+    ("same-will-stay", "changes_none", "Everything else will stay the same."),
+    ("and-bare-item", "fees_none", "No service changes and standard installation "
+     "fees."),
+    ("and-if", "fees_none", "No fees and no changes if you stay 24 months."),
+    ("next-sentence", "fees_none", "No fees. Well, apart from the activation charge."),
 ]  # fmt: skip
 
 
@@ -140,12 +196,116 @@ def test_never_confirmed(field: str, text: str) -> None:
     assert not _confirms(SLOTS[field], text)
 
 
+REVIEW = [  # the PR #324 round 1 battery (rev109/adv.py): realistic false readings
+    ("fees_none", "The $68 a month doesn't include taxes and fees."),
+    ("fees_none", "That price does not include fees."),
+    ("fees_none", "It's $68 a month, which doesn't include the fees."),
+    ("fees_none", "The monthly price is 68.00, and it doesn't include taxes or fees."),
+    ("fees_none", "There are no fees if you keep autopay on."),
+    ("fees_none", "No activation fee if you sign up today."),
+    ("fees_none", "There's no fee as long as you stay the full term."),
+    ("fees_none", "No fees while you're on autopay."),
+    ("fees_none", "No fees provided you keep paperless billing."),
+    ("fees_none", "No activation fee with autopay."),
+    ("fees_none", "There are no fees for the first 12 months."),
+    ("fees_none", "No cancellation fees within the first 30 days."),
+    ("fees_none", "No fees during the promo period."),
+    ("fees_none", "There are no fees this year."),
+    ("fees_none", "There are no fees yet."),
+    ("fees_none", "No fees for now."),
+    ("expires", "The offer doesn't expire for 30 days."),
+    ("expires", "This offer won't expire for another week."),
+    ("expires", "It won't expire for 48 hours."),
+    ("expires", "There's no deadline for 30 days."),
+    ("expires", "It doesn't expire anytime soon."),
+    ("expires", "The offer doesn't expire, but you have to accept by Friday."),
+    ("expires", "It does not expire within the next week."),
+    ("expires", "This offer doesn't expire today."),
+    ("expires", "No expiration date yet."),
+    ("fees_none", "I can't promise there won't be any fees."),
+    ("fees_none", "I can't guarantee there are no fees."),
+    ("fees_none", "I can't confirm there are no other fees."),
+    ("fees_none", "I'm not sure there are no fees."),
+    ("fees_none", "I don't think there are no fees."),
+    ("changes_none", "I can't say there are no other changes."),
+    ("changes_none", "Not everything stays the same."),
+    ("fees_none", "You can't cancel early without fees."),
+    ("fees_none", "There's no way to cancel without fees."),
+    ("fees_none", "No fees. Well, apart from the activation charge."),
+    ("fees_none", "No fees. Except the $35 activation."),
+    ("fees_none", "No fees, except taxes."),
+    ("fees_none", "There's no fee, just a $5 regulatory surcharge."),
+    ("fees_none", "There are no fees, just taxes and surcharges."),
+    ("fees_none", "No fees, the activation is $35."),
+    ("fees_none", "We'll send the router at no cost, and the install is $99."),
+    ("fees_none", "No fees, just ninety-nine dollars for installation."),
+    ("fees_none", "No other changes, fees of ninety-nine dollars."),
+    ("fees_none", "No service changes and standard installation fees."),
+    ("fees_none", "No monthly fees. Installation is $99."),
+    ("fees_none", "No monthly fees, just a one-time 99.00 installation."),
+    ("fees_none", "There's a $0 activation fee."),
+    ("fees_none", "There is a one-time fee of zero."),
+    ("fees_none", "The $99 installation fee is waived."),
+    ("fees_none", "No fees\u2014well, the $35 activation."),
+    ("fees_none", "There\u2019s no fee unless you cancel."),
+    ("fees_none", "No fees on the new plan, the old one had a $20 fee."),
+    ("fees_none", "There's no fee, it's a ninety-nine dollar charge."),
+    ("fees_none", "No early termination fee if you stay 24 months."),
+    ("fees_none", "No fees, assuming you return the old modem."),
+    ("fees_none", "No fees on top of the 99.00 install."),
+    ("fees_none", "No fees other than the install."),
+    ("fees_none", "No hidden fees, only the 99 install."),
+    ("fees_none", "No fees, only the activation."),
+    ("fees_none", "No fees, only a ninety-nine dollar installation."),
+    ("fees_none", "There are no fees, with the exception of the activation."),
+    ("fees_none", "No fees excluding the activation."),
+    ("fees_none", "No fees, save for the activation."),
+    ("fees_none", "No fees outside the activation."),
+    ("fees_none", "No fees aside from activation."),
+    ("fees_none", "No fees except for installation."),
+    ("fees_none", "No additional fees on top of installation."),
+    ("fees_none", "No fees, minus the activation."),
+    ("fees_none", "No fees, not counting the activation."),
+    ("fees_none", "No fees, not including the activation."),
+    ("changes_none", "No changes, other than the router swap."),
+    ("changes_none", "No changes on top of the router swap."),
+    ("changes_none", "No other changes, just the new router."),
+    ("changes_none", "No other changes, only the router swap."),
+    ("changes_none", "No other changes besides switching you to Basic."),
+    ("changes_none", "No changes if you keep the same plan."),
+    ("changes_none", "No changes for the first year."),
+    ("changes_none", "Nothing changes for the first year."),
+    ("changes_none", "Everything stays the same for 12 months."),
+    ("changes_none", "Everything else stays the same for now."),
+    ("changes_none", "No other changes, we'll swap your router."),
+    ("changes_none", "No other changes, we'll replace your router."),
+    ("changes_none", "No contract changes."),
+    ("changes_none", "No fee changes."),
+    ("changes_none", "No changes to the plan, the speed drops to 100."),
+    ("changes_none", "No changes to your services, but your speed goes to 300."),
+    ("expires", "No expiry on the price, and the offer ends Friday."),
+    ("expires", "It doesn't expire if you accept today."),
+    ("expires", "No expiry as long as you stay on autopay."),
+    ("expires", "The credit has no expiry, the offer ends Friday."),
+    ("expires", "The credit doesn't expire, the offer's valid for 7 days."),
+    ("expires", "The discount doesn't expire, but the offer ends on the 30th."),
+    ("expires", "The promo doesn't expire, but this quote does."),
+    ("expires", "This won't expire through the term."),
+    ("expires", "There's no expiry date on the credit, but the offer lapses Friday."),
+    ("expires", "It does not expire for the life of the plan."),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("field", "text"), REVIEW)
+def test_the_review_battery_never_confirms(field: str, text: str) -> None:
+    assert not _confirms(SLOTS[field], text)
+
+
 def test_a_date_after_a_voided_expiry_is_the_date() -> None:
     assert said("it won't expire until may 3.", "expires") == {"05-03"}
     assert _confirms(MAY_3, "It won't expire until May 3.")
-    assert said("there's no expiry, and it is valid until may 3.", "expires") == {
-        "none", "05-03"
-    }  # fmt: skip
+    both = said("there's no expiry, and it is valid until may 3.", "expires")
+    assert "05-03" in both and "none" not in both
 
 
 def test_the_contradiction_stays_per_clause() -> None:
@@ -168,6 +328,12 @@ def test_the_list_and_its_breaks() -> None:
     assert denied("nothing changes", "changes")
     assert denied("without any fees", "fees")
     assert denied("there's no expiration or any other changes", "changes")
+    assert denied("no changes to your service, and that rate doesn't expire", "changes")
+    assert denied("no changes to your service, and that rate doesn't expire", "expires")
+    assert denied("no other changes, and this offer has no expiry date", "changes")
+    assert not denied("no fees, the activation is $35", "fees")  # no clean tail
+    assert not denied("no changes for the first year", "changes")
+    assert not denied("no contract changes", "changes")  # another term kind
     assert not denied("no extra fees and your plan changes", "changes")  # pronoun
     assert not denied("no service changes and a fee", "fees")  # determiner
     assert not denied("no changes, plus an installation fee", "fees")  # contrast
@@ -184,7 +350,7 @@ def test_not_with_an_existence_verb() -> None:
     assert denied("it doesn't have an expiration date", "expires")
     assert denied("it does not expire", "expires")
     assert denied("this offer won\u2019t expire", "expires")  # a curly apostrophe
-    assert denied("the plan doesn't include any fees", "fees")
+    assert not denied("the plan doesn't include any fees", "fees")  # no denial
     assert denied("there will not be any charges", "fees")
     assert denied("it does not carry a fee", "fees")
     assert not denied("i can't confirm the fees", "fees")  # not an existence verb
@@ -198,6 +364,54 @@ def test_everything_stays_the_same_is_the_second_closed_form() -> None:
     assert denied("everything remains the same", "changes")
     assert not denied("everything else stays the same", "fees")
     assert not denied("everything else will be the same", "changes")  # closed form
+
+
+def test_bridges_and_phrases_carry_no_qualifier() -> None:
+    """A joiner into a new statement passes only plain words (#324 mutants)."""
+    assert denied("no fees, and this offer has no deadline", "fees")
+    assert not denied("no fees, and for a year no other charges", "fees")
+    # the next statement names the same field, so the bridge must be plain
+    assert not denied("no fees, and if you stay no other charges", "fees")
+    assert not denied("no fees, and today no other charges", "fees")
+    assert not denied("no changes, and other than that nothing changes", "changes")
+    assert not denied("no fees, and unless you move no other charges", "fees")
+    assert not denied("no fees, and only then no other charges", "fees")
+    assert not denied("no fees, but there's no guarantee", "fees")
+    assert not denied("no fees, and until may no other charges", "fees")
+    assert denied("no fees, and the offer also has no deadline", "fees")  # 4 words
+    assert not denied(  # more than BRIDGE_MAX words
+        "there are no fees, and the people at the store say there are no charges",
+        "fees",
+    )
+    assert not denied("no fees on your first year plan", "fees")  # a time in a phrase
+    assert not denied("no other fees, and there's no deadline, right?", "fees")
+    assert denied("no other changes to this offer", "changes")
+    assert denied("there are no extra one-time installation fees", "fees")  # 3 mods
+
+
+def test_a_semicolon_joins_like_a_comma() -> None:
+    """The world's template read-back: "...; no other changes; no expiry." """
+    line = "here are the terms: price: 68.00; no fees; no other changes; no expiry."
+    assert denied(line, "fees") and denied(line, "changes")
+    assert denied(line, "expires")
+    assert not denied("no fees; the activation is $35", "fees")
+
+
+def test_a_clause_on_another_term_ends_the_sentence_cleanly() -> None:
+    """tests/slow f11 (M2): "..., no other changes, and the offer expires on June
+    30": the clause states another field, read per clause on its own."""
+    dated = "no fees, no other changes, and the offer expires on june 30, 2026"
+    assert denied(dated, "fees") and denied(dated, "changes")
+    assert not denied(dated, "expires")
+    assert denied("no expiry, and there's a $35 installation fee", "expires")
+    assert not denied("no fees, and the activation is $35", "fees")  # no other term
+    assert not denied("no fees, and the installation charge is $99", "fees")  # same
+
+
+def test_every_role_word_must_be_negated() -> None:
+    assert not denied("there's an installation fee, and no other fees", "fees")
+    assert not denied("everything is mostly the same, with no other changes", "changes")
+    assert not denied("everything else looks the same", "changes")  # closed form
 
 
 def test_role_words_are_closed_classes() -> None:

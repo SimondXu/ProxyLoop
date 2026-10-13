@@ -2,13 +2,12 @@
 
 Lexical and conservative. A rep line splits into clauses; a clause states a
 value for a field only through that field's role cue, and a negation cue
-within 4 tokens of the value turns it into "none". The "none" fields
-(fees_none, changes_none, expires) are read per sentence: ``guard.negation``
-decides by negation scope whether a sentence denies fees, changes or an
-expiry, and each clause in it still contradicts as before. A slot is ``heard`` in its
+within 4 tokens of the value turns it into "none". A slot is ``heard`` in its
 own ``source_utt``, and ``confirmed`` once a rep clause at or after the
 read-back request states exactly its value and no later clause states another,
 or when one read-back window of the offer confirms every slot (ADR-0020).
+The "none" fields are read per sentence: ``guard.negation`` decides by scope
+whether it denies fees, changes or an expiry; each clause still contradicts.
 ``LEXICON`` is the one data table; the root calibrates it against real FastC
 cp transcripts, and the Ear audit measures its errors (EVAL §9).
 """
@@ -22,7 +21,7 @@ from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from proxyloop.contract.state import Line, OfferPublic, ReadbackSlot
-from proxyloop.guard.negation import denied, scan
+from proxyloop.guard.negation import continues, denied, scan
 from proxyloop.guard.terms import offer_terms_hash
 
 Status = Literal["unknown", "heard", "confirmed"]
@@ -216,18 +215,13 @@ def _names(clause: str, field: str) -> bool:
     return all(re.search(rf"\b{re.escape(w)}", clause) for w in _words(field))
 
 
-def _negation(clause: str) -> bool:
-    return bool(set(_WORD.findall(clause)) & set(LEXICON["negation"]))
-
-
 def _flags(none_said: bool, contradicted: bool) -> set[str]:
     return {v for v, on in (("true", none_said), ("false", contradicted)) if on}
 
 
 def _expires(sentence: str) -> set[str]:
-    """What one sentence says of the expiry: "none" if it denies one; and for
-    each clause that speaks of one (an expiry cue, or a role word it does not
-    deny), its day."""
+    """A sentence's expiry: "none" if it denies one; the day of each clause
+    that speaks of one (an expiry cue, or a role word it does not deny)."""
     hits = scan(sentence, "expires")
     out = {"none"} if denied(sentence, "expires") else set[str]()
     for start, end, clause in _clauses(sentence):
@@ -241,15 +235,14 @@ def _expires(sentence: str) -> set[str]:
 
 def said(clause: str, field: str, others: Mapping[str, str] | None = None) -> set[str]:
     """The values one rep clause states for ``field``; empty if it is silent.
-    For the "none" fields (``NONE_FIELDS``) ``clause`` is a sentence: it says
-    "none" by negation scope, and each clause in it contradicts on its own.
+    For ``NONE_FIELDS`` it is a sentence (``guard.negation``), read per clause.
     ``others``: the offer's other slots of this kind (field: value). A fee or
     credit clause that names no code ("the fee is $30") speaks to this one
     unless its value is one of the others'."""
     c = re.sub(r"(?<=\d),(?=\d{3}\b)", "", clause.lower())  # $1,068.50
     kind, _, code = field.partition(":")
     words, others = _words(field), others or {}
-    negated = _negation(c)
+    negated = bool(set(_WORD.findall(c)) & set(LEXICON["negation"]))
     money = kind in ("fee", "credit")  # generic: it names no fee or credit at all
     generic = money and not _names(c, field) and not _qualifiers(c)
     if code and not generic and not _names(c, field):
@@ -260,7 +253,10 @@ def said(clause: str, field: str, others: Mapping[str, str] | None = None) -> se
                    for p in parts)  # fmt: skip
         return _flags(denied(c, "fees"), paid)
     if field == "changes_none":
-        changed = any(has_cue(p, "change") and not _negation(p) for p in parts)
+        no = set(LEXICON["negation"])
+        changed = any(
+            has_cue(p, "change") and not no & set(_WORD.findall(p)) for p in parts
+        )
         return _flags(denied(c, "changes"), changed)
     if field == "expires":
         return _expires(c)
@@ -288,18 +284,21 @@ NONE_FIELDS = ("fees_none", "changes_none", "expires")  # read per sentence
 
 
 def _units(text: str, field: str) -> list[tuple[int, int, str]]:
-    """The spans ``said`` reads for ``field``: sentences or clauses."""
+    """``said``'s spans: clauses, or sentences ("No fees. Except ..." is one)."""
     if field not in NONE_FIELDS:
         return _clauses(text)
     cuts = [0, *(m.start() for m in _SENTENCE.finditer(text)), len(text)]
-    return [(a, b, text[a:b]) for a, b in pairwise(cuts) if a < b]
+    out = list[tuple[int, int]]()
+    for a, b in ((a, b) for a, b in pairwise(cuts) if a < b):
+        out = [*out[:-1], (out[-1][0], b)] if out and continues(text[a:b]) else [
+            *out, (a, b)]  # fmt: skip
+    return [(a, b, text[a:b]) for a, b in out]
 
 
 def _stated(
     field: str, lines: Sequence[Line], others: Mapping[str, str] | None = None
 ) -> Stated:
-    """Every rep clause (sentence, for ``NONE_FIELDS``) that states a value for
-    ``field``, in order."""
+    """Every rep clause (sentence: NONE_FIELDS) stating ``field``, in order."""
     return [
         (i, line.utt_id, start, end, values)
         for i, line in enumerate(lines)
