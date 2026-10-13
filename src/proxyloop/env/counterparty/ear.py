@@ -162,6 +162,47 @@ def _whole_groups(digits: str, groups: list[str]) -> bool:
     return False
 
 
+_UNITS = {w: n for n, w in enumerate((
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen",
+))}  # fmt: skip
+_TENS = {w: 10 * n for n, w in enumerate(
+    ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"), 2
+)}  # fmt: skip
+
+
+def word_numbers(heard: str) -> set[Decimal]:
+    """The whole numbers ``heard`` says in English words ("sixty-two dollar",
+    "one hundred and twenty"): a run of number words is one number, and a
+    word that cannot extend it starts the next ("twenty-one twenty-two" says
+    21 and 22, not 2122). FastC speaks prices this way for the voice."""
+    out, total, cur, last = set[Decimal](), 0, 0, ""
+    for tok in [*re.findall(r"[a-z]+", heard.casefold()), ""]:
+        if tok == "and" and last in ("hundred", "thousand"):
+            continue
+        if tok in _UNITS or tok in _TENS:
+            n = _UNITS.get(tok, _TENS.get(tok, 0))
+            kind = "unit" if n < 10 and tok in _UNITS else "big"
+            extends = last in ("", "hundred", "thousand") or (
+                last == "tens" and kind == "unit"
+            )
+            if last and not extends:
+                out.add(Decimal(total + cur))
+                total, cur = 0, 0
+            cur += n
+            last = "tens" if tok in _TENS else kind
+        elif tok == "hundred" and last in ("unit", "big"):
+            cur, last = cur * 100, "hundred"
+        elif tok == "thousand" and last:
+            total, cur, last = (total + cur) * 1000, 0, "thousand"
+        else:
+            if last:
+                out.add(Decimal(total + cur))
+            total, cur, last = 0, 0, ""
+    return out
+
+
 def said(value: str, heard: str) -> bool:
     """A digit value is one or more consecutive whole digit groups of a run of
     ``heard`` ("4 8 2 1", "48-21" and "4821 12" say 4821; "555 482 1999" and
@@ -227,9 +268,8 @@ def _check_one(
             raise world.Invalid(f"unknown key {fact.key!r}")
         if not said(fact.value, heard):
             raise world.Invalid(f"{fact.key} {fact.value!r} was not said")
-    if act.price_usd is not None and Decimal(str(act.price_usd)) not in world.numbers(
-        heard
-    ):
+    spoken = world.numbers(heard) | word_numbers(heard)  # digits or words
+    if act.price_usd is not None and Decimal(str(act.price_usd)) not in spoken:
         raise world.Invalid(f"price_usd {act.price_usd} was not said")
 
 
