@@ -20,6 +20,7 @@ every role word is negated. Fail closed; the classes are frozen.
 from __future__ import annotations
 
 import re
+from itertools import pairwise
 from typing import Literal, NamedTuple
 
 Role = Literal["fees", "changes", "expires"]
@@ -247,9 +248,13 @@ def scan(sentence: str, role: Role) -> list[Hit]:
     good, bad = dict[int, int](), dict[int, int]()
     i = next((k for k in range(len(toks)) if _opens(toks, k)), len(toks))
     before = [t.text for t in toks[:i]]
+    lead = {  # "just" before an amount minimises the price: no restriction
+        w for w, nxt in pairwise([*before, ""])
+        if not (w == "just" and _AMOUNT.fullmatch(nxt))
+    }  # fmt: skip
     void = (
         sentence.rstrip().endswith("?")
-        or bool(set(before) & (HEDGES | CONDITIONS | RESTRICTIONS | BOUNDS))
+        or bool(lead & (HEDGES | CONDITIONS | RESTRICTIONS | BOUNDS))
         or _timed(before)
     )
     while i < len(toks):

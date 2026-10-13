@@ -102,24 +102,65 @@ def test_m3_lines_with_an_unclean_tail_stay_unconfirmed(text: str) -> None:
 
 @pytest.mark.parametrize(
     ("field", "text"),
-    [  # #324 round 2 fixes: (A) the "after the term ends" tail voids the sentence,
-        # (C) "just" before the first statement is a restriction word
+    [  # #324 round 2 fix A: the "after the term ends" tail voids the sentence
         (
             "changes_none",
             "The rate is 78.00 per month for a 24 month term with no "
             "added fees. There are no other changes to the account, and the price will "
             "not expire after the term ends.",
         ),
-        (
-            "fees_none",
-            "It's just 62.00 a month for 12 months with no fees at all! "
-            "There are no other changes to the service, and this offer has no expiry.",
-        ),
     ],
-    ids=["f15e98-A", "365464-C-just"],
+    ids=["f15e98-A"],
 )
 def test_m3_lines_voided_by_the_round_2_rules(field: str, text: str) -> None:
     assert not _confirms(SLOTS[field], text)
+
+
+# "just" right before an amount minimises the price, not the negation (#324)
+M3_JUST = [
+    ("a6bc6f", "fees_none",
+     "It's just 62.00 a month for 12 months with no fees! There are no other "
+     "changes and no expiry."),
+    ("f480ee", "fees_none",
+     "You're looking at just 62.00 a month for 12 months with no fees! There are"
+     " no other changes to the service and no expiry."),
+    ("f480ee", "fees_none",
+     "It's just 62.00 a month for 12 months with no extra fees! There are no "
+     "other changes to the service and this offer has no expiry."),
+    ("146ce0", "changes_none expires",
+     "It's just 55.00 a month for 12 months with a 99.00 installation fee, plus "
+     "no other changes and no expiry!"),
+    ("343a7e", "fees_none changes_none expires",
+     "It's just 62.00 a month with no fees, no other changes, and no expiry "
+     "date! That rate is locked in for 12 months."),
+    ("343a7e", "fees_none",
+     "It\u2019s just 62.00 a month for a 12 months term with no fees! There are "
+     "no other changes to the account, and this offer has no expiry."),
+    ("cfd03b", "fees_none changes_none expires",
+     "It's just 62.00 a month for 12 months with no fees, no account changes, "
+     "and no expiration date!"),
+    ("571229", "fees_none",
+     "It's just 62.00 a month on a 12-month term with no extra fees! There are "
+     "no other service changes, and this offer has no expiry date."),
+    ("365464", "changes_none expires",
+     "It's just 55.00 a month with no expiry and no other changes! That comes "
+     "with a 12 month term and a 99.00 installation fee."),
+    ("365464", "fees_none",
+     "It's just 62.00 a month for 12 months with no fees at all! There are no "
+     "other changes to the service, and this offer has no expiry."),
+    ("365464", "fees_none changes_none expires",
+     "It's just 62.00 a month for 12 months with no fees, no other changes, and "
+     "no expiry! That covers all the full terms for you."),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("field", "text"),
+    [(f, t) for _, fs, t in M3_JUST for f in fs.split()],
+    ids=[f"{r}-{f}-{n}" for n, (r, fs, _) in enumerate(M3_JUST) for f in fs.split()],
+)
+def test_m3_just_a_price_confirms(field: str, text: str) -> None:
+    assert _confirms(SLOTS[field], text)
 
 
 NEVER = [  # (case id, field, a line that must not confirm the field's "none")
@@ -218,6 +259,8 @@ NEVER = [  # (case id, field, a line that must not confirm the field's "none")
      "20 dollar setup."),
     ("at-all-if", "fees_none", "No fees at all if you stay 24 months."),
     ("at-first", "fees_none", "No fees at first."),  # "at all" only intensifies
+    ("just-activation", "fees_none", "Just the activation, no other fees."),
+    ("just-activation-fee", "fees_none", "Just the activation fee, no other fees."),
     # #324 round 2 (A): a bad tail voids the whole sentence
     ("A-except", "fees_none", "No fees, it has no expiry date, except the activation."),
     ("A-swap", "changes_none", "There are no other changes, there are no fees, "
