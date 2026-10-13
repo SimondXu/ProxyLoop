@@ -658,3 +658,32 @@ def test_a_read_back_says_an_absence_as_words() -> None:
     assert template(intent, "Lumen").endswith(
         "monthly price: 62.00; no fees; no other changes; no expiry."
     )
+
+
+@pytest.mark.parametrize(
+    ("heard", "price", "said"),
+    [  # runs 676083 and d1e66d: FastC speaks prices as words for the voice
+        ("Could you read back the terms of the sixty-two-dollar offer?", 62, True),
+        ("Read back every term of the seventy-six-dollar monthly offer.", 76, True),
+        ("Is it ninety nine dollars a month?", 99, True),
+        ("A one hundred twenty dollar credit.", 120, True),
+        ("The sixty-two-dollar offer.", 26, False),
+        ("The sixty-two-dollar offer.", 60, False),
+        ("Twenty-one twenty-two.", 2122, False),  # words are one number each
+    ],
+)
+def test_a_price_is_said_in_digits_or_as_number_words(
+    heard: str, price: int, said: bool
+) -> None:
+    call = ToolCall(
+        call_id="t",
+        name="classify",
+        arguments=json.dumps(
+            {"acts": [{"act": "cite_competitor", "price_usd": price}]}
+        ),
+    )
+    if said:
+        assert check_act((call,), [heard], (), ())[0].price_usd == price
+    else:
+        with pytest.raises(world.Invalid, match="was not said"):
+            check_act((call,), [heard], (), ())
