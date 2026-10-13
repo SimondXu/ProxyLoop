@@ -98,3 +98,17 @@ source_modules =
     proxyloop.eval
 forbidden_modules =
     proxyloop.obs
+
+[importlinter:contract:no-agent-reads-the-ledger]
+name = no agent module reads the run ledger (S1-SYS-120; NORTH_STAR I5)
+type = forbidden
+source_modules =
+    proxyloop.core
+    proxyloop.kernel
+    proxyloop.slow
+    proxyloop.guard
+    proxyloop.llm
+    proxyloop.contract
+forbidden_modules =
+    proxyloop.obs.store
+    psycopg

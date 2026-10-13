@@ -33,6 +33,7 @@ How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add
 3. **S1 close** (user decision 2026-09-28): the browser demo end to end with the user clicking approve (U), the battery, and the user's decisions on the Fast model and the résumé wording.
 4. **Label pipeline prep** (offline; user lifted the freeze 2026-10-12): a decision-table ADR for the next cp profile (hold, relay, status; every rule decided from rendered fields), `profile_check` rules for the unscored classes (sticky hold, post-commit, stall/hold coherence, partner-only relays), a reviewer brief that quotes the table, a tuning/hold-out state split by run, then round 0 (v4 noise floor: DeepSeek medium twice, Luna once). Tuning rounds after M2 states exist; Luna co-gates every round (rule 12); hold-out read as aggregates only.
 5. Later: one "heard" rule (the GUIDE/ask-heard decision in one pure function in `guard/`, deleting the copies in `obs/guides.py` and `obs/grading.py`; acceptance: `diagnose` output byte-identical on the local bundles).
+6. **Durability and memory** (user, 2026-10-12: the principal-architect design, option A, "as recommended"): Postgres outside the kernel; bundles stay the truth. P1 done (S1-SYS-120): the run ledger `obs/store.py` (`docker compose up -d ledger`; `python -m proxyloop.obs.store ingest|status|sigs|fix`), operator-side only. After S1 close: P2 case lineage (`case_id` across attempts, `SessionConfig.memory` off|case, ADR), P3 Slow reads `[CASE HISTORY]` of the same case only (needs the I5/ADR-0016 amendment the user approved in principle) with a memory on/off experiment ≤ $10, P3b user preferences (the user's own only; the user wants the agent to ask and write them itself and to edit them in the UI: each write bound to the user's own message, an allow-list of keys, never a mandate), P4 recovery, approval inbox and follow-up timers (approvals never carry across calls), P5 Temporal (decide after P4). Cross-case lessons stay in the ledger and become PRs; no agent reads other cases (I5, rule 12).
 
 ## Waiting on the user
 
@@ -46,7 +47,7 @@ How to run a live smoke (from a detached worktree, CLAUDE.md): `git worktree add
 - New product-lane features (web, API, obs) beyond fixes on the session path; new obs detectors and lexicon growth.
 - S2 (including follow-ups to S2-SYS-02, the Ear-audit core).
 - Model side: SFT data generation and distillation, model-selection studies, same-state probes (S1-MOD-08), label review at scale. **Lifted by the user (2026-10-12) for offline label-pipeline prep** (item 4 of Now/Next): tuning rounds with model calls wait for M2 states, bulk generation for the frozen profile. The pre-registered profile re-test (S1-MOD-10) is done: the `pl_cp_v4`/`pl_user_v2` live flip is blocked as pre-registered.
-- Temporal/Postgres and other durability work.
+- Temporal/Postgres and other durability work. **Lifted by the user (2026-10-12)** as Now/Next item 6, phases P2+ after S1 close.
 
 ## Standing decisions (still in force)
 

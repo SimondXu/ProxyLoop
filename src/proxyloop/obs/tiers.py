@@ -493,6 +493,19 @@ def _tier(x: Inputs) -> Value:
     return out | extra | v
 
 
+def label(r: Mapping[str, object]) -> tuple[str, str, str] | None:
+    """A diagnose row's (family, kind, tier) as ``summary`` counts it: family
+    ``unknown`` when absent, kind ``info_only`` or ``tiers``, tier ``none`` or
+    ``inconsistent`` when there is none; None for a row with no tier block."""
+    t = as_dict(as_dict(r.get("detectors")).get("tier"))
+    if not t:
+        return None
+    kind = "info_only" if t.get("task_kind") == "info_only" else "tiers"
+    odd = "inconsistent" if t.get("reason") == "inconsistent" else "none"
+    tier = str(t["tier"]) if t.get("tier") is not None else odd
+    return str(t.get("family") or "unknown"), kind, tier
+
+
 def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     """Over one diagnose group's rows: tier counts per family (``unknown``: no
     family; ``none``: no tier; ``inconsistent`` apart), info_only split out;
@@ -507,15 +520,12 @@ def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     )
     for r in rows:
         t = as_dict(as_dict(r.get("detectors")).get("tier"))
-        if not t:
+        if not (at := label(r)):
             continue
-        fam = fams.setdefault(
-            str(t.get("family") or "unknown"),
-            {"tiers": Counter(), "info_only": Counter()},
-        )
-        kind = "info_only" if t.get("task_kind") == "info_only" else "tiers"
+        family, kind, tier = at
+        fam = fams.setdefault(family, {"tiers": Counter(), "info_only": Counter()})
+        fam[kind][tier] += 1
         odd = "inconsistent" if t.get("reason") == "inconsistent" else "none"
-        fam[kind][str(t["tier"]) if t.get("tier") is not None else odd] += 1
         d = t.get("declass_denied")
         denied += d if isinstance(d, int) else 0
         lists["confirmed_by_free_speech"] += [str(r.get("run_id"))] * (

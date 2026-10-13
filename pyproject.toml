@@ -39,6 +39,7 @@ mod = [
 obs = [
   "opentelemetry-exporter-otlp-proto-http==1.45.0",
   "opentelemetry-sdk==1.45.0",
+  "psycopg[binary]==3.3.6",
 ]
 
 [tool.uv]

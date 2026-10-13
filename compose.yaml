@@ -1,8 +1,24 @@
 # Phoenix, the local trace viewer for `python -m proxyloop.obs.trace` (ADR-0008).
 # UI and OTLP/HTTP on 127.0.0.1:6006 only; traces live in the container and go
 # with `docker compose down`.
+# One project name, so every worktree shares one ledger volume.
+name: pine-clone
 services:
   phoenix:
     image: arizephoenix/phoenix:version-20.16.0-nonroot@sha256:e4a41a209b07289581a5d48167a11051c12704ac48983056fe0989b6f13b467a
     ports:
       - "127.0.0.1:6006:6006"
+  # The run ledger for `python -m proxyloop.obs.store` (S1-SYS-120): a
+  # projection of the bundles, rebuilt by `store rebuild`. 127.0.0.1:5433 only,
+  # trust auth (no secret); data in the `ledger` volume.
+  ledger:
+    image: postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - ledger:/var/lib/postgresql/data
+
+volumes:
+  ledger:
