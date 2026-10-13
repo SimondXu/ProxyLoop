@@ -101,17 +101,18 @@ def test_t2_no_lever_left_asks_the_read_back_then_request_approval(
     assert card.startswith("request_approval: card"), card
 
 
-def test_t2_a_read_back_already_asked_is_not_asked_again(tmp_path: Path) -> None:
-    """Asked with the record (the old habit), then the lever died twice: no
-    lever left and a read-back pending: wait for it, then request_approval."""
+def test_t2_a_read_back_ask_superseded_unvoiced_is_asked_again(tmp_path: Path) -> None:
+    """Asked with the record (the old habit), then the lever GUIDE replaced it
+    before FastC voiced it, and the lever died twice: the rep never heard a
+    read-back ask (ADR-0030 D1), so with no lever left it is asked again."""
     h = _recorded(tmp_path, 6500, READBACK)
     h.act(TENURE)
     _cut(h)
     h.act(TENURE)
     _cancelled(h)
     step = _step(h)
-    assert step.startswith("read-back asked: request_approval(save-2) once"), step
-    assert ASK_READBACK not in step and "guide_fast(" not in step
+    assert step.startswith(ASK_READBACK), step
+    assert step.endswith("then request_approval(save-2)"), step
 
 
 # T3: recorded inside the mandate -> read back as today, then accept
