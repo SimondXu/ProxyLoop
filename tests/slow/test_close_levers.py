@@ -555,3 +555,9 @@ def test_d1_ca1906_a_read_back_before_the_ask_is_heard_is_not_its_reply(
     b = _bar(h)
     assert b.readbacks[("save-2", 1)] == state.Readback(2, ("expires",), False)
     assert "stuck: omitted from 2" in b.offer_note(h.bb.public.offers["save-2"])
+
+
+def test_d1_an_ask_still_playing_is_pending(tmp_path: Path) -> None:
+    h = _recorded(tmp_path)
+    h.voice(deliver=False)  # voiced, its sentence not delivered yet
+    assert _bar(h).readbacks[("save-2", 1)] == state.Readback(0, (), False, True)
