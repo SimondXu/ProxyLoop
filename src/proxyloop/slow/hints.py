@@ -134,7 +134,7 @@ def mandate_hint(
     ref = o.offer_ref
     r = more.readbacks.get((ref, o.revision))
     then = f"request_approval({ref})"
-    if r is not None and r.asked:  # one pending: not asked again
+    if r is not None and (r.asked or r.pending):  # one pending: not asked again
         return f"{OUTSIDE_MANDATE} → read-back asked: {then} once confirmed"
     ask = f'guide_fast(ask_readback, ["offer:{ref}"])'
     return f"{OUTSIDE_MANDATE} → {ask}, then {then}"
@@ -304,7 +304,7 @@ def _inside_step(view: SlowView, b: OfferPublic, now_ms: int, more: state.Bar) -
         return "" if isinstance(dry, Denial) else then
     if more.stuck(b):  # the note's stuck clause is the one next step
         return "read-back stuck (see note)"
-    if r is not None and r.asked:
+    if r is not None and (r.asked or r.pending):
         return f"read-back asked: {then} once confirmed"
     return f'guide_fast(ask_readback, ["offer:{ref}"]), then {then}'
 

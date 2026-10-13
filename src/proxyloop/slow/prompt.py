@@ -69,18 +69,18 @@ public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name 
 cited user message contains exactly that value; anything else stays private.
 - share_fact(key): make a recorded shareable fact public, by the rule of record_fact.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
-them, each slot {{field, value, utt_ref}}; its role and unit follow from the field, \
-by this table (field → role, unit, value): {offer_slots.TABLE}. \
-Then guide_fast(ask_readback, ["offer:<ref>"]) for that revision (the close \
-playbook says when a lever comes first): its slots turn \
-[confirmed] in the status bar when the representative repeats them after it. Only a \
-confirmed offer can be approved or accepted. The status bar counts the read-back \
-asks of each revision (read-back asked k×): once the representative has read the \
-offer back twice leaving out the same slots as recorded: if a reply states \
-another value for them, record_offer a new revision citing that line; otherwise \
-stop asking, they did not state them (the close playbook says what next). A \
-reply that reads nothing back is no read-back: ask again or ask for the final \
-offer.
+them, each slot {{field, value, utt_ref}}; its role and unit follow from the field, by \
+this table (field → role, unit, value): {offer_slots.TABLE}. Then \
+guide_fast(ask_readback, ["offer:<ref>"]) for that revision (the close playbook says \
+when a lever comes first): its slots turn [confirmed] in the status bar when the \
+representative repeats them after it. Only a confirmed offer can be approved or \
+accepted. The status bar counts the read-back asks of each revision the representative \
+heard (read-back asked k×); while it says reply pending, wait: do not ask again or \
+decline. Once the representative has read the offer back twice leaving out the same \
+slots as recorded: if a reply states another value for them, record_offer a new \
+revision citing that line; otherwise stop asking, they did not state them (the close \
+playbook says what next). A reply that reads nothing back is no read-back: ask again \
+or ask for the final offer.
 - propose_mandate(envelope): every bound the user stated, fees included \
 (max_monthly_price_minor, max_term_months, max_one_time_fees_minor, \
 required_features, forbidden_changes; a stated no-fees limit is \
@@ -231,10 +231,11 @@ PLAYBOOK: dict[state.Kind, str] = {  # V3: the head carries the case's own only
     "offer's step; otherwise again one available lever if any; only when none "
     "is left: decline_offer, then "
     "guide_fast(ask_final_offer). Decline an offer otherwise only when it breaks "
-    "a hard limit (the offers line says so) or its read-back stopped with slots "
-    "not stated: decline_offer, then guide_fast(ask_final_offer). When the close "
-    "line says finish(no_deal) would verify, tell_user the terms offered and why "
-    "none was taken, and finish(no_deal, summary) in the same act; while it says "
+    "a hard limit (the offers line says so) or the offers line says its "
+    "read-back is stuck: decline_offer, then guide_fast(ask_final_offer). When "
+    "the close line says finish(no_deal) would verify, tell_user the terms "
+    "offered and why none was taken, and finish(no_deal, summary) in the same "
+    "act; while it says "
     "blocked or not yet, act on its reasons.",
 }
 

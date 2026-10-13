@@ -42,6 +42,7 @@ from proxyloop.slow.tools import SlowTools
 
 Kind = Literal["info_only", "full"]  # the task's ``mode`` (task data)
 STOP_AFTER = 2  # read-back replies omitting the same slots (V4, D2)
+PENDING = "reply pending: wait for it, do not ask again"  # ADR-0030 D1
 UNNAMED_FEE = (
     "for a fee the rep stated without naming it: its amount, as an unnamed fee"
 )
@@ -428,31 +429,40 @@ def restated(o: OfferPublic, line: Line) -> frozenset[str]:
 class Readback:
     """V4 (amended, D2) for one offer revision."""
 
-    asked: int  # read-back asks
+    asked: int  # read-back asks the rep heard
     stuck: tuple[str, ...]  # unconfirmed or missing slots two replies omitted
     unread: bool  # the rep spoke after the last ask but read nothing back
+    pending: bool = False  # an ask not heard yet, or heard with no rep line since
 
 
-def readback(o: OfferPublic, asks: Sequence[int], lines: Sequence[Line]) -> Readback:
-    """Each ask's window runs to the next ask; a read-back reply is a rep line
-    in it that restates at least one slot. A slot is stuck once the replies
-    of two windows restated others but not it; a required field the revision
-    does not record (Guard's ``missing_required``) counts as omitted in each
-    window with a reply (S1-SYS-87: a fee the rep names only by generic words
-    can never be recorded); ``unread``: the last window has rep lines but no
-    read-back reply."""
+def readback(
+    o: OfferPublic, asks: Sequence[int], lines: Sequence[Line], waiting: bool = False
+) -> Readback:
+    """``asks``: the cp line at which the rep heard each ask (ADR-0030 D1: the
+    windows Guard confirms in, ADR-0020); ``waiting``: an ask is sent or
+    playing but not heard yet. Each window runs to the next heard ask; a
+    read-back reply is a rep line in it that restates at least one slot. A
+    slot is stuck once the replies of two windows restated others but not
+    it; a required field the revision does not record (Guard's
+    ``missing_required``) counts as omitted in each window with a reply
+    (S1-SYS-87: a fee the rep names only by generic words can never be
+    recorded); ``pending``: ``waiting``, or the rep has not spoken since the
+    last heard ask; ``unread``: the last window has rep lines but no
+    read-back reply, and no ask is pending."""
     left = unconfirmed(o) | frozenset(missing_required(o))
     omitted, replied = Counter[str](), False
-    for at, end in zip(asks, [*asks[1:], len(lines)], strict=True):
+    for at, end in zip(asks, [*asks[1:], len(lines)][: len(asks)], strict=True):
         said = [restated(o, x) for x in lines[at:end] if x.speaker == "partner"]
         replies = [s for s in said if s]
         omitted.update(left - frozenset().union(*replies) if replies else ())
         replied = bool(replies)
-    if o.status != "open" or not left or not asks:
+    if o.status != "open" or not left:
         return Readback(len(asks), (), False)
+    spoke = bool(asks) and any(x.speaker == "partner" for x in lines[asks[-1] :])
+    pending = waiting or (bool(asks) and not spoke)
     stuck = tuple(sorted(f for f in left if omitted[f] >= STOP_AFTER))
-    spoke = any(x.speaker == "partner" for x in lines[asks[-1] :])
-    return Readback(len(asks), stuck, spoke and not replied and not stuck)
+    unread = spoke and not replied and not stuck and not pending
+    return Readback(len(asks), stuck, unread, pending and not stuck)
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,16 +504,20 @@ class Bar:
         so an unread or stuck read-back keeps its facts but not "ask again"
         or the stuck clause's decline (#242 D1)."""
         r = self.readbacks.get((o.offer_ref, o.revision))
-        if r is None or not r.asked:
+        if r is None or not (r.asked or r.pending):
             return ""
         asked, left = r.asked, r.stuck
         said = f"read-back asked {asked}×"  # noqa: RUF001
+        if r.pending:  # ADR-0030 D1: the rep has not answered the last ask yet
+            return f"{said}; {PENDING}"
         if r.unread:
             not_read = f"{said}; the rep has not read the offer back"
             return not_read if lever else f"{not_read}; ask again or ask_final_offer"
         if not left:
             return said
-        omitted = f"{said}, omitted from {STOP_AFTER} read-backs: {', '.join(left)}"
+        omitted = (
+            f"{said}, stuck: omitted from {STOP_AFTER} read-backs: {', '.join(left)}"
+        )
         if lever:
             return omitted
         then = ", then decline_offer and guide_fast(ask_final_offer)"
@@ -554,11 +568,14 @@ class Bar:
 
 def bar(bb: Blackboard, kind: Kind, tools: SlowTools) -> Bar:
     lines = bb.channels.get("cp", ChannelState()).lines
-    readbacks = {
-        key: readback(o, asks, lines)
-        for key, asks in tools.readbacks.items()
-        if (o := bb.public.offers.get(key[0])) is not None and o.revision == key[1]
-    }
+    fates, readbacks = tools.fates, dict[tuple[str, int], Readback]()
+    for key, msgs in tools.asked.items():  # ADR-0030 D1: heard asks only
+        if (o := bb.public.offers.get(key[0])) is None or o.revision != key[1]:
+            continue
+        got = [fates.get(m) for m in msgs]  # None: not voiced yet; dead: dropped
+        heard = sorted(f.at for f in got if f is not None and f.at is not None)
+        waiting = any(f is None or f.state == "playing" for f in got)
+        readbacks[key] = readback(o, heard, lines, waiting)
     shut = close(bb, kind, tools.asked_final, tools.told_at, tools.final_pending)
     ident = identify_sent(bb, tools)
     sends, slots = sent(bb, tools), lever_slots(bb)
