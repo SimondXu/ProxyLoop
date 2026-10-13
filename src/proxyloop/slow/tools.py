@@ -46,6 +46,19 @@ _YEARS = re.compile(r"[0-9]{1,2}")
 _TENURE = (  # not an age or a time ago: "36 years old", "of age", "6 years ago"
     r"(?<![\w.]){0}\s+(?:years?|yrs?)\b(?![\s-]+(?:old|of\s+age|ago)\b)"
 )
+_ONES: dict[str, int] = {w: n for n, w in enumerate((
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+    "seventeen", "eighteen", "nineteen",
+))}  # fmt: skip
+_TENS: dict[str, int] = {w: 10 * n for n, w in enumerate(
+    ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"), 2
+)}  # fmt: skip
+_SPELLED = re.compile(  # 0-99 in words: "eight", "twenty-one", "twenty one"
+    rf"\b(?:({'|'.join(_TENS)})(?:[\s-]+({'|'.join(list(_ONES)[1:10])}))?"
+    rf"|({'|'.join(sorted(_ONES, key=len, reverse=True))}))\b",
+    re.IGNORECASE,
+)
 _NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 _BEFORE = (  # a token start; an opener only where it starts a token (no $"4821")
     r"(?:^|(?<=[\s:])|(?<=(?<![^\s:])[(\"\u201c]))"
@@ -492,12 +505,19 @@ def _name(value: str, message: str, *_: object) -> str | None:
 
 def _years(value: str, message: str, *_: object) -> str | None:
     """1-2 ASCII digits the user's message says as ``<n> years`` (or ``yrs``),
-    in any phrasing (user decision 2026-10-12): not an age or a time ago
-    (``<n> years old``, ``of age``, ``ago``)."""
+    in digits or words ("eight years", "twenty-one years"), in any phrasing
+    (user decision 2026-10-12): not an age or a time ago (``<n> years old``,
+    ``of age``, ``ago``)."""
     if not _YEARS.fullmatch(value):
         return None
-    said = re.search(_TENURE.format(re.escape(value)), message, re.IGNORECASE)
+    digits = _SPELLED.sub(_as_digits, message)
+    said = re.search(_TENURE.format(re.escape(value)), digits, re.IGNORECASE)
     return value if said else None
+
+
+def _as_digits(m: re.Match[str]) -> str:  # "twenty-one" -> "21"
+    tens, unit, ones = (g.lower() if g else "" for g in m.groups())
+    return str(_ONES[ones] if ones else _TENS[tens] + _ONES.get(unit, 0))
 
 
 def _number_word(word: str) -> bool:  # "sixty", "sixties", "sixes", "hundreds"

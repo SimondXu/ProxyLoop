@@ -240,10 +240,12 @@ def test_f12_levers_lists_only_what_guide_fast_would_refuse(tmp_path: Path) -> N
         "cancel_lever": "cancel_lever_not_authorized",
     }
     said = h.emit(
-        "user.msg", "kernel", {"text": "My wife has been with you six years."}
+        "user.msg",
+        "kernel",
+        {"text": "My wife has been with you a long time, six I think"},
     )
     fact = {"key": "tenure_years", "value": "6", "utt_ref": said.event_id}
-    h.act({"tool": "record_fact", **fact})  # not said as "6 years": private
+    h.act({"tool": "record_fact", **fact})  # not said as years: private
     got = dict(state.unavailable(h.bb))
     assert got["mention_tenure"] == "tenure_private"  # D2: no ask loop
     tries = [
