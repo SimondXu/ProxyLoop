@@ -91,8 +91,8 @@ def test_required_fields() -> None:
 
 
 def test_lexicons_are_one_data_table() -> None:
-    kinds = {"recurring", "one_time", "fee", "credit", "negation", "fees_none"}
-    kinds |= {"changes_none", "change", "generic_fee", "expiry", "no_expiry"}
+    kinds = {"recurring", "one_time", "fee", "credit", "negation"}
+    kinds |= {"change", "generic_fee", "expiry"}  # the "none" fields: guard.negation
     kinds |= {"closing", "unsure", "wh", "unless"}
     assert set(LEXICON) == kinds
     assert all(isinstance(cue, str) for cues in LEXICON.values() for cue in cues)
@@ -189,7 +189,8 @@ def test_a_fee_named_otherwise_is_not_generic() -> None:
 
 def test_fees_none_with_a_paid_amount_is_a_contradiction() -> None:
     clause = "there are no additional fees beyond the $20 setup charge"
-    assert said(clause, "fees_none") == {"true", "false"}
+    assert said(clause, "fees_none") == {"false"}  # "beyond": the "no fees" is void
+    assert said("no fees, but a $20 setup charge", "fees_none") == {"false"}
     line = f"It is $68 a month on a 24-month term, {clause}, no other changes, "
     assert not _confirmed(offer(fee=None), line + "and it does not expire.")
 
