@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from itertools import pairwise
 from pathlib import Path
 
 from tests.concurrency.harness import Sim
@@ -56,19 +57,47 @@ def test_a_turn_older_than_the_reps_newest_line_is_not_said(tmp_path: Path) -> N
 
 
 def test_a_rerun_is_said_even_if_the_rep_spoke_again(tmp_path: Path) -> None:
+    """Every FastC call is held until the test lets it go, and the rep speaks
+    during every generation: drops and said turns alternate, never two drops
+    in a row, so FastC is heard while the rep keeps talking."""
+
     async def case() -> None:
-        go, gates = gated()
-        sim = Sim(tmp_path, gates=gates)
+        tickets, moved = [-1], asyncio.Event()  # -1: open (the opening turns)
+
+        async def held() -> None:  # each FastC call takes one ticket
+            while tickets[0] == 0:
+                moved.clear()
+                await moved.wait()
+            if tickets[0] > 0:
+                tickets[0] -= 1
+
+        def let(n: int) -> None:
+            tickets[0] = n
+            moved.set()
+
+        sim = Sim(tmp_path, gates={"fast_cp": held})
         await sim.start()
-        for line in ("One.", "Two.", "Three."):  # a new line during every generation
-            go.clear()
-            sim.rep_says(line)
+        await sim.vt.run_for(5_000)
+        let(0)
+        sim.rep_says("Zero.")
+        await sim.vt.run_for(500)  # its generation is held in flight
+        zero = sim.of("utt.final", text="Zero.")[0]
+        for line in ("One.", "Two.", "Three.", "Four.", "Five."):
+            sim.rep_says(line)  # lands while the held generation is in flight
             await sim.vt.run_for(500)
-            go.set()
-            await sim.vt.run_for(50)
-        await sim.vt.run_for(10_000)
-        assert len(sim.of("fast.cancelled", reason="partner")) <= 1
-        assert sim.of("utt.delivered", lane="cp")[-1].seq > sim.of("utt.final")[-1].seq
+            let(1)
+            await sim.vt.run_for(500)
+        let(-1)
+        await sim.vt.run_for(20_000)
+        cancels = {
+            str(e.payload["gen_id"]) for e in sim.of("fast.cancelled", reason="partner")
+        }
+        assert cancels, "no turn was overtaken: the test is vacuous"
+        chain = [t for t in sim.of("fast.turn", lane="cp") if t.seq > zero.seq]
+        dropped = [str(t.payload["gen_id"]) in cancels for t in chain]
+        assert not any(a and b for a, b in pairwise(dropped)), dropped
+        heard = [e for e in sim.of("utt.delivered", lane="cp") if e.seq > zero.seq]
+        assert len(heard) >= 2, "FastC was starved while the rep kept talking"
         await sim.stop()
 
     arun(case())
