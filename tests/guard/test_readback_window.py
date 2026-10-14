@@ -228,9 +228,9 @@ def test_n11_an_answer_that_changes_the_asked_revision(price: str) -> None:
 
 
 # Two offers in one call (S1-SYS-115): a lexical W2 statement (before the ask)
-# whose one value is another recorded offer's (a slot, or an implied flag whose
-# fee the same sentence states) and not r's is about that offer, so it is
-# ignored. After the ask (W1) every statement counts as about r.
+# of a value field (price, term, a named fee's amount) whose one value is
+# another recorded offer's and not r's is about that offer, so it is ignored.
+# Implied flags are never credited; after the ask (W1) every statement counts.
 
 O1_READBACK = (
     "It's just $55 a month for 12 months with a $99 activation fee. "
@@ -268,14 +268,30 @@ def test_d893db_the_first_offers_price_before_the_ask_is_its_own() -> None:
     assert not _confirmed(o2, lines, (r1,), rivals=(other,))
 
 
-def test_247b62_the_first_offers_fee_before_the_ask_is_its_own() -> None:
-    """247b62 seq 496: cp-11 read o1 back ($55, its $99 fee: o1's implied
-    fees_none is false) before the o2 ask. Kills: dropping the implied flags
-    from the rival's values."""
+O1_NO_FEE = O1_READBACK.replace("with a $99 activation fee", "with no fees")
+
+
+def test_247b62_the_first_offers_fee_before_the_ask_blocks_the_window() -> None:
+    """247b62 cp-11 shape: o1 read back with its $99 fee before the o2 ask.
+    The implied fees_none=false is never credited to o1 (Tier C, fail closed):
+    o2's window waits for a later read-back. Kills: crediting an implied flag."""
     o1 = offer("o1", monthly="5500", term="12", fee="9900")
     lines = [rep("c1", O1_READBACK), ASK, rep("c2", O2_READBACK)]
-    assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),))
-    assert _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+    assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+    lines += [agent("a2", "Could you read it back again?"), rep("c3", O2_READBACK)]
+    assert _confirmed(_o2(), lines, (Ask(2, O2_R1), Ask(4, O2_R1)), rivals=(o1,))
+
+
+def test_the_first_offers_named_fee_before_the_ask_is_its_own() -> None:
+    """A named fee's amount is a value field: o1's "$99 activation fee" before
+    the ask of o2 (a $20 activation fee) is o1's. Kills: dropping fee amounts
+    from the filtered fields."""
+    o1 = offer("o1", monthly="5500", term="12", fee="9900")
+    o2 = offer("o2", monthly="6200", term="12", fee="2000", revision=2)
+    after = O2_READBACK.replace("with no fees", "with a $20 activation fee")
+    lines = [rep("c1", O1_READBACK), ASK, rep("c2", after)]
+    assert not _confirmed(o2, lines, (Ask(2, O2_R1),))
+    assert _confirmed(o2, lines, (Ask(2, O2_R1),), rivals=(o1,))
 
 
 @pytest.mark.parametrize(
@@ -284,43 +300,54 @@ def test_247b62_the_first_offers_fee_before_the_ask_is_its_own() -> None:
         "The $62 a month plan for 12 months comes with a $99 activation fee.",
         "I can also do $62 a month for 12 months. "
         "That one also has the $99 activation fee.",
+        "I can also do $62 a month for 12 months. Like the $55 a month plan, "
+        "it comes with a $99 activation fee.",  # Tier C round 2
+        "The $62 plan has a $20 activation fee.",
     ],
 )
-def test_the_other_offers_fee_said_of_this_offer_blocks(before: str) -> None:
-    """Tier C round 1: a fee equal to o1's, said of o2 before the ask, is o2's
-    hidden fee. The implied flag is o1's only if its sentence also states o1's
-    price or term that o2 does not hold. Kills: crediting it on the fee alone."""
+def test_a_fee_said_before_the_ask_blocks(before: str) -> None:
+    """Tier C rounds 1-2: a fee said before o2's ask, even one equal to o1's,
+    may be o2's hidden fee; fees_none is never credited to another offer.
+    Kills: any implied-flag credit."""
     o1 = offer("o1", monthly="5500", term="12", fee="9900")
     after = (
         "Sure: $62 a month for 12 months, no other fees, no other changes, no expiry."
     )
-    lines = [rep("c1", O1_READBACK), rep("c2", before), ASK, rep("c3", after)]
-    assert not _confirmed(_o2(), lines, (Ask(3, O2_R1),), rivals=(o1,))
+    for first in (O1_READBACK, O1_NO_FEE):
+        lines = [rep("c1", first), rep("c2", before), ASK, rep("c3", after)]
+        assert not _confirmed(_o2(), lines, (Ask(3, O2_R1),), rivals=(o1,))
 
 
-def test_a_fee_the_other_offer_does_not_hold_still_blocks() -> None:
-    """The rival's implied fees_none=false counts only for a sentence stating
-    the rival's own fee: a $20 fee said of the $62 plan before the ask is a
-    hidden fee, not o1's $99. Kills: an implied flag matched without its fee."""
-    o1 = offer("o1", monthly="5500", term="12", fee="9900")
-    lines = [
-        rep("c1", O1_READBACK),
-        rep("c2", "The $62 plan has a $20 activation fee."),
-    ]
-    lines += [ASK, rep("c3", O2_READBACK)]
-    assert not _confirmed(_o2(), lines, (Ask(3, O2_R1),), rivals=(o1,))
-    assert _confirmed(_o2(), [*lines[:1], *lines[2:]], (Ask(2, O2_R1),), rivals=(o1,))
+def test_the_first_offers_term_before_the_ask_is_its_own() -> None:
+    """o1 at $55 for 24 months read back before the ask of o2 ($62, 12
+    months): the term is a value field too. Kills: not filtering the term."""
+    o1 = offer("o1", monthly="5500", term="24", fee=None)
+    lines = [rep("c1", O1_NO_FEE.replace("12 months", "24 months")), ASK]
+    lines.append(rep("c2", O2_READBACK))
+    assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),))
+    assert _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+
+
+def test_an_expiry_before_the_ask_is_never_credited() -> None:
+    """Only value fields (price, term, a named fee's amount) are filtered:
+    o1's "no expiry" before the ask of o2 (expires May 3) still blocks.
+    Kills: filtering every field."""
+    o1 = offer("o1", monthly="5500", term="12", fee=None)
+    o2 = offer("o2", monthly="6200", term="12", fee=None, expires="2026-05-03")
+    after = O2_READBACK.replace("it has no expiry", "the offer expires on May 3")
+    lines = [rep("c1", O1_NO_FEE), ASK, rep("c2", after)]
+    assert not _confirmed(o2, lines, (Ask(2, O2_R1),), rivals=(o1,))
+    lines[0] = rep("c1", O1_NO_FEE.replace(" and this offer has no expiry", ""))
+    assert _confirmed(o2, lines, (Ask(2, O2_R1),), rivals=(o1,))
 
 
 def test_a_different_value_for_the_second_offer_before_the_ask_still_blocks() -> None:
     """ "o2 is $65" before the ask, then r2 at $62: that is a change across the
-    ask, about o2 (no open offer holds $65). W2 (lexical) still fails."""
-    o1 = offer("o1", monthly="5500", term="12", fee="9900")
-    lines = [
-        rep("c1", O1_READBACK),
-        rep("c2", "The new offer is $65 a month for 12 months."),
-    ]
-    lines += [ASK, rep("c3", O2_READBACK)]
+    ask, about o2 (no offer holds $65). W2 (lexical) still fails."""
+    o1 = offer("o1", monthly="5500", term="12", fee=None)
+    lines = [rep("c1", O1_NO_FEE), ASK, rep("c2", O2_READBACK)]
+    assert _confirmed(_o2(), lines, (Ask(2, _o2_terms()),), rivals=(o1,))
+    lines.insert(1, rep("c1b", "The new offer is $65 a month for 12 months."))
     assert not _confirmed(_o2(), lines, (Ask(3, _o2_terms()),), rivals=(o1,))
 
 
@@ -366,12 +393,12 @@ def test_after_the_ask_every_statement_is_about_r() -> None:
 def test_a_correction_to_the_other_offers_value_after_the_ask_blocks() -> None:
     """A "sorry, it's $55 after all" after o2's read-back names o1's price: after
     the ask it counts as about o2, so o2 reverts. Kills: filtering W1."""
-    o1 = offer("o1", monthly="5500", term="12", fee="9900")
-    lines = [rep("c1", O1_READBACK), ASK, rep("c2", O2_READBACK)]
+    o1 = offer("o1", monthly="5500", term="12", fee=None)
+    lines = [rep("c1", O1_NO_FEE), ASK, rep("c2", O2_READBACK)]
     assert _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
     lines.append(rep("c3", "Sorry, it's $55 a month after all."))
     assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
-    lines[-1] = rep("c3", O1_READBACK)  # o1 read back again, after o2's ask
+    lines[-1] = rep("c3", O1_NO_FEE)  # o1 read back again, after o2's ask
     assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
 
 

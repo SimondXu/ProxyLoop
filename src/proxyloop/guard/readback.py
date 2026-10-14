@@ -386,68 +386,26 @@ def _status(slot: ReadbackSlot, stated: Stated, asked_at: int | None) -> Status:
     return "heard" if heard else "unknown"
 
 
-_FLAGS = {"fees_none": "fee", "changes_none": "applied_change"}  # flag: its kind
-
-
 def _implied(offer: OfferPublic) -> dict[str, str]:
     """The completeness flags a revision implies without a slot: fees_none is
     false if it lists a fee, changes_none if it lists an applied change."""
     fields = {s.field for s in offer.slots}
     kinds = {f.partition(":")[0] for f in fields}
-    return {
-        f: "false" for f, kind in _FLAGS.items() if kind in kinds and f not in fields
-    }
+    flags = (("fees_none", "fee"), ("changes_none", "applied_change"))
+    return {f: "false" for f, kind in flags if kind in kinds and f not in fields}
 
 
-def _kin(offer: OfferPublic, slot: ReadbackSlot) -> dict[str, str]:
-    """The offer's other slots of ``slot``'s kind (``said``'s ``others``)."""
-    kind = slot.field.partition(":")[0]
-    same = [s for s in offer.slots if s.field.partition(":")[0] == kind]
-    return {s.field: s.value for s in same if s.field != slot.field}
+_VALUES = ("monthly_price", "term_months")  # and a named fee's amount ("fee:<code>")
 
 
-_BASICS = ("monthly_price", "term_months")  # what tells two offers apart
-
-
-def _states(unit: str, o: OfferPublic, slots: Sequence[ReadbackSlot]) -> bool:
-    """A clause of ``unit`` states one of ``slots`` (of ``o``) with its value."""
-    return any(
-        said(c, s.field, _kin(o, s)) == {_key(s)}
-        for s in slots
-        for *_, c in _clauses(unit)
-    )
-
-
-def _theirs(
-    field: str,
-    values: set[str],
-    unit: str,
-    offer: OfferPublic,
-    rivals: Sequence[OfferPublic],
-) -> bool:
-    """A statement about another offer than ``offer`` (S1-SYS-115): its one
-    value is a rival's for ``field``, as a slot, or as an implied flag when
-    ``unit`` also states that rival's fee or applied change and its price or
-    term that ``offer`` does not hold (else the fee may be ``offer``'s)."""
-    if len(values) != 1:
+def _theirs(field: str, values: set[str], rivals: Sequence[OfferPublic]) -> bool:
+    """A statement about another offer (S1-SYS-115): a value field's one value
+    is a rival's for ``field``. Implied flags are never credited (Tier C: the
+    fee said may be this offer's own); W1/W3 still need r's exact values."""
+    if len(values) != 1 or not (field in _VALUES or field.startswith("fee:")):
         return False
     (value,) = values
-    held = {(s.field, s.value) for s in offer.slots}
-    for o in rivals:
-        if any(s.field == field and _key(s) == value for s in o.slots):
-            return True
-        kind = _FLAGS.get(field)
-        own = [s for s in o.slots if s.field.partition(":")[0] == kind]
-        apart = [
-            s for s in o.slots if s.field in _BASICS and (s.field, s.value) not in held
-        ]
-        if (
-            _implied(o).get(field) == value
-            and _states(unit, o, own)
-            and _states(unit, o, apart)
-        ):
-            return True
-    return False
+    return any(s.field == field and _key(s) == value for o in rivals for s in o.slots)
 
 
 class Ask(NamedTuple):
@@ -464,20 +422,10 @@ def _unchanged(ask: Ask, offer: OfferPublic) -> bool:
 
 
 def _mine(
-    want: str,
-    stated: Stated,
-    lines: Sequence[Line],
-    field: str,
-    offer: OfferPublic,
-    rivals: Sequence[OfferPublic],
+    want: str, stated: Stated, field: str, rivals: Sequence[OfferPublic]
 ) -> Stated:
     """``stated`` without the statements about another offer (W2 only)."""
-    out = list[tuple[int, str, int, int, set[str]]]()
-    for i, utt, start, end, values in stated:
-        unit = lines[i].text[start:end]
-        if values == {want} or not _theirs(field, values, unit, offer, rivals):
-            out.append((i, utt, start, end, values))
-    return out
+    return [x for x in stated if x[4] == {want} or not _theirs(field, x[4], rivals)]
 
 
 def _anchors(
@@ -519,15 +467,20 @@ def slot_statuses(
     offers, any status; W2 ignores statements about them (S1-SYS-115).
     Recomputed from the transcript each time."""
 
+    def others(slot: ReadbackSlot) -> dict[str, str]:
+        kind = slot.field.partition(":")[0]
+        same = [s for s in offer.slots if s.field.partition(":")[0] == kind]
+        return {s.field: s.value for s in same if s.field != slot.field}
+
     def status(slot: ReadbackSlot, stated: Stated) -> Status:
         if ROLE_OF.get(slot.field.partition(":")[0]) != slot.role:
             return "unknown"
         return "confirmed" if window else _status(slot, stated, asked_at)
 
-    stated = [_stated(s.field, lines, _kin(offer, s)) for s in offer.slots]
+    stated = [_stated(s.field, lines, others(s)) for s in offer.slots]
     roles = all(ROLE_OF.get(s.field.partition(":")[0]) == s.role for s in offer.slots)
     slots = [
-        (_key(s), x, _mine(_key(s), x, lines, s.field, offer, rivals))
+        (_key(s), x, _mine(_key(s), x, s.field, rivals))
         for s, x in zip(offer.slots, stated, strict=True)
     ]
     implied = [(v, _stated(f, lines)) for f, v in _implied(offer).items()]
