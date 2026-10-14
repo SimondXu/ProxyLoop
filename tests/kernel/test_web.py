@@ -432,6 +432,22 @@ def test_a_simulated_user_chats_alone_and_leaves_its_cards_to_the_web(
     arun(case())
 
 
+def test_a_watched_full_task_never_runs_the_sim_approver(tmp_path: Path) -> None:
+    """Review of S1-SYS-127: on a task with a principal the SimUser has an
+    approval button, and the web case must hide it (rule 10: one approver)."""
+
+    async def case() -> None:
+        ref = "x-out-of-envelope-approval@2"
+        case = await starter(tmp_path, VirtualTime()).start_case(ref, {}, "sim", "sim")
+        user = kernel(case).channels["user"]
+        assert isinstance(user, SimUserChannel) and not user.approves
+        assert user._user.approver is not None  # pyright: ignore[reportPrivateUsage]
+        assert user.approver is None
+        await stop(case)
+
+    arun(case())
+
+
 def _act(k: Kernel, *calls: Mapping[str, object]) -> list[str]:
     assert k.slow is not None
     body = json.dumps({"private_summary": "digest", "calls": list(calls)})

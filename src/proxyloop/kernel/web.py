@@ -7,7 +7,9 @@ and the docs, never a stored key. The browser user is the user lane's
 lane's ``HumanWebChannel`` (the /rep page). With ``user="sim"`` (watch mode)
 the user lane is the world's SimUser as a chat only (``"sim_chat"``,
 S1-SYS-127): it writes the user's messages, and the person in the browser
-decides its cards and limits through the UI endpoint (rule 10). The
+decides its cards and limits through the UI endpoint (rule 10). Its
+``after_card`` stop still fires, but a person's grant is not held for it (the
+sim approver's N6 order): a demo, not graded evidence. The
 run is written to
 ``<runs>/live/<run_id>/<run_id>``. Only ``real_http`` models are offered or
 started (I8); a dead endpoint ends the session (``LLMUnavailable``), never the

@@ -83,7 +83,8 @@ class Authority:
         self._moved = asyncio.Event()  # set (and replaced) as a fence moves
         self.user_fences = 0  # user fences raised so far
         self._asked: dict[str, str] = {}  # card or mandate id -> the asking event
-        self._ui: dict[str, ApprovalCard | Mandate] = {}  # a chat-only SimUser's
+        # A chat-only SimUser's open subjects, by (post.subject, id): the UI decides.
+        self._ui: dict[tuple[str, str], ApprovalCard | Mandate] = {}
         self._replan: int | None = None  # the NEEDS_REPLAN status.changed seq
 
     def on_event(self, e: Event) -> None:
@@ -253,7 +254,8 @@ class Authority:
         posted = k.emit("approval.post", by, body, cause).event_id
         kind, payload = got
         decided = k.emit(kind, "kernel", payload, [posted]).event_id
-        user, subject = k.channels.get("user"), self._ui.pop(post.subject_id, None)
+        user = k.channels.get("user")
+        subject = self._ui.pop((post.subject, post.subject_id), None)
         if by == "ui" and isinstance(user, SimUserChannel) and subject is not None:
             user.decided(subject, post)  # ADR-0028: its chat knows the answer
         if kind == "approval.decided":
@@ -299,10 +301,10 @@ class Authority:
         person's decision reaches its chat in ``decide`` (ADR-0028)."""
         if e.type == "mandate.proposed":
             mandate = Mandate.model_validate(e.payload)
-            self._ui[mandate.mandate_id] = mandate
+            self._ui["mandate", mandate.mandate_id] = mandate
             return
         card = ApprovalCard.model_validate(e.payload)
-        self._ui[card.approval_id] = card
+        self._ui["approval", card.approval_id] = card
         self._k.spawn(self._after_card(user, e))
 
     async def _after_card(self, user: SimUserChannel, card: Event) -> None:
