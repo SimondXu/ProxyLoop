@@ -86,13 +86,13 @@ class Channel:  # The base: a partner that never speaks first and has no clock
 
 
 class SimUserChannel(Channel):  # replies delay_s after each message
-    def __init__(self, user: SimUser) -> None:
+    def __init__(self, user: SimUser, approves: bool = True) -> None:
         super().__init__()
-        self._user, self._lock = user, asyncio.Lock()
+        self._user, self._lock, self.approves = user, asyncio.Lock(), approves
 
     @property
     def approver(self) -> Approver | None:  # the principal's approval button
-        return self._user.approver
+        return self._user.approver if self.approves else None
 
     def decided(self, subject: ApprovalCard | Mandate, post: ApprovalPost) -> None:
         """The sim approver decided ``subject``: the user's chat knows their own
@@ -233,7 +233,9 @@ def read_stdin(humans: Mapping[str, HumanChannel]) -> None:  # u:/r: when two
     threading.Thread(target=reader, daemon=True).start()
 
 
-ChannelSpec = Literal["sim", "human"] | Channel
+# "sim_chat": the world's SimUser chats, but a person (the web UI) decides its
+# cards and limits; its own approval button stays unused (S1-SYS-127).
+ChannelSpec = Literal["sim", "sim_chat", "human"] | Channel
 
 
 def make_channels(
@@ -244,15 +246,17 @@ def make_channels(
     world: World,
 ) -> dict[str, Channel]:
     """Each lane's partner: a given ``Channel`` as is (a web person, a test),
-    ``"human"`` a person at the terminal, ``"sim"`` the world's SimUser/SimRep."""
+    ``"human"`` a person at the terminal, ``"sim"`` the world's SimUser/SimRep,
+    ``"sim_chat"`` (user lane) the SimUser without its approval button."""
 
     def make(key: str, spec: ChannelSpec) -> Channel:
         if spec == "human":
             return HumanChannel({"user": "ASSISTANT", "cp": "AGENT"}.get(key, "REP"))
-        if spec != "sim":
+        if spec not in ("sim", "sim_chat"):
             return spec
         if key == "user":
-            return SimUserChannel(SimUser(task, clients["simuser"], world, cfg.seed))
+            user = SimUser(task, clients["simuser"], world, cfg.seed)
+            return SimUserChannel(user, approves=spec == "sim")
         return SimRepChannel(SimRep(task, clients["ear"], clients["mouth"], world))
 
     return {key: make(key, spec) for key, spec in specs.items()}

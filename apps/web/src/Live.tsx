@@ -30,7 +30,7 @@ import { useEventStream } from "./useEventStream";
 import { useRoleCard, YourRole } from "./YourRole";
 
 const CHAT_LABEL = "Message to the assistant";
-const WATCHING = "Watching: a simulated customer answers and approves. You only watch and listen.";
+const WATCHING = "Watching: a simulated customer chats. You decide its cards: approve or decline when one appears.";
 const CHAT_HINT = "Changed your mind? Say so. Any message pauses commitments until the agent reads it.";
 // serve reads prompts.jsonl, which the kernel writes when it closes the run (kernel/session.py).
 const PROMPTS_LATER = "Prompts come from prompts.jsonl, which the kernel writes as the run closes (after session.ended).";
@@ -52,7 +52,7 @@ export function Live({ runId }: { runId: string }) {
   const strip = useMemo(() => authorityStrip(events), [events]);
   const who = useMemo(() => parties(events), [events]); // live: only what has arrived
   const h = useMemo(() => honesty(events), [events]);
-  const watching = who.simUser; // session.started names "simuser": the browser only watches
+  const watching = who.simUser; // session.started names "simuser": the browser watches and decides the cards
   const role = useRoleCard("case", runId); // case_id = run_id (S1); only this page, never the rep's
   // Cards with a pending or ok post: a second click, even before a re-render, never POSTs again.
   const claimed = useRef(new Set<string>());
@@ -83,7 +83,7 @@ export function Live({ runId }: { runId: string }) {
   const { engineer, link } = useView();
   // Guard cards in event order: among the chat's lines, or above the input in the engineer view.
   const guardCards = [
-    ...mandates.map((v) => ({ seq: v.seq, status: v.status, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} watching={watching} /> })),
+    ...mandates.map((v) => ({ seq: v.seq, status: v.status, el: <LimitsCard key={`m:${v.mandate.mandate_id}`} view={v} events={events} decide={decideMandate} /> })),
     ...cards.map((v) => {
       const card = (
         <ApprovalCard
@@ -94,11 +94,10 @@ export function Live({ runId }: { runId: string }) {
           fenced={strip.fences.length > 0}
           caseStatus={strip.status}
           decide={decide}
-          watching={watching}
           clock={{ kind: "live" }}
         />
       );
-      if (watching || v.status !== "open") return { seq: v.seq, status: v.status, el: card };
+      if (v.status !== "open") return { seq: v.seq, status: v.status, el: card };
       const price = termRows(events, v.card).find((r) => r.field === "monthly_price")?.value;
       const bar = `Decision needed${price ? ` · ${whole(price)}/mo` : ""} · Review`;
       return { seq: v.seq, status: v.status, el: <Sheet key={`a:${v.card.approval_id}`} bar={bar} human={h.principal !== null}>{card}</Sheet> };
@@ -170,7 +169,7 @@ export function Live({ runId }: { runId: string }) {
                 {alert}
               </>
             }
-            input={{ cards: watching ? guardCards.map((c) => ({ ...c, status: undefined })) : guardCards, pending, composer: watching ? <p className="meta pl-watching">{WATCHING}</p> : <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
+            input={{ cards: guardCards, pending, composer: watching ? <p className="meta pl-watching">{WATCHING}</p> : <Composer label={CHAT_LABEL} post={send} hint={CHAT_HINT} /> }}
             now={<NowCard events={events} cards={cards} mandates={mandates} />}
             details={
               <>

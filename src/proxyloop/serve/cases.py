@@ -112,9 +112,9 @@ class Case(Protocol):
         409 ``not_open``); any other raise is 503 ``unavailable``."""
         ...
 
-    # With a simulated user (watch mode, S1-SYS-125) ``user_message`` and
-    # ``post_approval`` raise ``UserSimulated`` (serve: 409 ``user_simulated``):
-    # the human never speaks or approves for the SimUser.
+    # With a simulated user (watch mode, S1-SYS-125) ``user_message`` raises
+    # ``UserSimulated`` (serve: 409 ``user_simulated``): the human never speaks
+    # for the SimUser. The human decides its cards and limits (S1-SYS-127).
 
 
 Cases = Callable[[str], Case | None]
@@ -188,7 +188,7 @@ class NotOpen(Exception):
 
 class UserSimulated(Exception):
     """The user lane is the SimUser (watch mode); serve answers 409
-    {"error": "user_simulated"} to a user message, approval or mandate post."""
+    {"error": "user_simulated"} to a user message."""
 
 
 class Starter(Protocol):
@@ -355,9 +355,6 @@ def add_case_routes(
         slots[key] = "posted"
         try:
             case.post_approval(post)
-        except UserSimulated:
-            del slots[key]  # nothing was handed over
-            raise Refused(409, "user_simulated") from None
         except Exception as err:  # loud: logged, 503, and the id stays refused
             slots[key] = "failed"
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)

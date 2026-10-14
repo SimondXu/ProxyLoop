@@ -391,18 +391,15 @@ def test_a_rep_line_before_the_call_opens_is_409_not_open_and_not_logged(
     assert live.case.utterances == []
 
 
-def test_a_simulated_user_refuses_a_message_and_an_approval_with_409_not_logged(
+def test_a_simulated_user_refuses_a_message_with_409_not_logged(
     live: Live, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def refuse(*_: object) -> None:
         raise UserSimulated
 
     monkeypatch.setattr(live.case, "user_message", refuse)
-    monkeypatch.setattr(live.case, "post_approval", refuse)
-    card, user = live.case.card(), headers(login(live.http, "user", CASE))
+    user = headers(login(live.http, "user", CASE))
     with caplog.at_level(logging.ERROR, logger="proxyloop.serve.cases"):
         said = post(live.http, f"/api/cases/{CASE}/messages", {"text": "hi"}, user)
-        got = approve(live, card, user)
-    for answer in (said, got):
-        assert (answer.status_code, answer.json()) == (409, {"error": "user_simulated"})
+    assert (said.status_code, said.json()) == (409, {"error": "user_simulated"})
     assert not [r for r in caplog.records if r.name == "proxyloop.serve.cases"]

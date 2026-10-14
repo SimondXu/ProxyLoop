@@ -354,15 +354,17 @@ for (const theme of THEMES) {
         await audit(page);
       });
 
-      test("watch mode (a simulated customer): the card has no buttons and no sheet, and never says only your click authorizes (I6)", async ({ page, baseURL }) => {
+      test("watch mode (a simulated customer): the card keeps its buttons for you, the composer is gone, and nothing says only your click authorizes (I6)", async ({ page, baseURL }) => {
         await liveWithCards(page, baseURL, { ...REAL, simuser: ["test_fake", "sim-user"] });
         const card = page.getByRole("article", { name: "Approval ap-1" });
         await expect(card).toBeVisible();
-        await expect(card.getByRole("button", { name: /Approve|Decline/ })).toHaveCount(0);
-        await expect(page.getByRole("button", { name: "Hide the decision" })).toHaveCount(0);
+        await expect(card.getByRole("button", { name: /Approve/ })).toHaveCount(1);
         await expect(page.getByRole("form", { name: "Message to the assistant" })).toHaveCount(0);
-        await expect(page.getByText("Watching: a simulated customer answers and approves.", { exact: false }).first()).toBeVisible();
+        await expect(page.getByText("Watching: a simulated customer chats.", { exact: false }).first()).toBeVisible();
         await expect(page.getByText("Only your clicks can authorize a deal", { exact: true })).toHaveCount(0);
+        await page.getByRole("button", { name: "Hide the decision" }).click();
+        const bar = page.getByRole("button", { name: "Decision needed · $75/mo · Review", exact: true });
+        expect((await bar.boundingBox())?.height).toBe(56);
         await expect(page.getByText("Only your click authorizes", { exact: true })).toHaveCount(0);
         await audit(page);
       });

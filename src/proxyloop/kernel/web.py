@@ -5,8 +5,9 @@ A case is one run. Its case_id is its run_id: an S1 convention of this module
 and the docs, never a stored key. The browser user is the user lane's
 ``HumanWebChannel``; the rep is the SimRep or, with ``rep="human"``, the cp
 lane's ``HumanWebChannel`` (the /rep page). With ``user="sim"`` (watch mode)
-the user lane is the world's SimUser, as in ``make smoke-live``: the browser
-only watches, and approvals come from the deterministic sim approver. The
+the user lane is the world's SimUser as a chat only (``"sim_chat"``,
+S1-SYS-127): it writes the user's messages, and the person in the browser
+decides its cards and limits through the UI endpoint (rule 10). The
 run is written to
 ``<runs>/live/<run_id>/<run_id>``. Only ``real_http`` models are offered or
 started (I8); a dead endpoint ends the session (``LLMUnavailable``), never the
@@ -144,9 +145,7 @@ class WebCase:
     def blackboard(self) -> Blackboard:
         return self._k.bb
 
-    def post_approval(self, post: ApprovalPost) -> None:
-        if self._user is None:  # the sim approver decides, never the watcher
-            raise UserSimulated
+    def post_approval(self, post: ApprovalPost) -> None:  # the watcher decides too
         self._live()
         self._k.post_approval(post, "ui")  # enqueued; the kernel decides
 
@@ -316,7 +315,7 @@ class Starter:
 
         run_id = new_run_id()
         vllm = "vllm" in (cfg.fast_user.endpoint, cfg.fast_cp.endpoint)
-        specs: dict[str, ChannelSpec] = {"user": user or "sim", "cp": rep or "sim"}
+        specs: dict[str, ChannelSpec] = {"user": user or "sim_chat", "cp": rep or "sim"}
         session = run_session(
             cfg,
             task,

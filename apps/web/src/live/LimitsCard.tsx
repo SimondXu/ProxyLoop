@@ -12,9 +12,9 @@ import "./cards.css";
 
 const UNDECIDED: MandateStatus[] = ["open", "pending", "sent"];
 
-type Props = { view: MandateView; events: Ev[]; decide: (v: MandateView, d: Decision) => void; watching?: boolean };
+type Props = { view: MandateView; events: Ev[]; decide: (v: MandateView, d: Decision) => void };
 
-export function LimitsCard({ view, events, decide, watching }: Props) {
+export function LimitsCard({ view, events, decide }: Props) {
   const { mandate: m, status, error } = view;
   const open = status === "open";
   const expiry = m.expires_ms == null ? null : aboutClock(events, m.expires_ms);
@@ -51,7 +51,7 @@ export function LimitsCard({ view, events, decide, watching }: Props) {
         Kept private: the phone voice never sees these numbers, so it can't give them away.
       </p>
       {error && <p role="alert">{error}</p>}
-      {UNDECIDED.includes(status) && !watching && (
+      {UNDECIDED.includes(status) && (
         <div className="pl-gcard-actions">
           <Button variant="primary" disabled={!open} onClick={() => decide(view, "granted")}>
             Confirm limits
