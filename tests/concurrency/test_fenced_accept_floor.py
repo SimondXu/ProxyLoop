@@ -224,9 +224,8 @@ def test_relay_only_an_unbound_fence_lets_fastc_s_held_turn_speak(
     request saw the rep's line. FastC's turn requested before the reply is
     held behind the accept: were FastC kept off the floor, no later turn could
     bind the fence (the lane is sequential) and the accept would expire. It
-    is not said (older than the rep's reply, S1-SYS-123): its re-run, which saw
-    the reply, voices the guide again, binds the fence, and the accept is
-    released."""
+    is said (a guidance turn, S1-SYS-124), FastC's answer binds the fence, and
+    the accept is released."""
 
     async def case() -> None:
         rep, fast_cp = HearingRep(), Valve()
@@ -249,11 +248,8 @@ def test_relay_only_an_unbound_fence_lets_fastc_s_held_turn_speak(
         assert line_ends(sim) == []
         fast_cp.open.set()
         await sim.vt.run_for(40_000)
-        (cancel,) = sim.of("fast.cancelled", gen_id=early.payload["gen_id"])
-        assert cancel.payload["reason"] == "partner"
-        rerun = [e for e in sim.of("fast.request", lane="cp") if e.seq > cancel.seq]
-        assert rerun and int(str(rerun[0].payload["basis_seq"])) >= said.seq
-        assert [e for e in sim.of("utt.delivered", lane="cp") if e.seq > said.seq]
+        guide = sim.of("fast.sentence", gen_id=early.payload["gen_id"])
+        assert guide and all(delivery(sim, e).seq > said.seq for e in guide)
         (end,) = line_ends(sim)
         assert end.type == "speak.released", end.payload
         bound = [t for t in sim.of("fast.turn", lane="cp") if t.seq > said.seq]
