@@ -21,7 +21,14 @@ from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from proxyloop.contract.state import Line, OfferPublic, ReadbackSlot
-from proxyloop.guard.negation import continues, denied, scan
+from proxyloop.guard.negation import (
+    BOUNDS,
+    ROLE_WORDS,
+    TIMES,
+    continues,
+    denied,
+    scan,
+)
 from proxyloop.guard.terms import offer_terms_hash
 
 Status = Literal["unknown", "heard", "confirmed"]
@@ -173,9 +180,18 @@ def _clauses(text: str) -> list[tuple[int, int, str]]:
     return [*out, (start, len(text), text[start:])]
 
 
-def _negated(clause: str, start: int, end: int) -> bool:
-    near = _WORD.findall(clause[:start])[-4:] + _WORD.findall(clause[end:])[:4]
-    return bool(set(near) & set(LEXICON["negation"]))
+_NOUNS = frozenset[str]().union(*ROLE_WORDS.values())  # the "none" fields' role nouns
+
+
+def _negated(clause: str, start: int, end: int, months: bool = False) -> bool:
+    """A negation cue within 4 tokens of the value. A months value is out of
+    the reach of a cue before it when another field's role noun stands
+    between them ("no fees for a 12-month term", S1-SYS-115)."""
+    before, after = _WORD.findall(clause[:start])[-4:], _WORD.findall(clause[end:])[:4]
+    no = set(LEXICON["negation"])
+    stop = _NOUNS if months else frozenset[str]()
+    reach = (w in no and not stop & {*before[k + 1 :]} for k, w in enumerate(before))
+    return any(reach) or bool(set(after) & no)
 
 
 def _roles(clause: str) -> set[str]:
@@ -198,7 +214,7 @@ def _amounts(clause: str, months: bool) -> set[str]:
             value = str(
                 int(Decimal(m.group("a") or m.group("b") or m.group("e")) * 100)
             )
-        found.add("none" if _negated(clause, m.start(), m.end()) else value)
+        found.add("none" if _negated(clause, m.start(), m.end(), months) else value)
     return found
 
 
@@ -235,14 +251,17 @@ def _flags(none_said: bool, contradicted: bool) -> set[str]:
 
 def _expires(sentence: str) -> set[str]:
     """A sentence's expiry: "none" if it denies one; the day of each clause
-    that speaks of one (an expiry cue, or a role word it does not deny)."""
+    that speaks of one (an expiry cue, a role word it states plainly, or a
+    void denial bounded by a time: "won't expire until Friday"). Any other
+    void denial says nothing (S1-SYS-115), as void fees and changes do."""
     hits = scan(sentence, "expires")
     out = {"none"} if denied(sentence, "expires") else set[str]()
     for start, end, clause in _clauses(sentence):
         mine = {h.state for h in hits if start <= h.start < end}
+        timed = "void" in mine and bool({*_WORD.findall(clause)} & (TIMES | BOUNDS))
         if _DATE.search(clause) and (mine or has_cue(clause, "expiry")):
             out.add(_date(clause))
-        elif mine - {"negated"} or (has_cue(clause, "expiry") and not mine):
+        elif "plain" in mine or timed or (has_cue(clause, "expiry") and not mine):
             out.add(UNDATED)
     return out
 
@@ -353,13 +372,47 @@ def _status(slot: ReadbackSlot, stated: Stated, asked_at: int | None) -> Status:
     return "heard" if heard else "unknown"
 
 
+_FLAGS = {"fees_none": "fee", "changes_none": "applied_change"}  # flag: its kind
+
+
 def _implied(offer: OfferPublic) -> dict[str, str]:
     """The completeness flags a revision implies without a slot: fees_none is
     false if it lists a fee, changes_none if it lists an applied change."""
     fields = {s.field for s in offer.slots}
     kinds = {f.partition(":")[0] for f in fields}
-    flags = (("fees_none", "fee"), ("changes_none", "applied_change"))
-    return {f: "false" for f, kind in flags if kind in kinds and f not in fields}
+    return {
+        f: "false" for f, kind in _FLAGS.items() if kind in kinds and f not in fields
+    }
+
+
+def _kin(offer: OfferPublic, slot: ReadbackSlot) -> dict[str, str]:
+    """The offer's other slots of ``slot``'s kind (``said``'s ``others``)."""
+    kind = slot.field.partition(":")[0]
+    same = [s for s in offer.slots if s.field.partition(":")[0] == kind]
+    return {s.field: s.value for s in same if s.field != slot.field}
+
+
+def _theirs(
+    field: str, values: set[str], unit: str, rivals: Sequence[OfferPublic]
+) -> bool:
+    """A statement about another open offer (S1-SYS-115): its one value is a
+    rival's for ``field``, as a slot, or as an implied flag when ``unit`` also
+    states that rival's fee or applied change (its own, not a hidden one)."""
+    if len(values) != 1:
+        return False
+    (value,) = values
+    for o in rivals:
+        if any(s.field == field and _key(s) == value for s in o.slots):
+            return True
+        kind = _FLAGS.get(field)
+        own = [s for s in o.slots if s.field.partition(":")[0] == kind]
+        if _implied(o).get(field) == value and any(
+            said(c, s.field, _kin(o, s)) == {_key(s)}
+            for s in own
+            for *_, c in _clauses(unit)
+        ):
+            return True
+    return False
 
 
 class Ask(NamedTuple):
@@ -373,6 +426,22 @@ def _unchanged(ask: Ask, offer: OfferPublic) -> bool:
     """W2': every field the asked revision and ``offer`` both carry has one
     value in both, as Guard recorded them (no lexicon)."""
     return all(ask.terms.get(s.field, s.value) == s.value for s in offer.slots)
+
+
+def _mine(
+    want: str,
+    stated: Stated,
+    lines: Sequence[Line],
+    field: str,
+    rivals: Sequence[OfferPublic],
+) -> Stated:
+    """``stated`` without the statements about another open offer (W1, W2)."""
+    out = list[tuple[int, str, int, int, set[str]]]()
+    for i, utt, start, end, values in stated:
+        unit = lines[i].text[start:end]
+        if values == {want} or not _theirs(field, values, unit, rivals):
+            out.append((i, utt, start, end, values))
+    return out
 
 
 def _anchors(
@@ -401,27 +470,30 @@ def slot_statuses(
     lines: Sequence[Line],
     asked_at: int | None,
     asks: Sequence[Ask] = (),
+    rivals: Sequence[OfferPublic] = (),
 ) -> dict[str, Status]:
     """Each slot's status: today's rule from this revision's ``asked_at``, or
     confirmed with all others by one ask in ``asks`` (every read-back request
     for any revision of the offer in this call) for which W1-W4 and W2' hold,
-    if no required field is missing (ADR-0020).
+    if no required field is missing (ADR-0020). ``rivals``: the call's other
+    open offers; the window ignores statements about them (S1-SYS-115).
     Recomputed from the transcript each time."""
-
-    def others(slot: ReadbackSlot) -> dict[str, str]:
-        kind = slot.field.partition(":")[0]
-        same = [s for s in offer.slots if s.field.partition(":")[0] == kind]
-        return {s.field: s.value for s in same if s.field != slot.field}
 
     def status(slot: ReadbackSlot, stated: Stated) -> Status:
         if ROLE_OF.get(slot.field.partition(":")[0]) != slot.role:
             return "unknown"
         return "confirmed" if window else _status(slot, stated, asked_at)
 
-    stated = [_stated(s.field, lines, others(s)) for s in offer.slots]
+    stated = [_stated(s.field, lines, _kin(offer, s)) for s in offer.slots]
     roles = all(ROLE_OF.get(s.field.partition(":")[0]) == s.role for s in offer.slots)
-    slots = [(_key(s), x) for s, x in zip(offer.slots, stated, strict=True)]
-    implied = [(v, _stated(f, lines)) for f, v in _implied(offer).items()]
+    slots = [
+        (_key(s), _mine(_key(s), x, lines, s.field, rivals))
+        for s, x in zip(offer.slots, stated, strict=True)
+    ]
+    implied = [
+        (v, _mine(v, _stated(f, lines), lines, f, rivals))
+        for f, v in _implied(offer).items()
+    ]
     window = (
         roles
         and not missing_required(offer)  # a partial revision never takes the window
@@ -435,12 +507,13 @@ def readback_update(
     lines: Sequence[Line],
     asked_at: int | None,
     asks: Sequence[Ask] = (),
+    rivals: Sequence[OfferPublic] = (),
 ) -> dict[str, object]:
     """The ``readback.updated`` payload Guard emits on a rep ``utt.final``."""
     return {
         "offer_ref": offer.offer_ref,
         "revision": offer.revision,
-        "slot_statuses": slot_statuses(offer, lines, asked_at, asks),
+        "slot_statuses": slot_statuses(offer, lines, asked_at, asks, rivals),
         "terms_hash": offer_terms_hash(offer),
     }
 

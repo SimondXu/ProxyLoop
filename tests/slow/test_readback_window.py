@@ -317,3 +317,49 @@ def test_n11_an_answer_that_changes_the_asked_revision(tmp_path: Path) -> None:
     (text,) = h.act(RECORD | {"offer_slots": [s | {"utt_ref": "cp-2"} for s in r2]})
     assert text == "record_offer: recorded save-2 r2", text
     assert "confirmed" not in _statuses(h)
+
+
+O1_TERMS = (
+    "It is $55 a month for 24 months with a $99 installation fee, no other "
+    "changes, and the offer does not expire."
+)  # read back before save-2's ask: its fee is save-1's, not save-2's
+O1_SLOTS = [
+    {"field": "monthly_price", "value": "5500", "utt_ref": "cp-0"},
+    {"field": "term_months", "value": "24", "utt_ref": "cp-0"},
+    {"field": "fee:installation", "value": "9900", "utt_ref": "cp-0"},
+    {"field": "changes_none", "value": "true", "utt_ref": "cp-0"},
+    {"field": "expires", "value": "none", "utt_ref": "cp-0"},
+]
+
+
+def _first_offer(h: Host) -> None:
+    h.rep("cp-0", O1_TERMS)
+    h.act({"tool": "record_offer", "offer_ref": "save-1", "offer_slots": O1_SLOTS})
+
+
+def test_a_second_offer_confirms_past_the_first_offers_read_back(
+    tmp_path: Path,
+) -> None:
+    """S1-SYS-115 (247b62): the other open offer's read-back before the ask
+    does not block save-2; readback() passes Guard the other open offers."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    _first_offer(h)
+    _read_back_r2(h, _ask("save-2"))
+    assert _statuses(h) == {"confirmed"}
+
+
+def test_a_declined_offer_is_no_rival(tmp_path: Path) -> None:
+    """Only an open offer's values are ascribed: with save-1 declined, its fee
+    line before the ask still blocks save-2 (fail closed)."""
+    h = Host(tmp_path)
+    h.call()
+    _opened(h)
+    _first_offer(h)
+    decline = {"tool": "decline_offer", "offer_ref": "save-1", "reason": "fee"}
+    (got,) = h.act(decline)
+    assert got.startswith("decline_offer: "), got
+    assert h.bb.public.offers["save-1"].status != "open"
+    _read_back_r2(h, _ask("save-2"))
+    assert "confirmed" not in _statuses(h)

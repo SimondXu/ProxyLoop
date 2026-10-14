@@ -29,9 +29,13 @@ def _asks(o: OfferPublic, asks: Asks) -> list[Ask]:
 
 
 def _fold(
-    o: OfferPublic, lines: Sequence[Line], asks: Asks, asked_at: int | None
+    o: OfferPublic,
+    lines: Sequence[Line],
+    asks: Asks,
+    asked_at: int | None,
+    rivals: Sequence[OfferPublic] = (),
 ) -> OfferPublic:
-    update = readback_update(o, lines, asked_at, _asks(o, asks))
+    update = readback_update(o, lines, asked_at, _asks(o, asks), rivals)
     statuses = update["slot_statuses"]
     assert isinstance(statuses, dict)
     slots = tuple(s.model_copy(update={"status": statuses[s.field]}) for s in o.slots)
@@ -43,8 +47,9 @@ def _confirmed(
     lines: Sequence[Line],
     asks: Asks,
     asked_at: int | None = None,  # this revision's own ask: none by default
+    rivals: Sequence[OfferPublic] = (),  # the other open offers
 ) -> bool:
-    return readback_status(_fold(o, lines, asks, asked_at)) == "confirmed"
+    return readback_status(_fold(o, lines, asks, asked_at, rivals)) == "confirmed"
 
 
 def _statuses(o: OfferPublic, lines: Sequence[Line], asks: Asks) -> set[str]:
@@ -220,3 +225,140 @@ def test_n11_an_answer_that_changes_the_asked_revision(price: str) -> None:
     r2 = offer(monthly="6000", revision=2)
     assert not _confirmed(r2, lines, asks=(r1,))
     assert _confirmed(r2, lines, asks=(2,))  # W2' alone: an ask for $60 confirms
+
+
+# Two offers in one call (S1-SYS-115): a lexical W1/W2 statement whose one
+# value is another open offer's (a slot, or an implied flag whose fee the same
+# sentence states) and not r's is about that offer, so it is ignored.
+
+O1_READBACK = (
+    "It's just $55 a month for 12 months with a $99 activation fee. "
+    "There are no other changes, and this offer has no expiry!"
+)
+O2_READBACK = (
+    "You're looking at $62 a month on a 12-month term with no fees! "
+    "There are no other changes, and it has no expiry."
+)
+O2_R1 = {"monthly_price": "6200", "term_months": "12"}  # the asked revision
+
+
+def _o2() -> OfferPublic:
+    return offer("o2", monthly="6200", term="12", fee=None, revision=2)
+
+
+def test_d893db_the_first_offers_price_before_the_ask_is_its_own() -> None:
+    """d893db seq 392: cp-9 read o1 back ($78) after o2's $69 and before the
+    o2 ask; o2 r2, recorded from the answer, confirms when it is recorded.
+    Kills: dropping the W2 filter, or matching a closed or absent offer."""
+    o1 = offer("o1", monthly="7800", fee=None)
+    o2 = offer("o2", monthly="6900", fee=None, revision=2)
+    lines = [
+        rep("cp-6", "This is my best and final offer: 69.00 monthly for 24 months."),
+        rep("cp-9", "That is correct, it is 78.00 per month for 24 months with no "
+                    "fees, no other changes, and no expiry."),
+        ASK,
+        rep("cp-11", "The monthly price is 69.00 for a 24 months term with no "
+                     "fees, no other changes, and no expiry."),
+    ]  # fmt: skip
+    r1 = Ask(3, {"monthly_price": "6900", "term_months": "24"})
+    assert not _confirmed(o2, lines, (r1,))  # before S1-SYS-115: W2 failed
+    assert _confirmed(o2, lines, (r1,), rivals=(o1,))
+    other = offer("o1", monthly="8000", fee=None)  # no open offer holds $78
+    assert not _confirmed(o2, lines, (r1,), rivals=(other,))
+
+
+def test_247b62_the_first_offers_fee_before_the_ask_is_its_own() -> None:
+    """247b62 seq 496: cp-11 read o1 back with its $99 fee (o1's implied
+    fees_none is false) before the o2 ask. The same price isolates the flag.
+    Kills: dropping the implied flags from the rival's values."""
+    o1 = offer("o1", monthly="6200", term="12", fee="9900")
+    lines = [rep("c1", O1_READBACK.replace("$55", "$62")), ASK, rep("c2", O2_READBACK)]
+    assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),))
+    assert _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+
+
+def test_a_fee_the_other_offer_does_not_hold_still_blocks() -> None:
+    """The rival's implied fees_none=false counts only for a sentence stating
+    the rival's own fee: a $20 fee said of the $62 plan before the ask is a
+    hidden fee, not o1's $99. Kills: an implied flag matched without its fee."""
+    o1 = offer("o1", monthly="5500", term="12", fee="9900")
+    lines = [
+        rep("c1", O1_READBACK),
+        rep("c2", "The $62 plan has a $20 activation fee."),
+    ]
+    lines += [ASK, rep("c3", O2_READBACK)]
+    assert not _confirmed(_o2(), lines, (Ask(3, O2_R1),), rivals=(o1,))
+    assert _confirmed(_o2(), [*lines[:1], *lines[2:]], (Ask(2, O2_R1),), rivals=(o1,))
+
+
+def test_a_different_value_for_the_second_offer_before_the_ask_still_blocks() -> None:
+    """ "o2 is $65" before the ask, then r2 at $62: that is a change across the
+    ask, about o2 (no open offer holds $65). W2 (lexical) still fails."""
+    o1 = offer("o1", monthly="5500", term="12", fee="9900")
+    lines = [
+        rep("c1", O1_READBACK),
+        rep("c2", "The new offer is $65 a month for 12 months."),
+    ]
+    lines += [ASK, rep("c3", O2_READBACK)]
+    assert not _confirmed(_o2(), lines, (Ask(3, _o2_terms()),), rivals=(o1,))
+
+
+def test_a_rival_value_counts_only_in_its_own_field() -> None:
+    """$65 is o1's fee, not its price: "$65 a month" before the ask is about
+    o2. Kills: matching a rival's value in any field."""
+    lines = [rep("c1", "The new offer is $65 a month for 12 months."), ASK]
+    lines.append(rep("c2", O2_READBACK))
+    o1 = offer("o1", monthly="5500", term="12", fee="6500")
+    assert not _confirmed(_o2(), lines, (Ask(2, _o2_terms()),), rivals=(o1,))
+    o1 = offer("o1", monthly="6500", term="12", fee="9900")  # o1's price: o1's
+    assert _confirmed(_o2(), lines, (Ask(2, _o2_terms()),), rivals=(o1,))
+
+
+def test_a_two_valued_statement_is_never_ascribed() -> None:
+    """Only a statement of one value is another offer's. Kills: matching any
+    overlap with the rival's values."""
+    o1 = offer("o1", monthly="5500", term="12", fee=None)
+    lines = [rep("c1", "It is either $55 or $62 a month for 12 months."), ASK]
+    lines.append(rep("c2", O2_READBACK))
+    assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+
+
+def test_each_offers_read_back_after_the_others_ask_is_ignored() -> None:
+    """W1 both ways (d893db seq 350: o2's $69 answer reverted o1's confirmed
+    price): o1's ask, its answer, o2's offer and ask, o2's answer. Each stays
+    confirmed with the other open; a value no offer holds still reverts both.
+    Kills: dropping the W1 filter."""
+    o1 = offer("o1", monthly="7800", fee=None)
+    o2 = offer("o2", monthly="6900", fee=None, revision=2)
+    full = "{} per month for 24 months with no fees, no other changes, and no expiry."
+    lines = [
+        rep("c0", "I can offer 78.00 per month for 24 months."), ASK,
+        rep("c1", "It is " + full.format("78.00")),
+        rep("c2", "This is my best and final offer: 69.00 monthly for 24 months."), ASK,
+        rep("c3", "The terms are " + full.format("69.00")),
+    ]  # fmt: skip
+    a1, a2 = Ask(2, _terms(o1)), Ask(5, {"monthly_price": "6900", "term_months": "24"})
+    assert not _confirmed(o1, lines, (a1,))  # before S1-SYS-115: W1 failed
+    assert _confirmed(o1, lines, (a1,), rivals=(o2,))
+    assert _confirmed(o2, lines, (a2,), rivals=(o1,))
+    lines.append(rep("c4", "Sorry, I misspoke: it is $75 a month."))
+    assert not _confirmed(o1, lines, (a1,), rivals=(o2,))
+    assert not _confirmed(o2, lines, (a2,), rivals=(o1,))
+
+
+def test_the_strict_rule_ignores_no_statement() -> None:
+    """Only the window ascribes statements to another offer; this revision's
+    own ask keeps the strict rule (o1's $78 after it is a contradiction)."""
+    o1 = offer("o1", monthly="7800", fee=None)
+    lines = [NOTHING, ASK, rep("c2", O2_READBACK)]
+    lines.append(rep("c3", O2_READBACK.replace("$62", "$78")))
+    got = slot_statuses(_o2(), lines, 2, (), (o1,))
+    assert got["monthly_price"] != "confirmed"
+
+
+def _terms(o: OfferPublic) -> dict[str, str]:
+    return {s.field: s.value for s in o.slots}
+
+
+def _o2_terms() -> dict[str, str]:
+    return _terms(_o2())

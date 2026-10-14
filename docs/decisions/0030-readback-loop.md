@@ -73,3 +73,8 @@ Real-world practice (principal-architect's review, sources in S1-SYS-108's PR):
 - **Not addressed:**
   - COMMITTED has no exit after the rep refuses an accept (b48f0f; Now/Next 2).
   - The tenure lever was lost in 852bd1.
+
+## Amendment (2026-10-14, S1-SYS-115): two parser regressions
+- **A fee's "no" negated the term.** "It's just 62.00 a month with no fees for a 12-month term!" (247b62 cp-18) read `term_months` as none, because "no" was within 4 tokens of "12". A negation before a months value no longer reaches it across another field's role noun (`negation.ROLE_WORDS`: fees, changes, expiry). Money amounts keep their reach: no M3 or v2 line has that shape, and "we don't charge 55.00 a month" must still deny the price.
+- **A void expiry denial became "date?" (#324).** "Those terms have no expiry date at the end of the term." (d893db cp-12, seq 408) is void (an untargeted phrase follows), and `_expires` turned it into an undated expiry: it contradicted `expires=none` and reverted o1's confirmed expiry at seq 416. A void denial now says nothing, as void fees and changes do, unless its clause names a time (`TIMES` or `BOUNDS`: "doesn't expire until Friday", "won't expire after the term ends"), which still says the offer expires. A plain expiry mention with no date is still undated. No word class changed.
+- **Lines (`said()` on the sim rep's read-back lines vs its intent).** v2 (232 lines): contradictions 13 → 2 (term 2 → 0; expiry 11 → 2, 9 now misses); M3 (252): expiry contradictions 8 → 4. Wrong-value statements: 0 before and after.

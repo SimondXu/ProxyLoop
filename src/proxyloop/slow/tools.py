@@ -160,12 +160,12 @@ class SlowTools:
         heard = authority.last(events, "utt.final", "utt_id", rep[-1]) if rep else None
         heard_at = self._heard()
         windows = self._windows(heard_at)
-        for ref, o in sorted(bb.public.offers.items()):
-            if o.status != "open":
-                continue
+        live = {ref: o for ref, o in bb.public.offers.items() if o.status == "open"}
+        for ref, o in sorted(live.items()):
             mine = self.asked.get((ref, o.revision), ())
             asked = min((heard_at[m] for m in mine if m in heard_at), default=None)
-            update = readback_update(o, lines, asked, windows.get(ref, ()))
+            rivals = [x for r, x in sorted(live.items()) if r != ref]  # S1-SYS-115
+            update = readback_update(o, lines, asked, windows.get(ref, ()), rivals)
             now = {s.field: s.status for s in o.slots}
             if (update["slot_statuses"], update["terms_hash"]) == (now, o.terms_hash):
                 continue
