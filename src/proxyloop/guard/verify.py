@@ -20,6 +20,9 @@ from proxyloop.guard.mandate import hard_violations
 from proxyloop.guard.readback import has_cue
 from proxyloop.guard.terms import offer_terms
 
+_CONF_WORD = re.compile(r"\b(?:confirmation|reference|ref|order|ticket)\b", re.I)
+_DIGIT_RUN = re.compile(r"\d(?:[ -]?\d){3,}")
+_BARE_ID = re.compile(r"(?<![\w$.,])\d{6,}(?![\w.,]\d|\w)")
 _PER_MONTH = re.compile(  # a bare amount said per month: "70 a month"
     r"(?<![\d.])(\d+(?:\.\d+)?)\s*(?:a|per|each|every|/)\s*mo(?:nth)?\b", re.I
 )
@@ -73,11 +76,24 @@ def reopens(text: str, amounts: Set[Decimal]) -> bool:
     iff it states a money amount that no recorded offer carries (``amounts``;
     $0 is none), or has a ``reopen`` cue: it makes or names an offer, or takes
     the close back. Filler ("How can I help with the account today?") does
-    not; nor does a line that withdraws an offer."""
+    not; nor does a line that withdraws an offer, nor one that itself closes
+    ("the best rate I can offer" has the cue "I can offer": review rev-334)."""
+    if has_cue(text, "closing"):
+        return False
     said = spoken(text, "usd_minor") | {
         Decimal(m.group(1)) for m in _PER_MONTH.finditer(text)
     }
     return bool(said - set(amounts) - {Decimal(0)}) or has_cue(text, "reopen")
+
+
+def says_confirmation(text: str) -> bool:
+    """A rep line carries a confirmation id (S1-SYS-113, review rev-334 F2):
+    a confirmation word with four or more digits ("Your confirmation number
+    is 482913", "reference NW-48291", "4 8 2 9 1 3"), or six digits or more
+    in one token. Lexical, like the cues: the ledger is never read here."""
+    if _BARE_ID.search(text):
+        return True
+    return bool(_CONF_WORD.search(text) and _DIGIT_RUN.search(text))
 
 
 def closing_at(bb: Blackboard, asked_final_at: int | None) -> int | None:

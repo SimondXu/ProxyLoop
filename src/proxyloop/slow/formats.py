@@ -120,19 +120,70 @@ _NOT_PRICE = frozenset(  # the unit right after a number that is no price
 )
 _OWN = re.compile(  # the user's own price or a limit, in the amount's clause
     r"\b(?:(?:i|we)(?:'m| am|'re| are)? (?:pay|paying)|my (?:bill|plan|budget|max)"
-    r"|currently|max(?:imum)?|up to|at most|more than|less than|no more|under"
-    r"|below|budget|limit|afford|willing|(?:would|could|can|i'd) pay)\b",
+    r"|current(?:ly)?|now|max(?:imum)?|up to|at most|more than|less than|no more"
+    r"|under|below|over|budget|limit|ceiling|tops|afford|willing|ideally"
+    r"|happy (?:at|with)|like to get|accept|offer from you|(?:would|could|can|i'd)"
+    r" pay)\b",
     re.IGNORECASE,
 )
 _CLAUSE = re.compile(r"[.;!?](?=\s|$)|,(?!\d)|\bbut\b", re.IGNORECASE)
+# review rev-334 B1: the amount's clause must name a competitor, affirmatively
+_NEGATED = re.compile(r"\b(?:no|not|never|none|without)\b|n['\u2019]t\b", re.I)
+_RIVALS = re.compile(  # a competitor named generically
+    r"\bcompetitors?\b|\b(?:another|other|different) (?:provider|company|carrier"
+    r"|service|isp)s?\b",
+    re.IGNORECASE,
+)
+_QUOTED = re.compile(  # a quote verb, with a capitalised name: "Comcast quoted"
+    r"\b(?:offering|offers|offered|quoted|quotes|quoting|charges|charging)\b",
+    re.IGNORECASE,
+)
+_CAPITAL = re.compile(r"(?<![\w'\u2019-])[A-Z][A-Za-z'\u2019-]+")
+_PLAIN = frozenset(  # capitalised words that name no company
+    """i i'd i'm i've i'll no yes my it it's the that this they we you your our
+    right don't ideally ok okay so but and also well just actually please sure
+    thanks hi hey go now currently maybe if then their there here what how why
+    he she his her a an""".split()  # noqa: SIM905
+)
 
 
-def _price(value: str, message: str, *_: object) -> str | None:
-    """``value`` (``58``, ``57.99``) said as a price in the message, in digits
-    or words ("$58", "58 dollars", "fifty-eight bucks", "a plan for 58"): a
-    "$", a money word after it or a price word before it, no unit of anything
-    else after it, and no own price or limit in its clause ("I pay 85", "more
-    than 65")."""
+def _others(bb: st.Blackboard, company: str) -> set[str]:
+    """The words of the company and of every recorded fact but the
+    competitor's name: none of them names a competitor."""
+    facts = (*bb.public.facts.values(), *bb.private.case_facts.values())
+    theirs = [company, *(f.value for f in facts if f.key != "competitor.name")]
+    return {w for t in theirs for w in words(t).split()}
+
+
+def _anchored(clause: str, bb: st.Blackboard, company: str) -> bool:
+    """The clause names a competitor and states its quote: the recorded
+    competitor name, a competitor named generically ("another provider"), or
+    a quote verb with a capitalised name that is neither the company nor
+    another fact; never negated ("I don't have any other quote") and never
+    the user's own price or limit (``_OWN``)."""
+    if _NEGATED.search(clause) or _OWN.search(clause):
+        return False
+    facts = (*bb.public.facts.values(), *bb.private.case_facts.values())
+    named = [words(f.value) for f in facts if f.key == "competitor.name"]
+    if any(n and f" {n} " in f" {words(clause)} " for n in named):
+        return True
+    if _RIVALS.search(clause):
+        return True
+    others = _others(bb, company)
+    names = [
+        w for w in _CAPITAL.findall(clause)
+        if w.lower().replace("\u2019", "'") not in _PLAIN
+        and not set(words(w).split()) & others
+    ]  # fmt: skip
+    return bool(names) and _QUOTED.search(clause) is not None
+
+
+def _price(value: str, message: str, bb: st.Blackboard, company: str) -> str | None:
+    """``value`` (``58``, ``57.99``) said as a competitor's price in the
+    message, in digits or words ("$58", "58 dollars", "fifty-eight bucks", "a
+    plan for 58"): a "$", a money word after it or a price word before it, no
+    unit of anything else after it, and a clause ``_anchored`` to a
+    competitor ("Fibrelink is also offering a plan for 58")."""
     if not _PRICE_VALUE.fullmatch(value):
         return None
     text = _SPELLED.sub(_as_digits, message)
@@ -148,7 +199,7 @@ def _price(value: str, message: str, *_: object) -> str | None:
         money = m.group(1) or _MONEY_AFTER.match(after) or set(before) & _PRICED
         start = max(c for c in cuts if c <= m.start())
         end = min(c for c in cuts if c >= m.end())
-        if money and not _OWN.search(text[start:end]):
+        if money and _anchored(text[start:end], bb, company):
             return value
     return None
 
@@ -160,10 +211,7 @@ def _rival(value: str, message: str, bb: st.Blackboard, company: str) -> str | N
     span = _name(value, message)
     if span is None or not span[0].isupper() or sum(c.isalpha() for c in span) < 2:
         return None
-    facts = (*bb.public.facts.values(), *bb.private.case_facts.values())
-    theirs = [company, *(f.value for f in facts if f.key != "competitor.name")]
-    mine = set(words(span).split())
-    return None if any(mine & set(words(t).split()) for t in theirs) else span
+    return None if set(words(span).split()) & _others(bb, company) else span
 
 
 Match = Callable[[str, str, st.Blackboard, str], str | None]  # + the company

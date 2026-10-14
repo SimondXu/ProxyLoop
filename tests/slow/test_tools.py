@@ -592,7 +592,7 @@ def test_cite_competitor_needs_a_shareable_competitor_quote() -> None:  # I11
     ok, _, _ = _guide(_with(bb, name, said), move="cite_competitor",
                       slots=[f"fact:{PRICE}"])  # fmt: skip
     assert not ok  # the rep's word is no quote the user shared
-    quoted = _named("they quoted me at Brightwave, it's 60 a month")
+    quoted = _named("Brightwave quoted me 60 a month")
     tools = _tools(quoted)
     got = tools.fact(quoted, PRICE, "60", "u-1").effects[0][1]
     assert (got["scope"], got["source"]) == ("public", "shareable")
@@ -611,36 +611,60 @@ QUOTES = [  # (message, key, Slow's value, published or None)
     (FIBRE, NAME, "Fibrelink", "Fibrelink"),
     (FIBRE, NAME, "fibrelink", "Fibrelink"),  # the user's spelling
     ("Fibrelink is also offering a plan if that helps!", PRICE, "58", None),
+    ("Comcast quoted me $55", PRICE, "55", "55"),
+    ("a competitor offered 58 dollars", PRICE, "58", "58"),
+    ("another provider charges $58 a month", PRICE, "58", "58"),
     ("Brightwave quoted me $58", PRICE, "58", "58"),
-    ("Brightwave is 58 dollars", PRICE, "58", "58"),
-    ("they offer fifty-eight bucks a month", PRICE, "58", "58"),
-    ("Brightwave: fifty eight a month", PRICE, "58", "58"),
+    ("Brightwave offers fifty-eight bucks a month", PRICE, "58", "58"),
+    ("Brightwave quoted fifty eight a month", PRICE, "58", "58"),
     ("Brightwave charges $57.99", PRICE, "57.99", "57.99"),
     ("Brightwave charges $58.00", PRICE, "58", "58"),
-    ("Brightwave is 58.", PRICE, "58", "58"),
-    ("Brightwave has 58/mo plans", PRICE, "58", "58"),
-    # a number that is no price, or not this one
-    ("Fibrelink gives 58 months free", PRICE, "58", None),
-    ("Fibrelink is 58 GB for less", PRICE, "58", None),
-    ("Fibrelink is 58%", PRICE, "58", None),
-    ("Fibrelink is a 58-month deal", PRICE, "58", None),
-    ("Fibrelink wants 58", PRICE, "58", None),  # no price word: private
-    ("Fibrelink has a plan for 580", PRICE, "58", None),
-    ("Fibrelink has a plan for $5.80", PRICE, "58", None),
-    ("Fibrelink has a plan for $1,058", PRICE, "58", None),
-    ("Fibrelink plan #58", PRICE, "58", None),
-    ("account 4858 at Fibrelink", PRICE, "58", None),
-    ("Fibrelink is $58", PRICE, "$58", None),  # Slow's value: digits only
-    ("Fibrelink is $58", PRICE, "058", None),
-    ("Fibrelink is $58", PRICE, "fifty-eight", None),
-    ("Fibrelink is $58", PRICE, "59", None),
+    ("Brightwave offers 58/mo plans", PRICE, "58", "58"),
+    ("Fibrelink offers $58 but my max is $65", PRICE, "65", None),
+    ("Fibrelink offers $58 but my max is $65", PRICE, "58", "58"),
+    # anchored to a competitor, but a number that is no price, or not this one
+    ("Fibrelink offers 58 months free", PRICE, "58", None),
+    ("Fibrelink offers 58 GB for less", PRICE, "58", None),
+    ("Fibrelink quoted 58%", PRICE, "58", None),
+    ("Fibrelink offers a 58-month deal", PRICE, "58", None),
+    ("Fibrelink quoted me 58", PRICE, "58", None),  # no price word: private
+    ("Fibrelink quoted a plan for 580", PRICE, "58", None),
+    ("Fibrelink quoted a plan for $5.80", PRICE, "58", None),
+    ("Fibrelink quoted a plan for $1,058", PRICE, "58", None),
+    ("Fibrelink quoted plan #58", PRICE, "58", None),
+    ("Fibrelink quoted account 4858", PRICE, "58", None),
+    ("Fibrelink quoted $58", PRICE, "$58", None),  # Slow's value: digits only
+    ("Fibrelink quoted $58", PRICE, "058", None),
+    ("Fibrelink quoted $58", PRICE, "fifty-eight", None),
+    ("Fibrelink quoted $58", PRICE, "59", None),
+    # no competitor in the amount's clause: never public (review rev-334 B1)
+    ("Brightwave is 58 dollars", PRICE, "58", None),  # a name, no quote verb
+    ("Brightwave: fifty eight a month", PRICE, "58", None),
+    ("Brightwave quoted me, but I pay $58", PRICE, "58", None),
+    ("No, I don't have any other quote. I'd be happy at $60 though.", PRICE, "60",
+     None),
+    ("My current plan is $85.", PRICE, "85", None),
+    ("It's $85 now and that's too much.", PRICE, "85", None),
+    ("Right now I'm on the $85 plan.", PRICE, "85", None),
+    ("$65 tops.", PRICE, "65", None),
+    ("$65 is my ceiling.", PRICE, "65", None),
+    ("Don't go over $65 a month.", PRICE, "65", None),
+    ("Ideally $65 or lower.", PRICE, "65", None),
+    ("I'd like to get it to $65.", PRICE, "65", None),
+    ("No, $55 with a $99 fee is not OK.", PRICE, "55", None),
+    ("No, $55 with a $99 fee is not OK.", PRICE, "99", None),
+    ("Yes, go ahead and accept the $62 offer.", PRICE, "62", None),
+    ("I don't have a competitor offering $58", PRICE, "58", None),  # negated
+    ("Northwind Mobile charges $85", PRICE, "85", None),  # the company
+    ("Dana Reyes quoted $58", PRICE, "58", None),  # only a recorded fact's name
+    ("Yes they quoted $58", PRICE, "58", None),  # no company named: private
+    ("They quoted me $58", PRICE, "58", None),
     # the user's own price or limit, never a competitor's
     ("I pay $85 now", PRICE, "85", None),
     ("I'm paying 85 a month", PRICE, "85", None),
     ("I won't pay more than $65", PRICE, "65", None),
     ("my budget is 65", PRICE, "65", None),
-    ("Fibrelink is $58 but my max is $65", PRICE, "65", None),
-    ("Fibrelink is $58 but my max is $65", PRICE, "58", "58"),
+    ("Comcast quoted me $55, I pay $85 now", PRICE, "85", None),
     # names
     ("fibrelink is cheaper", NAME, "fibrelink", None),  # as written: lower case
     ("they quoted me at Brightwave", NAME, "Bright", None),
@@ -652,7 +676,8 @@ QUOTES = [  # (message, key, Slow's value, published or None)
 def test_a_competitor_quote_the_user_states_goes_public(
     text: str, key: str, value: str, published: str | None
 ) -> None:
-    bb, _ = _message(text)
+    holder = {H: Fact(key=H, value="Dana Reyes")}
+    bb, _ = _message(text, case_facts=holder)
     tools = SlowTools(
         cast("Kernel", SimpleNamespace(bb=bb)), ALL, CASE, company="Northwind Mobile"
     )
@@ -662,6 +687,30 @@ def test_a_competitor_quote_the_user_states_goes_public(
     assert tools.shareable.get(key) == published
     if published is not None:
         assert (fact["source"], fact["value"]) == ("shareable", published)
+
+
+@pytest.mark.parametrize(
+    ("text", "published"),
+    [
+        ("Brightwave is 58 dollars", "58"),  # the recorded name anchors it
+        ("brightwave is $58.", "58"),
+        ("Brightwave is 58 dollars, and I don't want it", "58"),  # other clause
+        ("Fibrelink is 58 dollars", None),  # not the recorded competitor
+        ("Brightwave isn't 58 dollars", None),  # negated
+        ("Brightwave is 58 dollars right now", None),  # the own-price backstop
+    ],
+)
+def test_the_recorded_competitor_name_anchors_a_price(
+    text: str, published: str | None
+) -> None:
+    for source in ("shareable", None):  # public, or recorded private
+        bb = _named(text, source="shareable")
+        if source is None:
+            name = Fact(key=NAME, value="Brightwave")
+            bb = _named(text, source=None, case_facts={NAME: name})
+        tools = _tools(bb)
+        fact = dict(tools.fact(bb, PRICE, "58", "u-1").effects[0][1])
+        assert (fact["scope"] == "public") == (published is not None), text
 
 
 @pytest.mark.parametrize(
@@ -685,7 +734,7 @@ def test_the_company_or_another_fact_is_no_competitor(
 
 
 def test_a_competitor_price_that_is_a_mandate_bound_stays_private() -> None:
-    bb = _named("Fibrelink is $70 a month", mandate=BOUNDS)  # max $70
+    bb = _named("Fibrelink quoted $70 a month", mandate=BOUNDS)  # max $70
     tools = _tools(bb)
     result = tools.fact(bb, PRICE, "70", "u-1")
     (_, fact), (denied, _) = result.effects

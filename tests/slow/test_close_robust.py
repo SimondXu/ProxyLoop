@@ -134,6 +134,48 @@ def test_a_refused_accept_escalates_from_committed(tmp_path: Path) -> None:
     assert len(h.of("action.authorized")) == 1  # nothing granted again
 
 
+CONFIRMED = "Done, the offer is accepted. Your confirmation number is 482913."
+ESCALATE = {"tool": "finish", "outcome": "escalate", "summary": "x"}
+
+
+def test_a_confirmed_accept_cannot_escalate(tmp_path: Path) -> None:
+    """Review rev-334 F2: once a rep line since the accept carries a
+    confirmation id, the ledger holds the commit: check_account it
+    (EVIDENCE_PENDING), never escalate it away."""
+    h = _refused_accept(tmp_path)  # cp-3 refuses: no id yet
+    confirmed = h.rep("cp-4", CONFIRMED)  # then the rep confirms after all
+    (refused_,) = h.act(ESCALATE)
+    assert refused_.startswith("finish: ") and "check_account" in refused_
+    assert "cp-4" in refused_ and not h.ended
+    assert h.bb.public.status is CaseStatus.COMMITTED
+    write = {"confirmation_id": "482913", "binding": {"offer_ref": "save-2",
+             "revision": 1, "term_months": 24, "terms": BOUND}}  # fmt: skip
+    h.emit("ledger.write", "world.ledger", write, [confirmed.event_id], "world")
+    check = CHECK | {"utt_ref": "cp-4"}
+    account, done = h.act(check, DONE)
+    assert "binds the accepted terms" in account
+    assert done == "finish: verified complete"
+
+
+def test_a_number_before_the_accept_does_not_block_escalation(
+    tmp_path: Path,
+) -> None:
+    h = accepted(tmp_path)
+    h.rep("cp-2b", "Your confirmation number is 482913.")  # before the accept
+    (line,) = [e for e in h.of("speak.verbatim") if e.payload["kind"] == "accept"]
+    released = h.emit(
+        "speak.released", "kernel", {"lane": "cp", "cap_id": line.payload["cap_id"]},
+        [line.event_id],
+    )  # fmt: skip
+    said = {"lane": "cp", "utt_id": "a-1", "text_generated": line.payload["text"]}
+    said |= {"text_heard": line.payload["text"], "interrupted": False}
+    h.delivered = h.emit("utt.delivered", "kernel", said, [released.event_id])
+    committed(h)
+    h.rep("cp-3", REFUSED)
+    (done,) = h.act(ESCALATE)
+    assert done == "finish: case closed" and h.ended == ["escalate"]
+
+
 def test_the_prompt_names_the_committed_exit() -> None:
     for mode in SlowViewMode:
         assert "accept was said but not confirmed" in prompt.system(mode)

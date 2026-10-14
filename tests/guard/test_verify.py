@@ -25,6 +25,7 @@ from proxyloop.guard.readback import has_cue
 from proxyloop.guard.verify import (
     closing_at,
     reopens,
+    says_confirmation,
     verify_completion,
     verify_no_deal,
 )
@@ -255,6 +256,43 @@ def test_an_unrecorded_amount_alone_reopens(later: str) -> None:
 @pytest.mark.parametrize("later", CUE)
 def test_a_reopen_cue_alone_reopens(later: str) -> None:
     assert has_cue(later, "reopen") and reopens(later, set())
+
+
+def test_a_line_that_itself_closes_never_reopens() -> None:
+    """Review rev-334 F3: "the best rate I can offer" matches the reopen cue
+    "I can offer" and the closing cue; a closing line never reopens."""
+    final = rep("c2", "That is our best and final offer.")
+    rate = "That is the best rate I can offer."
+    assert has_cue(rate, "closing") and has_cue(rate, "reopen")
+    assert not reopens(rate, {Decimal(68)})
+    assert not reopens("That is our best offer at $55.", {Decimal(68)})
+    assert _no_deal(final, rep("c3", rate)) == OK
+    assert _no_deal(final, rep("c3", rate), rep("c4", FILLER[0])) == OK
+
+
+@pytest.mark.parametrize("apostrophe", ["'", "\u2019"])
+def test_a_typographic_apostrophe_still_reopens(apostrophe: str) -> None:
+    """Review rev-334 F4: "I\u2019ll" is "I'll" for the reopen cue."""
+    line = f"I{apostrophe}ll throw in a free month."
+    assert has_cue(line, "reopen") and reopens(line, set())
+    assert _no_deal(CLOSE, rep("c3", line)) == _fail("no_closing_reply")
+
+
+@pytest.mark.parametrize(
+    ("text", "said"),
+    [
+        ("Done, the offer is accepted. Your confirmation number is 482913.", True),
+        ("Your confirmation is 4 8 2 9 1 3.", True),
+        ("Your reference number is NW-48291.", True),
+        ("All set, it's 482913.", True),  # a bare id of six digits or more
+        ("I'm sorry, but that $69 offer is no longer available.", False),
+        ("It is 24 months at 69.00 a month.", False),
+        ("I can't confirm that, sorry.", False),  # a confirmation word, no id
+        ("Call us back at 555 0199 if anything changes.", False),  # no such word
+    ],
+)
+def test_a_confirmation_id_in_a_rep_line(text: str, said: bool) -> None:
+    assert says_confirmation(text) is said
 
 
 def test_an_amount_a_recorded_offer_carries_does_not_reopen() -> None:

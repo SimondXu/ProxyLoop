@@ -244,7 +244,7 @@ class SlowTools:
         if name != "finish":
             return refused("unknown_tool", f"unknown tool {name!r}")
         outcome = str(a.get("outcome"))
-        r = authority.finish(bb, outcome, self.asked_final)
+        r = authority.finish(bb, outcome, self.asked_final, host.bus.events)
         if not r.ok:
             return r
         self.finished = True

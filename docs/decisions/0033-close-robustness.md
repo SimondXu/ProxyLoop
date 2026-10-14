@@ -18,11 +18,13 @@ Runs timed out or were blocked for reasons that were not the agent's fault:
    - has a `reopen` cue (`LEXICON["reopen"]`): it makes or names an offer ("I can waive", "a loyalty promotion", "how about");
    - takes the close back ("actually", "let me check").
 
-   Filler does not reopen the close, and neither does a stated withdrawal. Slow's close line calls the same `closing_at`, so the bar and Guard cannot disagree.
-2. **`COMMITTED escalate ESCALATED`.** While no evidence is recorded, `finish(escalate)` hands the case to the user. It only restricts and grants nothing. No transition leads from COMMITTED back toward a commit. Slow's close line and its prompt give the step: tell the user that the accept was said but not confirmed, then `finish(escalate)`.
+   Filler does not reopen the close, and neither does a stated withdrawal or a line that itself matches the closing cue ("the best rate I can offer"). Slow's close line calls the same `closing_at`, so the bar and Guard cannot disagree.
+2. **`COMMITTED escalate ESCALATED`.** While no evidence is recorded, `finish(escalate)` hands the case to the user. It only restricts and grants nothing. It is refused once a rep line since the accept carries a confirmation id (`says_confirmation`): then the ledger holds the commit, and the step is `check_account` → EVIDENCE_PENDING. No transition leads from COMMITTED back toward a commit. Slow's close line and its prompt give the step: tell the user that the accept was said but not confirmed, then `finish(escalate)`.
 3. **`expires` is optional.** `missing_required` no longer lists it. A revision without it hashes as "no expiry" (`offer_terms`), which is what the world's ledger binds (`expires: none`). An `expires` slot that *is* recorded must still be confirmed, because a stated date still matters.
 4. **A competitor quote that the user states is a lever** (`slow/formats.py`, moved out of `slow/tools.py`).
-   - `competitor.price_usd` goes public only when the user's own message states the amount as a price, in digits or words ("$58", "58 dollars", "fifty-eight bucks", "a plan for 58"). It must not be another unit (months, GB, %), and it must not be the user's own price or limit in the same clause ("I pay 85", "more than 65").
+   - `competitor.price_usd` goes public only when the user's own message states the amount as a price, in digits or words ("$58", "58 dollars", "fifty-eight bucks", "a plan for 58"). It must not be another unit (months, GB, %).
+   - The amount's clause must also name a competitor: the recorded `competitor.name`, a generic competitor ("another provider", "a competitor"), or a quote verb with a capitalised name that is neither the company nor another recorded fact ("Comcast quoted me $55").
+   - A negated clause never publishes ("I don't have any other quote"), nor does a clause with the user's own price or limit ("I pay 85", "$65 tops", "accept the $62 offer").
    - `competitor.name` goes public only when it appears as the user wrote it, capitalised, and is neither the company's name nor another recorded fact's value.
    - `_leaks` still applies: a protected value or a mandate bound never goes public.
 
