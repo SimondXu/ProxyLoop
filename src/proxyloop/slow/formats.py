@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from decimal import Decimal
 
 from proxyloop.contract import state as st
 
@@ -96,129 +95,11 @@ def words(text: str) -> str:  # "O'Brien" -> "o brien"
     return " ".join(re.findall(r"[a-z]+", text.casefold()))
 
 
-# User decision 2026-10-13 (S1-SYS-113, ADR-0033): a competitor quote the user
-# states is no fabrication (I11 forbids fabricated ones). Its price goes public
-# only said as a price, never as the user's own price or limit; its name only
-# as the user wrote it, never the company's or another fact's value.
-_PRICE_VALUE = re.compile(r"(?:0|[1-9][0-9]{0,3})(?:\.[0-9]{2})?")  # 58, 57.99
-_AMOUNT = re.compile(  # a number token, maybe after "$": not "$1,058", "5.8", "#58"
-    r"(?<![\w.,/#@+\u2212-])(\$\s?)?(\d{1,4}(?:\.\d\d)?)(?![\w%-]|[.,/]\d)"
-)
-_MONEY_AFTER = re.compile(
-    r"\s*(?:dollars?|bucks?|usd|(?:a|per|each|every)\s+month|/\s*mo(?:nth)?"
-    r"|monthly)\b",
-    re.IGNORECASE,
-)
-_PRICED = frozenset(  # the word right before a price: "a plan for 58"
-    """for at charges charge charging offering offers offered quoted quote costs
-    cost is only just of""".split()  # noqa: SIM905
-)
-_NOT_PRICE = frozenset(  # the unit right after a number that is no price
-    """month months year years yr yrs day days week weeks hour hours hr hrs
-    minute minutes min mins second seconds gb gig gigs mb tb mbps gbps percent
-    line lines device devices phone phones people times old""".split()  # noqa: SIM905
-)
-_OWN = re.compile(  # the user's own price or a limit, in the amount's clause
-    r"\b(?:(?:i|we)(?:'m| am|'re| are)? (?:pay|paying)|my (?:bill|plan|budget|max)"
-    r"|current(?:ly)?|now|max(?:imum)?|up to|at most|more than|less than|no more"
-    r"|under|below|over|budget|limit|ceiling|tops|afford|willing|ideally"
-    r"|happy (?:at|with)|like to get|accept|offer from you|(?:would|could|can|i'd)"
-    r" pay)\b",
-    re.IGNORECASE,
-)
-_CLAUSE = re.compile(r"[.;!?](?=\s|$)|,(?!\d)|\bbut\b", re.IGNORECASE)
-# review rev-334 B1: the amount's clause must name a competitor, affirmatively
-_NEGATED = re.compile(r"\b(?:no|not|never|none|without)\b|n['\u2019]t\b", re.I)
-_RIVALS = re.compile(  # a competitor named generically
-    r"\bcompetitors?\b|\b(?:another|other|different) (?:provider|company|carrier"
-    r"|service|isp)s?\b",
-    re.IGNORECASE,
-)
-_QUOTED = re.compile(  # a quote verb, with a capitalised name: "Comcast quoted"
-    r"\b(?:offering|offers|offered|quoted|quotes|quoting|charges|charging)\b",
-    re.IGNORECASE,
-)
-_CAPITAL = re.compile(r"(?<![\w'\u2019-])[A-Z][A-Za-z'\u2019-]+")
-_PLAIN = frozenset(  # capitalised words that name no company
-    """i i'd i'm i've i'll no yes my it it's the that this they we you your our
-    right don't ideally ok okay so but and also well just actually please sure
-    thanks hi hey go now currently maybe if then their there here what how why
-    he she his her a an""".split()  # noqa: SIM905
-)
-
-
-def _others(bb: st.Blackboard, company: str) -> set[str]:
-    """The words of the company and of every recorded fact but the
-    competitor's name: none of them names a competitor."""
-    facts = (*bb.public.facts.values(), *bb.private.case_facts.values())
-    theirs = [company, *(f.value for f in facts if f.key != "competitor.name")]
-    return {w for t in theirs for w in words(t).split()}
-
-
-def _anchored(clause: str, bb: st.Blackboard, company: str) -> bool:
-    """The clause names a competitor and states its quote: the recorded
-    competitor name, a competitor named generically ("another provider"), or
-    a quote verb with a capitalised name that is neither the company nor
-    another fact; never negated ("I don't have any other quote") and never
-    the user's own price or limit (``_OWN``)."""
-    if _NEGATED.search(clause) or _OWN.search(clause):
-        return False
-    facts = (*bb.public.facts.values(), *bb.private.case_facts.values())
-    named = [words(f.value) for f in facts if f.key == "competitor.name"]
-    if any(n and f" {n} " in f" {words(clause)} " for n in named):
-        return True
-    if _RIVALS.search(clause):
-        return True
-    others = _others(bb, company)
-    names = [
-        w for w in _CAPITAL.findall(clause)
-        if w.lower().replace("\u2019", "'") not in _PLAIN
-        and not set(words(w).split()) & others
-    ]  # fmt: skip
-    return bool(names) and _QUOTED.search(clause) is not None
-
-
-def _price(value: str, message: str, bb: st.Blackboard, company: str) -> str | None:
-    """``value`` (``58``, ``57.99``) said as a competitor's price in the
-    message, in digits or words ("$58", "58 dollars", "fifty-eight bucks", "a
-    plan for 58"): a "$", a money word after it or a price word before it, no
-    unit of anything else after it, and a clause ``_anchored`` to a
-    competitor ("Fibrelink is also offering a plan for 58")."""
-    if not _PRICE_VALUE.fullmatch(value):
-        return None
-    text = _SPELLED.sub(_as_digits, message)
-    cuts = [0, *(m.end() for m in _CLAUSE.finditer(text)), len(text)]
-    for m in _AMOUNT.finditer(text):
-        after = text[m.end() :]
-        unit = re.match(r"\s*([a-z]+)", after, re.IGNORECASE)
-        before = re.findall(r"[a-z]+", text[: m.start()].lower())[-1:]
-        if Decimal(m.group(2)) != Decimal(value) or (
-            unit and unit.group(1).lower() in _NOT_PRICE
-        ):
-            continue
-        money = m.group(1) or _MONEY_AFTER.match(after) or set(before) & _PRICED
-        start = max(c for c in cuts if c <= m.start())
-        end = min(c for c in cuts if c >= m.end())
-        if money and _anchored(text[start:end], bb, company):
-            return value
-    return None
-
-
-def _rival(value: str, message: str, bb: st.Blackboard, company: str) -> str | None:
-    """A competitor's name: ``_name``'s span, capitalised as the user wrote
-    it, of two letters or more, sharing no word with the company or with
-    another recorded fact's value (the holder's name is no competitor)."""
-    span = _name(value, message)
-    if span is None or not span[0].isupper() or sum(c.isalpha() for c in span) < 2:
-        return None
-    return None if set(words(span).split()) & _others(bb, company) else span
-
-
 Match = Callable[[str, str, st.Blackboard, str], str | None]  # + the company
 FORMATS: dict[str, Match] = {  # the one per-key format table (S1-SYS-15)
     "account.last4": _digits4,
     "account.holder_name": _name,
+    # competitor facts never (#153 round 3, I11): a user-stated quote becomes a
+    # lever only by the user's explicit authorisation (ADR-0033, deferred)
     "tenure_years": _years,
-    "competitor.price_usd": _price,  # user decision 2026-10-13 (S1-SYS-113)
-    "competitor.name": _rival,
 }

@@ -161,8 +161,8 @@ def test_f10_the_head_carries_the_task_kind_and_its_own_playbook_only(
     other = "full" if kind == "info_only" else "info_only"
     assert f"\nTASK KIND: {kind}\n" in head
     assert prompt.PLAYBOOK[kind] in head and prompt.PLAYBOOK[other] not in head
-    # 21988c: the head names what can go public (S1-SYS-113: competitor too)
-    assert "only competitor.price_usd, tenure_years can go public" in head
+    # 21988c: share_fact on competitor keys; the head names what can go public
+    assert "only tenure_years can go public" in head
 
 
 REP_NO_EXPIRY = "It is $69 a month on a 24-month term, no fees, no other changes."

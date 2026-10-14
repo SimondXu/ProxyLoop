@@ -422,8 +422,8 @@ class SlowTools:
             text += (
                 f": only {', '.join(can) or 'no key'} can go public from the user, "
                 "by citing the utt of the user message that contains exactly the "
-                "value (a last4 as 4 digits, a name as the user wrote it, tenure "
-                "as 'N years', a competitor's price as the price the user stated); "
+                "value (a last4 as 4 digits, a holder name as the user wrote it, "
+                "tenure as 'I've been with you (them, the company) for N years'); "
                 "other keys stay private"
             )
         return Result(True, text, tuple(effects))
