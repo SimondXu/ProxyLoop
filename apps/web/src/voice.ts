@@ -29,15 +29,20 @@ const VOICE_OF = { agent: "af_heart", rep: "am_michael" } as const; // an Americ
 
 type Tts = { generate: (text: string, o: { voice: (typeof VOICE_OF)[Voice] }) => Promise<{ audio: Float32Array; sampling_rate: number }> };
 
+/**
+ * The device and weights: fp32 on webgpu, q8 on wasm. q8 on webgpu garbles the speech (the
+ * kokoro-js README says so; a probe in the demo's browser gave an RMS-envelope correlation of
+ * 0.107 against wasm fp32, while webgpu fp32 gave 1.000 and wasm q8 0.874).
+ */
+export function modelOptions(gpu: boolean): { device: "webgpu" | "wasm"; dtype: "fp32" | "q8" } {
+  return gpu ? { device: "webgpu", dtype: "fp32" } : { device: "wasm", dtype: "q8" };
+}
+
 let model: Promise<Tts> | null = null;
 /** The model, loaded once (the browser caches its files). A failed load is forgotten, so turning sound on again retries. */
 function load(): Promise<Tts> {
   model ??= import("kokoro-js")
-    .then(({ KokoroTTS }) => {
-      // kokoro-js README: with webgpu use fp32 (q8 there garbles the speech); q8 on wasm.
-      const gpu = "gpu" in navigator;
-      return KokoroTTS.from_pretrained(MODEL, { dtype: gpu ? "fp32" : "q8", device: gpu ? "webgpu" : "wasm" });
-    })
+    .then(({ KokoroTTS }) => KokoroTTS.from_pretrained(MODEL, modelOptions("gpu" in navigator)))
     .catch((e: unknown) => {
       model = null;
       throw e;

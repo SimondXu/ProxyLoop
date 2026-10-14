@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversation } from "./conversation";
 import type { Ev } from "./replay";
-import { fresh, speakItems } from "./voice";
+import { fresh, modelOptions, speakItems } from "./voice";
 
 let seq = 0;
 const ev = (type: string, payload: Ev["payload"]): Ev => {
@@ -36,5 +36,12 @@ describe("the call's spoken lines", () => {
     expect(fresh(speakItems(conversation(events).call), seen)).toEqual([]);
     const more = [...events, rep("Anything else?")];
     expect(fresh(speakItems(conversation(more).call), seen).map((i) => i.text)).toEqual(["Anything else?"]);
+  });
+});
+
+describe("modelOptions", () => {
+  it("never runs q8 on webgpu (it garbles the speech)", () => {
+    expect(modelOptions(true)).toEqual({ device: "webgpu", dtype: "fp32" });
+    expect(modelOptions(false)).toEqual({ device: "wasm", dtype: "q8" });
   });
 });
