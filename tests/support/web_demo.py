@@ -382,6 +382,7 @@ class DemoStarter(Starter):
         task_ref: str,
         models: Mapping[LaneKey, str],
         rep: Literal["sim", "human"] = "sim",
+        user: Literal["human", "sim"] = "human",
     ) -> WebCase:
         if self._run is not None and not self._run.done():
             raise StartRefused("busy")
@@ -393,9 +394,9 @@ class DemoStarter(Starter):
                 raise StartRefused("unknown_model")
             if lanes[option] != lane:
                 raise StartRefused("wrong_lane")
-        user = HumanWebChannel()
+        chan = HumanWebChannel() if user == "human" else None
         human = HumanWebChannel() if rep == "human" else None
-        return await self._launch(fake_config(), resolve(task_ref), user, human)
+        return await self._launch(fake_config(), resolve(task_ref), chan, human)
 
     async def stop(self) -> None:
         """Cancel the live run, if any: its bundle closes ``stopped``."""

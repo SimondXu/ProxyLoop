@@ -46,10 +46,12 @@ type Props = {
   fenced: boolean;
   caseStatus: string | null;
   decide: (v: CardView, d: Decision) => void;
+  /** Watch mode: a simulated customer answers, so the card has no buttons (the sim approver decides, I6). */
+  watching?: boolean;
   clock: CardClock;
 };
 
-export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decide, clock }: Props) {
+export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decide, clock, watching }: Props) {
   const { card, status, error } = view;
   const terms = useMemo(() => termRows(events, card), [events, card]);
   const rows = useMemo(() => offerRows(terms, mandates), [terms, mandates]);
@@ -163,12 +165,16 @@ export function ApprovalCard({ view, events, mandates, fenced, caseStatus, decid
             {HUMAN_PRINCIPAL}
           </p>
         )}
-        <Button variant="primary" disabled={!open} onClick={() => decide(view, "granted")}>
-          {price ? `Approve ${whole(price)}/mo` : "Approve"}
-        </Button>
-        <Button disabled={!open} onClick={() => decide(view, "denied")}>
-          Decline
-        </Button>
+        {!watching && (
+          <>
+            <Button variant="primary" disabled={!open} onClick={() => decide(view, "granted")}>
+              {price ? `Approve ${whole(price)}/mo` : "Approve"}
+            </Button>
+            <Button disabled={!open} onClick={() => decide(view, "denied")}>
+              Decline
+            </Button>
+          </>
+        )}
       </div>
       <details className="pl-gcard-tech">
         <summary>Guard's read-back record and technical details</summary>

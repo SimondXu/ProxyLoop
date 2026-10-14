@@ -112,6 +112,10 @@ class Case(Protocol):
         409 ``not_open``); any other raise is 503 ``unavailable``."""
         ...
 
+    # With a simulated user (watch mode, S1-SYS-125) ``user_message`` and
+    # ``post_approval`` raise ``UserSimulated`` (serve: 409 ``user_simulated``):
+    # the human never speaks or approves for the SimUser.
+
 
 Cases = Callable[[str], Case | None]
 LaneKey = Literal["fast_user", "fast_cp", "slow"]
@@ -182,6 +186,11 @@ class NotOpen(Exception):
     """The cp call has not opened yet; serve answers 409 {"error": "not_open"}."""
 
 
+class UserSimulated(Exception):
+    """The user lane is the SimUser (watch mode); serve answers 409
+    {"error": "user_simulated"} to a user message, approval or mandate post."""
+
+
 class Starter(Protocol):
     """Starts a live case (L-CORE, S1-SYS-05, ``kernel/web.py``): the seam
     serve calls and never imports. S1: one case = one run."""
@@ -206,10 +215,12 @@ class Starter(Protocol):
         task_ref: str,
         models: Mapping[LaneKey, str],
         rep: Literal["sim", "human"] = "sim",
+        user: Literal["human", "sim"] = "human",
     ) -> Case:
         """Start one run. A lane missing from ``models`` gets that lane's
-        default. Raises ``StartRefused`` with reason ``unknown_task``,
-        ``unknown_model``, ``wrong_lane``, ``not_live``, ``busy`` or
+        default. ``user="sim"``: the user lane is the world's SimUser (watch
+        mode); the browser only watches. Raises ``StartRefused`` with reason
+        ``unknown_task``, ``unknown_model``, ``wrong_lane``, ``not_live``, ``busy`` or
         ``unavailable``. Returns only after the run's ``session.started``
         (seq 0) is written; the Case's ``run_id`` is the case_id, and the run
         lives at ``runs/live/<run_id>/<run_id>``. Model failures after the
@@ -344,6 +355,9 @@ def add_case_routes(
         slots[key] = "posted"
         try:
             case.post_approval(post)
+        except UserSimulated:
+            del slots[key]  # nothing was handed over
+            raise Refused(409, "user_simulated") from None
         except Exception as err:  # loud: logged, 503, and the id stays refused
             slots[key] = "failed"
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)
@@ -383,6 +397,8 @@ def add_case_routes(
             ingress(text)
         except NotOpen:
             raise Refused(409, "not_open") from None
+        except UserSimulated:
+            raise Refused(409, "user_simulated") from None
         except Exception as err:  # loud: logged, 503, no retry
             why = type(err).__name__  # only: no text, traceback or cause (rule 15)
             _log.error("the ingress failed for case %s: %s", case_id, why)

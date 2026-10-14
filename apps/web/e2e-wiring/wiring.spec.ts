@@ -345,7 +345,8 @@ test("j) start: /start sets the operator's cookies and 303s; each lane lists onl
   await openStart(page);
   await expect(page.getByRole("note")).toHaveCount(0); // the cookie is there: no "open /start" link
   await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(offered.tasks);
-  await expect(page.getByRole("radio", { name: "sim" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: REP.sim })).toBeChecked();
+  await expect(page.getByRole("radio", { name: /^You/ })).toBeChecked(); // the customer is you unless chosen
   await page.getByText("Advanced: models").click();
   for (const [lane, title] of LANES) {
     const own = offered.options.filter((o) => o.lane === lane);
