@@ -64,9 +64,10 @@ lists as unavailable is refused: use another move.
 - record_fact(key, value, utt_ref): a fact with the utt of the relay it came from. \
 Use the canonical key from SHAREABLE FACT KEYS when the fact is one of them, \
 whatever the relay called it. A value the representative said in that utt becomes \
-public. From the user, only a *.last4 key (exactly 4 digits) or a *.holder_name key \
-(the name as the user wrote it) from SHAREABLE FACT KEYS becomes public, when the \
-cited user message contains exactly that value; anything else stays private.
+public. From the user, only a key the task head says can go public becomes public, \
+when the cited user message contains exactly that value (a *.last4 as 4 digits; a \
+name as the user wrote it; a tenure or a competitor's price as the number the user \
+wrote); anything else stays private.
 - share_fact(key): make a recorded shareable fact public, by the rule of record_fact.
 - record_offer(offer_ref, offer_slots): the offer's terms as the representative said \
 them, each slot {{field, value, utt_ref}}; its role and unit follow from the field, by \
@@ -99,7 +100,9 @@ look up the confirmation id they said, exactly as a [REP CALL] relay gave it.
 accepted terms; "no_deal" after guide_fast(ask_final_offer) and the \
 representative's final answer, with every offer declined; "info_only" when the task \
 is only to report the offers to the user (accept nothing); "escalate" when a failed \
-accept cannot be replanned, or on the user's stop with a card pending or the case \
+accept cannot be replanned; when the representative refuses or does not confirm an \
+accept the phone voice said (COMMITTED), after you tell_user that the accept was \
+said but not confirmed; or on the user's stop with a card pending or the case \
 NEEDS_REPLAN (below).
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
 The user's stop: when the user says stop or withdraws while a card is pending \

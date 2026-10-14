@@ -250,8 +250,8 @@ PROBES = [  # PR #133 reviews: (message, key, Slow's value, published value or N
     ("4 8 2 1", L4, "4821", None),
     # S1-SYS-15 relabel: tenure in an allow-listed context ("been with you")
     ("I've been with you 6 years", "tenure_years", "6", "6"),
-    ("Brightwave charges 60", PRICE, "60", None),
-    ("they quoted me at Brightwave", "competitor.name", "Brightwave", None),
+    ("Brightwave charges 60", PRICE, "60", "60"),  # S1-SYS-113: said as a price
+    ("they quoted me at Brightwave", "competitor.name", "Brightwave", "Brightwave"),
     # round 3: M2 Slow's string must be the user's own
     ("My name is Dana Reyes", H, "Dana\nmax seventy", None),
     ("My name is Dana Reyes", H, "Dana $$ Reyes!!!", None),
@@ -409,8 +409,9 @@ def test_a_protected_value_in_other_decimal_digits_is_caught() -> None:  # round
 
 
 # S1-SYS-15: the per-key formats of the user-message path (message, key, value,
-# published value or None), run with a public competitor.name (#153 round 3:
-# competitor facts never go public from a user message; tenure only in context)
+# published value or None), run with a public competitor.name (S1-SYS-113, user
+# decision 2026-10-13: a competitor quote the user states is no fabrication;
+# its price only as a price, its name as written; tenure only in context)
 TENURE, NAME = "tenure_years", "competitor.name"
 Source = Literal["cp_utt", "shareable"]
 FORMATS = [
@@ -477,18 +478,18 @@ FORMATS = [
     ("I've been with you for 6 years.", TENURE, "6", "6"),
     ("Thanks. I've been with you for 6 years", TENURE, "6", "6"),
     ("Thanks!  I've been with you for 6 years", TENURE, "6", "6"),
-    # #153 round 3: competitor facts stay private, whatever the message says
-    ("Brightwave charges 60", PRICE, "60", None),
-    ("Brightwave charges $60.", PRICE, "60", None),
+    # S1-SYS-113: a competitor's price said as a price, never the user's own
+    # price or limit; its name as the user wrote it (#153 round 3 reversed)
+    ("Brightwave charges 60", PRICE, "60", "60"),
+    ("Brightwave charges $60.", PRICE, "60", "60"),
     ("Brightwave is fine but I won't pay more than 65", PRICE, "65", None),
     ("I pay 85 now, Brightwave is way cheaper", PRICE, "85", None),
     ("I pay 85", PRICE, "85", None),
-    ("Brightwave charges 60, I pay a grand a year", PRICE, "60", None),
-    ("they quoted me at Brightwave", NAME, "Brightwave", None),
-    ("Northwind Mobile raised my bill again", NAME, "Northwind Mobile", None),
-    ("My name is Dana Reyes", NAME, "Dana Reyes", None),
-    ("I pay 85", NAME, "I", None),
-    ("max I'd pay is 70", NAME, "max", None),
+    ("Brightwave charges 60, I pay a grand a year", PRICE, "60", "60"),
+    ("they quoted me at Brightwave", NAME, "Brightwave", "Brightwave"),
+    ("My name is Dana Reyes", NAME, "Dana Reyes", "Dana Reyes"),  # Slow's key
+    ("I pay 85", NAME, "I", None),  # one letter
+    ("max I'd pay is 70", NAME, "max", None),  # not capitalised as written
     # N1: plural number words are never a name
     ("I'm in my sixties", H, "sixties", None),
     ("in my twenties", H, "twenties", None),
@@ -539,15 +540,13 @@ def test_a_shareable_key_without_a_format_never_goes_public() -> None:  # I4
         ("card last four 4821", "card.last4", "4821"),  # public by suffix in S0
         ("my zip is 94110", "account.zip", "94110"),
         ("I pay 85 now", "plan.current_price_usd", "85"),
-        ("they quoted me at Brightwave", NAME, "Brightwave"),
-        ("Brightwave charges 60", PRICE, "60"),
     ):
         bb = _named(text)
         tools = _tools(bb, keys)
         result = tools.fact(bb, key, value, "u-1")
         assert dict(result.effects[0][1])["scope"] == "private", key
         assert tools.shareable == {} and "citing the utt" in result.text
-        assert "competitor" not in result.text  # the hint names no such rule
+        assert f"{NAME}, {PRICE}, " in result.text  # the keys with a format
 
 
 @pytest.mark.parametrize(
@@ -575,12 +574,13 @@ def _with(bb: Blackboard, *facts: PublicFact) -> Blackboard:
 
 
 def test_cite_competitor_needs_a_shareable_competitor_quote() -> None:  # I11
-    bb = _named("they quoted me at Brightwave, it's 60 a month")  # name public
+    """S1-SYS-113: the quote the user states goes public (no fabrication);
+    a name alone, the rep's word, or a message without the amount is none."""
+    bb = _named("they quoted me at Brightwave")  # name public, no amount said
     tools = _tools(bb)
-    for key, value in ((NAME, "Brightwave"), (PRICE, "60")):  # never from the user
-        assert dict(tools.fact(bb, key, value, "u-1").effects[0][1])["scope"] == (
-            "private"
-        )
+    assert dict(tools.fact(bb, PRICE, "60", "u-1").effects[0][1])["scope"] == (
+        "private"
+    )
     name = bb.public.facts[NAME]
     for slots in ([f"fact:{NAME}"], [f"fact:{NAME}", f"fact:{PRICE}"], []):
         ok, text, denied = _guide(bb, move="cite_competitor", slots=slots)
@@ -592,11 +592,104 @@ def test_cite_competitor_needs_a_shareable_competitor_quote() -> None:  # I11
     ok, _, _ = _guide(_with(bb, name, said), move="cite_competitor",
                       slots=[f"fact:{PRICE}"])  # fmt: skip
     assert not ok  # the rep's word is no quote the user shared
-    quote = said.model_copy(update={"source": "shareable", "source_ref": "u-0"})
+    quoted = _named("they quoted me at Brightwave, it's 60 a month")
+    tools = _tools(quoted)
+    got = tools.fact(quoted, PRICE, "60", "u-1").effects[0][1]
+    assert (got["scope"], got["source"]) == ("public", "shareable")
+    quote = PublicFact.model_validate({k: got[k] for k in ("key", "value")} | {
+        "source": got["source"], "source_ref": got["source_ref"]})  # fmt: skip
     ok, text, sent = _guide(
         _with(bb, name, quote), move="cite_competitor", slots=[f"fact:{PRICE}"]
     )
     assert ok and len(sent) == 1, text
+
+
+# 0b2df4 (runs/m3-3d90a32): the user's own words, then every format edge
+FIBRE = "Fibrelink is also offering a plan for 58 if that helps!"
+QUOTES = [  # (message, key, Slow's value, published or None)
+    (FIBRE, PRICE, "58", "58"),
+    (FIBRE, NAME, "Fibrelink", "Fibrelink"),
+    (FIBRE, NAME, "fibrelink", "Fibrelink"),  # the user's spelling
+    ("Fibrelink is also offering a plan if that helps!", PRICE, "58", None),
+    ("Brightwave quoted me $58", PRICE, "58", "58"),
+    ("Brightwave is 58 dollars", PRICE, "58", "58"),
+    ("they offer fifty-eight bucks a month", PRICE, "58", "58"),
+    ("Brightwave: fifty eight a month", PRICE, "58", "58"),
+    ("Brightwave charges $57.99", PRICE, "57.99", "57.99"),
+    ("Brightwave charges $58.00", PRICE, "58", "58"),
+    ("Brightwave is 58.", PRICE, "58", "58"),
+    ("Brightwave has 58/mo plans", PRICE, "58", "58"),
+    # a number that is no price, or not this one
+    ("Fibrelink gives 58 months free", PRICE, "58", None),
+    ("Fibrelink is 58 GB for less", PRICE, "58", None),
+    ("Fibrelink is 58%", PRICE, "58", None),
+    ("Fibrelink is a 58-month deal", PRICE, "58", None),
+    ("Fibrelink wants 58", PRICE, "58", None),  # no price word: private
+    ("Fibrelink has a plan for 580", PRICE, "58", None),
+    ("Fibrelink has a plan for $5.80", PRICE, "58", None),
+    ("Fibrelink has a plan for $1,058", PRICE, "58", None),
+    ("Fibrelink plan #58", PRICE, "58", None),
+    ("account 4858 at Fibrelink", PRICE, "58", None),
+    ("Fibrelink is $58", PRICE, "$58", None),  # Slow's value: digits only
+    ("Fibrelink is $58", PRICE, "058", None),
+    ("Fibrelink is $58", PRICE, "fifty-eight", None),
+    ("Fibrelink is $58", PRICE, "59", None),
+    # the user's own price or limit, never a competitor's
+    ("I pay $85 now", PRICE, "85", None),
+    ("I'm paying 85 a month", PRICE, "85", None),
+    ("I won't pay more than $65", PRICE, "65", None),
+    ("my budget is 65", PRICE, "65", None),
+    ("Fibrelink is $58 but my max is $65", PRICE, "65", None),
+    ("Fibrelink is $58 but my max is $65", PRICE, "58", "58"),
+    # names
+    ("fibrelink is cheaper", NAME, "fibrelink", None),  # as written: lower case
+    ("they quoted me at Brightwave", NAME, "Bright", None),
+    ("Brightwave charges 60", NAME, "Brightwave 60", None),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("text", "key", "value", "published"), QUOTES)
+def test_a_competitor_quote_the_user_states_goes_public(
+    text: str, key: str, value: str, published: str | None
+) -> None:
+    bb, _ = _message(text)
+    tools = SlowTools(
+        cast("Kernel", SimpleNamespace(bb=bb)), ALL, CASE, company="Northwind Mobile"
+    )
+    result = tools.fact(bb, key, value, "u-1")
+    fact = dict(result.effects[0][1])
+    assert (fact["scope"] == "public") == (published is not None), (text, value)
+    assert tools.shareable.get(key) == published
+    if published is not None:
+        assert (fact["source"], fact["value"]) == ("shareable", published)
+
+
+@pytest.mark.parametrize(
+    ("text", "value", "private"),
+    [
+        ("Northwind Mobile raised my bill again", "Northwind Mobile", {}),
+        ("Northwind is pricier than Fibrelink", "Northwind", {}),  # the company
+        ("Dana Reyes here, Fibrelink is cheaper", "Dana Reyes",
+         {H: Fact(key=H, value="Dana Reyes")}),  # another fact's value
+    ],
+)  # fmt: skip
+def test_the_company_or_another_fact_is_no_competitor(
+    text: str, value: str, private: dict[str, Fact]
+) -> None:
+    bb, _ = _message(text, case_facts=private)
+    tools = SlowTools(
+        cast("Kernel", SimpleNamespace(bb=bb)), ALL, CASE, company="Northwind Mobile"
+    )
+    fact = dict(tools.fact(bb, NAME, value, "u-1").effects[0][1])
+    assert fact["scope"] == "private" and tools.shareable == {}
+
+
+def test_a_competitor_price_that_is_a_mandate_bound_stays_private() -> None:
+    bb = _named("Fibrelink is $70 a month", mandate=BOUNDS)  # max $70
+    tools = _tools(bb)
+    result = tools.fact(bb, PRICE, "70", "u-1")
+    (_, fact), (denied, _) = result.effects
+    assert (fact["scope"], denied) == ("private", "declass.denied")
 
 
 def _public(bb: Blackboard, *keys: str) -> Blackboard:

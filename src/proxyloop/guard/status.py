@@ -2,7 +2,9 @@
 for a legal transition. Only verifier outcomes (``completion_ok``,
 ``no_deal_verified``) reach a ``VERIFIED_*`` status. A pending card that an
 epoch bump stales (``approval_stale``) or that expires (``approval_expired``)
-replans the case (S1-SYS-38): restrict-only, it never moves toward a commit."""
+replans the case (S1-SYS-38): restrict-only, it never moves toward a commit.
+A COMMITTED case with no evidence may escalate (S1-SYS-113, ADR-0033: the rep
+refused the voiced accept): it hands the case to the user and grants nothing."""
 
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ COMMIT_AUTHORIZED  accept_heard        COMMITTED
 COMMIT_AUTHORIZED  accept_revoked      NEEDS_REPLAN
 COMMIT_AUTHORIZED  accept_truncated    NEEDS_REPLAN
 COMMITTED          evidence_recorded   EVIDENCE_PENDING
+COMMITTED          escalate            ESCALATED
 EVIDENCE_PENDING   completion_ok       VERIFIED_COMPLETE
 EVIDENCE_PENDING   completion_fail     NEEDS_REPLAN
 NEEDS_REPLAN       replan              IN_CALL

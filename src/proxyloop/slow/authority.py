@@ -35,6 +35,12 @@ TENURE_NEEDS = (  # S1-SYS-94 (reverses n6): FastC never states a tenure it lack
     "needs fact:tenure_years public: ask_user (keys [tenure_years]) for how "
     "long the user has been a customer, then record_fact it citing the user's reply"
 )
+UNCONFIRMED_ACCEPT = (  # S1-SYS-113 (ADR-0033): COMMITTED's exit, restrict-only
+    "the accept line was said (COMMITTED): when the rep confirms it, "
+    "check_account the confirmation id they said; if the rep refuses it or does "
+    "not confirm it, tell_user that the accept was said but not confirmed, then "
+    "finish(escalate, summary)"
+)
 TENURE_PRIVATE = (  # D2: the user's words did not publish it; asking again loops
     "tenure_years is recorded private and cannot go public: the lever is "
     "unavailable; do not ask again"

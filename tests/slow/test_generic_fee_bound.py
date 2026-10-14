@@ -139,7 +139,7 @@ def test_a_recorded_slot_omitted_twice_is_still_not_stated(tmp_path: Path) -> No
         _rep(h, "Yes, it is $55 a month.")  # the term omitted, fees unrecorded
         fw.ask_readback("promo-1")(h)
     entry = _promo(h)
-    unrec = "applied_change:*|changes_none, expires, fee:*|fees_none"
+    unrec = "applied_change:*|changes_none, fee:*|fees_none"  # no expires: S1-SYS-113
     both = (
         f"omitted from 2 read-backs: {unrec}, term_months → term_months not "
         f"stated as recorded, {unrec} not recorded: if a reply states them, "

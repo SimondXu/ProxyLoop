@@ -99,7 +99,8 @@ def _v2_fields(terms: Terms) -> dict[str, object]:
 
 def offer_terms(offer: OfferPublic) -> Terms | None:
     """``pl.terms/3`` of an offer's read-back slots (USD), or ``None`` while
-    the price, the term or the expiry is missing or malformed, a field repeats,
+    the price or the term is missing or malformed, the expiry is malformed
+    (none recorded is ``NO_EXPIRY``, S1-SYS-113), a field repeats,
     or fee or change completeness is unstated or contradictory (§9.2: at least
     one ``fee:*`` or ``fees_none``, at least one applied ``applied_change:*``
     or ``changes_none``; a ``*_none`` slot is ``true`` iff its list is empty),
@@ -117,7 +118,8 @@ def offer_terms(offer: OfferPublic) -> Terms | None:
     try:
         fees = tuple(Fee(code, int(v)) for kind, code, v in coded if kind == "fee")
         credits = tuple(Fee(c, int(v)) for kind, c, v in coded if kind == "credit")
-        monthly, expires = int(by["monthly_price"]), by["expires"]
+        # no expires slot: open for the call, as "no expiry" (ADR-0031, 0033)
+        monthly, expires = int(by["monthly_price"]), by.get("expires", "none")
         changes = tuple(c for k, c, v in coded if k == "applied_change" and v == "true")
         if not (
             _stated(by.get("fees_none"), fees)

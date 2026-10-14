@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,13 @@ from proxyloop.contract.state import (
     Evidence,
     Line,
 )
-from proxyloop.guard.verify import verify_completion, verify_no_deal
+from proxyloop.guard.readback import has_cue
+from proxyloop.guard.verify import (
+    closing_at,
+    reopens,
+    verify_completion,
+    verify_no_deal,
+)
 
 O1 = confirm(offer())
 TH = str(O1.terms_hash)
@@ -182,6 +189,105 @@ def test_a_rep_silent_since_the_last_ask_has_not_closed() -> None:
     assert _no_deal(CLOSE, agent("c3", "Final offer?"), ask=2) == _fail(
         "no_closing_reply"
     )
+
+
+# S1-SYS-113 (ADR-0033): a closing line stands until a later rep line reopens
+# it; filler does not (runs/v2-2862d54 247b62: finish refused at 472 s and
+# 483 s). The fillers are verbatim from 247b62.
+FILLER = (
+    "No problem at all! How can I help with the account today?",  # cp-35
+    "Sorry about that! How can I help with the account today?",  # cp-39
+    "No worries at all! What can I help you with on the account today?",  # cp-59
+    "I completely understand.",  # cp-41
+    "Understood, that makes total sense!",  # cp-57
+    "I'm sorry, but that offer is no longer available.",  # cp-36: a withdrawal
+    "You're looking at $68.00 a month.",  # an amount a recorded offer carries
+    "There is a $0 charge to switch back.",  # $0 is no offer
+)
+MONEY = (  # no reopen cue: only the unrecorded amount reopens them
+    "That comes to $55 then.",
+    "It would be 55 a month.",
+    "There is a $10 credit on the account.",
+)
+CUE = (  # no amount: only the cue reopens them
+    "I can waive the activation fee.",  # a concession
+    "There is a loyalty promotion I could apply.",  # names an offer
+    "We could offer you a free month.",  # makes one
+    "What about a longer term?",
+    "Actually, hold on.",  # a retraction
+    "Let me check with my supervisor.",
+)
+REOPEN = (
+    "Actually I can do $70",  # the brief's cases
+    "How about 70 a month?",
+    *MONEY,
+    *CUE,
+)
+
+
+@pytest.mark.parametrize("filler", FILLER)
+def test_filler_after_the_closing_line_keeps_it(filler: str) -> None:
+    assert not reopens(filler, {Decimal(68)})
+    assert _no_deal(CLOSE, rep("c3", filler)) == OK
+    assert _no_deal(CLOSE, rep("c3", filler), rep("c4", filler)) == OK
+    assert _no_deal(rep("c2", filler)) == _fail("no_closing_reply")  # filler only
+    assert closing_at(_board(CLOSE, rep("c3", filler)), 1) == 1
+
+
+@pytest.mark.parametrize("later", REOPEN)
+def test_a_later_line_that_reopens_drops_the_close(later: str) -> None:
+    assert _no_deal(CLOSE, rep("c3", later)) == _fail("no_closing_reply")
+    assert closing_at(_board(CLOSE, rep("c3", later)), 1) is None
+    filler = rep("c4", FILLER[0])  # filler after a reopening line closes nothing
+    assert _no_deal(CLOSE, rep("c3", later), filler) == _fail("no_closing_reply")
+    again = rep("c5", "I'm afraid that is our best offer.")  # a new close stands
+    assert _no_deal(CLOSE, rep("c3", later), filler, again) == OK
+    assert closing_at(_board(CLOSE, rep("c3", later), filler, again), 1) == 4
+
+
+@pytest.mark.parametrize("later", MONEY)
+def test_an_unrecorded_amount_alone_reopens(later: str) -> None:
+    assert not has_cue(later, "reopen")
+    assert reopens(later, {Decimal(68)})
+    assert not reopens(later, {Decimal(68), Decimal(55), Decimal(10)})  # carried
+
+
+@pytest.mark.parametrize("later", CUE)
+def test_a_reopen_cue_alone_reopens(later: str) -> None:
+    assert has_cue(later, "reopen") and reopens(later, set())
+
+
+def test_an_amount_a_recorded_offer_carries_does_not_reopen() -> None:
+    assert not reopens("That comes to $55 then.", {Decimal(55)})
+    assert reopens("That comes to $55 then.", {Decimal(68)})
+    assert not reopens("There is a $0 charge.", set())
+    seventy = confirm(offer("o2", monthly="7000")).model_copy(
+        update={"status": "declined"}
+    )
+    said = (*SAID, CLOSE, rep("c3", "That comes to $70 then."))
+    bb = board(O1.model_copy(update={"status": "declined"}), seventy, cp=said)
+    assert verify_no_deal(bb, 1) == OK  # $70 is a recorded offer's (declined)
+
+
+def test_the_filler_case_of_247b62_verifies() -> None:
+    """247b62 cp-58..cp-61: the close, then filler, a line no cue matches and
+    filler; finish(no_deal) was refused at 472 s and 483 s."""
+    lines = (
+        rep("c1", "I can offer $68 a month."),
+        rep("c2", "That monthly price is my absolute best offer, so I really "
+                  "can't do any better!"),
+        rep("c3", "No worries at all! What can I help you with on the account "
+                  "today?"),
+        rep("c4", "That is indeed my absolute best offer for Priya's account!"),
+        rep("c5", "Sorry about that! How can I help with the account today?"),
+    )  # fmt: skip
+    declined = O1.model_copy(update={"status": "declined"})
+    assert verify_no_deal(board(declined, cp=lines), 1) == OK
+
+
+def _board(*after: Line) -> Blackboard:
+    declined = O1.model_copy(update={"status": "declined"})
+    return board(declined, cp=(*SAID, *after))
 
 
 def _lint_imports(tree: Path, verify_source: str) -> subprocess.CompletedProcess[str]:
