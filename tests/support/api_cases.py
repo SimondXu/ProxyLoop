@@ -236,7 +236,11 @@ class FakeStarter:
         )
 
     async def start_case(
-        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+        self,
+        task_ref: str,
+        models: Mapping[LaneKey, str],
+        rep: str = "sim",
+        user: str = "human",
     ) -> ApiCase:
         self.calls.append((task_ref, dict(models), rep))
         self.inside += 1

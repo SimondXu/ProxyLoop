@@ -4,7 +4,10 @@
 A case is one run. Its case_id is its run_id: an S1 convention of this module
 and the docs, never a stored key. The browser user is the user lane's
 ``HumanWebChannel``; the rep is the SimRep or, with ``rep="human"``, the cp
-lane's ``HumanWebChannel`` (the /rep page). The run is written to
+lane's ``HumanWebChannel`` (the /rep page). With ``user="sim"`` (watch mode)
+the user lane is the world's SimUser, as in ``make smoke-live``: the browser
+only watches, and approvals come from the deterministic sim approver. The
+run is written to
 ``<runs>/live/<run_id>/<run_id>``. Only ``real_http`` models are offered or
 started (I8); a dead endpoint ends the session (``LLMUnavailable``), never the
 start. Only the piloted, train-only families are offered or resolved (I9):
@@ -64,6 +67,7 @@ from proxyloop.serve.cases import (
     RoleLimits,
     RoleStop,
     StartRefused,
+    UserSimulated,
 )
 
 REAL = AdapterKind.REAL_HTTP
@@ -131,7 +135,7 @@ class WebCase:
         self,
         k: Kernel,
         run: asyncio.Task[RunResult],
-        user: HumanWebChannel,
+        user: HumanWebChannel | None,
         rep: HumanWebChannel | None,
     ) -> None:
         self.run_id = k.run_id
@@ -141,10 +145,14 @@ class WebCase:
         return self._k.bb
 
     def post_approval(self, post: ApprovalPost) -> None:
+        if self._user is None:  # the sim approver decides, never the watcher
+            raise UserSimulated
         self._live()
         self._k.post_approval(post, "ui")  # enqueued; the kernel decides
 
     def user_message(self, text: str) -> None:
+        if self._user is None:
+            raise UserSimulated
         self._live()
         self._user.say(text)
 
@@ -247,6 +255,7 @@ class Starter:
         task_ref: str,
         models: Mapping[LaneKey, str],
         rep: Literal["sim", "human"] = "sim",
+        user: Literal["human", "sim"] = "human",
     ) -> WebCase:
         if self._run is not None and not self._run.done():
             raise StartRefused("busy")
@@ -254,10 +263,10 @@ class Starter:
         cfg = _config(task.family, chosen["fast_user"], chosen["slow"])
         cp_cfg = _config(task.family, chosen["fast_cp"], chosen["slow"])
         cfg = cfg.model_copy(update={"fast_cp": cp_cfg.fast_cp})
-        _endpoints_set(cfg, rep)
-        user = HumanWebChannel()
+        _endpoints_set(cfg, rep, user)
+        chan = HumanWebChannel() if user == "human" else None
         human = HumanWebChannel() if rep == "human" else None
-        return await self._launch(cfg, task, user, human)
+        return await self._launch(cfg, task, chan, human)
 
     def _task(self, task_ref: str) -> Task:
         try:
@@ -292,7 +301,7 @@ class Starter:
         self,
         cfg: SessionConfig,
         task: Task,
-        user: HumanWebChannel,
+        user: HumanWebChannel | None,
         rep: HumanWebChannel | None,
     ) -> WebCase:
         """Run the session; return once its seq 0 is written. Cancelled before
@@ -307,7 +316,7 @@ class Starter:
 
         run_id = new_run_id()
         vllm = "vllm" in (cfg.fast_user.endpoint, cfg.fast_cp.endpoint)
-        specs: dict[str, ChannelSpec] = {"user": user, "cp": rep or "sim"}
+        specs: dict[str, ChannelSpec] = {"user": user or "sim", "cp": rep or "sim"}
         session = run_session(
             cfg,
             task,
@@ -336,11 +345,12 @@ class Starter:
         return WebCase(opened[0], run, user, rep)
 
 
-def _endpoints_set(cfg: SessionConfig, rep: str) -> None:
+def _endpoints_set(cfg: SessionConfig, rep: str, user: str = "human") -> None:
     """Every endpoint the start uses has its variables, else ``unavailable``
     (only the reason: a variable's value is never shown)."""
     refs = [cfg.fast_user, cfg.fast_cp, cfg.slow]
     refs += [cfg.world.ear, cfg.world.mouth] if rep == "sim" else []
+    refs += [cfg.world.simuser] if user == "sim" else []
     used: set[Endpoint] = {r.endpoint for r in refs if r.endpoint is not None}
     for endpoint in sorted(used):
         try:

@@ -424,7 +424,11 @@ class _Swallows(FakeStarter):
     """A starter that ignores its cancellation and returns a case anyway."""
 
     async def start_case(
-        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+        self,
+        task_ref: str,
+        models: Mapping[LaneKey, str],
+        rep: str = "sim",
+        user: str = "human",
     ) -> ApiCase:
         try:
             await asyncio.Event().wait()
@@ -450,7 +454,11 @@ class _Stubborn(FakeStarter):
     """A first start that swallows its cancellation, then hangs anyway."""
 
     async def start_case(
-        self, task_ref: str, models: Mapping[LaneKey, str], rep: str = "sim"
+        self,
+        task_ref: str,
+        models: Mapping[LaneKey, str],
+        rep: str = "sim",
+        user: str = "human",
     ) -> ApiCase:
         if self.hang:
             self.hang = False
@@ -459,7 +467,7 @@ class _Stubborn(FakeStarter):
             except asyncio.CancelledError:
                 self.cancelled += 1
             await asyncio.Event().wait()  # until the loop shuts down
-        return await super().start_case(task_ref, models, rep)
+        return await super().start_case(task_ref, models, rep, user)
 
 
 def test_a_start_ignoring_its_cancel_still_frees_the_lock(tmp_path: Path) -> None:

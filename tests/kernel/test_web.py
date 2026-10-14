@@ -45,7 +45,7 @@ from proxyloop.llm.factory import make_client
 from proxyloop.llm.http import RecordSink
 from proxyloop.serve.api import create_app
 from proxyloop.serve.bundles import find_run
-from proxyloop.serve.cases import LaneKey, NotOpen, StartRefused
+from proxyloop.serve.cases import LaneKey, NotOpen, StartRefused, UserSimulated
 from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 
 REF = "cp-direct-discount@2"
@@ -409,6 +409,29 @@ def test_a_sim_rep_case_has_no_human_rep_ingress(tmp_path: Path) -> None:
         assert "ear" in kernel(case).clients
         with pytest.raises(RuntimeError, match="simulated"):
             case.rep_utterance("Hi.")
+        await stop(case)
+
+    arun(case())
+
+
+def test_a_simulated_user_case_has_no_human_user_ingress(tmp_path: Path) -> None:
+    async def case() -> None:
+        case = await starter(tmp_path, VirtualTime()).start_case(REF, {}, "sim", "sim")
+        k = kernel(case)
+        assert "simuser" in k.clients  # the world's SimUser plays the user lane
+        (start,) = of(k.bus.events, "session.started")
+        assert "simuser" in cast(Mapping[str, object], start.payload["models"])
+        with pytest.raises(UserSimulated):  # the watcher never speaks for it
+            case.user_message("Hi.")
+        post = ApprovalPost(
+            subject="approval",
+            subject_id="apr-1",
+            decision="granted",
+            subject_hash="0" * 64,
+            authority_epoch=0,
+        )
+        with pytest.raises(UserSimulated):  # nor approves for it
+            case.post_approval(post)
         await stop(case)
 
     arun(case())

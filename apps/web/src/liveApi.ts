@@ -177,7 +177,7 @@ export const getTaskCard = (taskRef: string) => getJson(paths.taskCard(taskRef))
 /** GET /api/cases/{case}/card (this case's user cookies): the role card of the case's own task. Never the rep page's. */
 export const getCaseCard = (caseId: string) => getJson(paths.caseCard(caseId));
 
-export type StartRequest = { task_ref: string; models: Record<string, string>; rep: "sim" | "human" };
+export type StartRequest = { task_ref: string; models: Record<string, string>; rep: "sim" | "human"; user?: "sim" }; // "sim": watch mode; left out, the user is you
 
 /** POST /api/cases with the operator's token: 201 {case_id}, else the refusal as sent. Never retried. */
 export async function startCase(body: StartRequest): Promise<{ ok: true; caseId: string } | Failed> {

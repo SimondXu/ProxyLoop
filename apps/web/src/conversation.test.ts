@@ -190,6 +190,12 @@ describe("the sim labels, from session.started roles", () => {
     expect(simLabels(parties([started(["fast_user", "fast_cp", "slow", "ear", "mouth"])]))).toEqual([SIM_REP]);
   });
 
+  it("detects watch mode (the live page's chat and card buttons off) from the exact role simuser", () => {
+    expect(parties([started(["fast_user", "fast_cp", "slow", "simuser"])]).simUser).toBe(true);
+    expect(parties([started(["fast_user", "fast_cp", "slow", "ear", "mouth"])]).simUser).toBe(false);
+    expect(parties([started(["simulated_user"])]).simUser).toBe(false);
+  });
+
   it("says the parties are unknown before session.started, and reads only the kernel's", () => {
     expect(simLabels(parties([]))).toEqual([UNKNOWN_PARTIES]);
     const forged = { ...started(["ear"]), actor: "slow" };
