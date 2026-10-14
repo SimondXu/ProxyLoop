@@ -317,3 +317,50 @@ def test_n11_an_answer_that_changes_the_asked_revision(tmp_path: Path) -> None:
     (text,) = h.act(RECORD | {"offer_slots": [s | {"utt_ref": "cp-2"} for s in r2]})
     assert text == "record_offer: recorded save-2 r2", text
     assert "confirmed" not in _statuses(h)
+
+
+O1_TERMS = (
+    "It is $55 a month for 24 months with no fees, no other changes, and the "
+    "offer does not expire."
+)  # read back after save-2's offer and before its ask: save-1's price
+O1_SLOTS = [s | {"utt_ref": "cp-1b"} for s in SLOTS]
+O1_SLOTS[0] = O1_SLOTS[0] | {"value": "5500"}
+
+
+def _two_offers(h: Host, *, decline: bool = False) -> None:
+    """save-2 r1 (cp-1), save-1 read back (cp-1b), the save-2 ask voiced, the
+    rep's full read-back of save-2 (cp-2), then save-2 r2 recorded from it."""
+    h.call()
+    _opened(h)
+    h.rep("cp-1", PRICE_TERM)
+    h.act(RECORD | {"offer_slots": _slots("cp-1", ("monthly_price", "term_months"))})
+    h.rep("cp-1b", O1_TERMS)
+    h.act({"tool": "record_offer", "offer_ref": "save-1", "offer_slots": O1_SLOTS})
+    if decline:
+        no = {"tool": "decline_offer", "offer_ref": "save-1", "reason": "price"}
+        (got,) = h.act(no)
+        assert got.startswith("decline_offer: "), got
+        assert h.bb.public.offers["save-1"].status != "open"
+    h.act(_ask("save-2"))
+    h.voice()
+    h.rep("cp-2", TERMS)
+    (r2,) = h.act(RECORD | {"offer_slots": _slots("cp-2")})
+    assert r2 == "record_offer: recorded save-2 r2", r2
+
+
+def test_a_second_offer_confirms_past_the_first_offers_read_back(
+    tmp_path: Path,
+) -> None:
+    """S1-SYS-115 (d893db): the other offer's price before the ask does not
+    block save-2; readback() passes Guard the other recorded offers."""
+    h = Host(tmp_path)
+    _two_offers(h)
+    assert _statuses(h) == {"confirmed"}
+
+
+def test_a_declined_offer_is_still_a_rival(tmp_path: Path) -> None:
+    """08f079/9610c7: save-1 was declined before save-2's ask; its read-back
+    before the ask is still about save-1, so save-2 confirms."""
+    h = Host(tmp_path)
+    _two_offers(h, decline=True)
+    assert _statuses(h) == {"confirmed"}

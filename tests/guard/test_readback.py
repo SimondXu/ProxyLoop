@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from tests.guard.build import READBACK, agent, offer, rep, slot
@@ -272,3 +273,98 @@ def test_negations_and_money_forms() -> None:
     assert said("never a $20 activation fee", "fee:activation") == {"none"}
     assert said("$1,068.50 a month", "monthly_price") == {"106850"}
     assert said("it's 68 dollars and 50 cents a month", "monthly_price") == {"6850"}
+
+
+# S1-SYS-115: a fee's "no" never negates the term; a void expiry abstains.
+
+CP16 = (
+    "You're looking at 62.00 a month on a 12-month term with no fees! "
+    "There are no other changes, and it has no expiry."
+)
+CP18 = (  # 247b62 cp-18
+    "It\u2019s just 62.00 a month with no fees for a 12-month term! There are no "
+    "other changes to the service, and this rate doesn't have an expiry date."
+)
+
+
+def test_a_negation_never_reaches_the_term_across_another_fields_noun() -> None:
+    """247b62 cp-18: "no" governs "fees", not the 12 months after it.
+    Kills: dropping the role-noun stop, or stopping at the term's own words."""
+    assert said(" no fees for a 12-month term", "term_months") == {"12"}
+    assert said(" no other changes for a 12-month term", "term_months") == {"12"}
+    assert said("no expiry date for 12 months", "term_months") == {"12"}
+    assert said("there is no 12-month term", "term_months") == {"none"}
+    assert said("it is not a 12-month term", "term_months") == {"none"}
+    assert said("12 months is not required", "term_months") == {"none"}
+    # a noun before the cue does not stop it: only one between cue and value
+    assert said("the change is not a 12-month term", "term_months") == {"none"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "no fees or 12-month contract",
+        "there's no fee or 12-month contract",
+        "no expiry or 24-month contract",
+        "without fees or a 12 month contract",
+    ],
+)
+def test_a_negated_list_still_reaches_the_term(text: str) -> None:
+    """Tier C round 1: "or"/"nor" after the other field's noun lists the term
+    under the same "no". Kills: stopping at a listed noun."""
+    assert said(text, "term_months") == {"none"}
+    first = CP18.split("!")[0] + "!"
+    assert said(first, "fees_none") <= {"true"}  # true or silent, never false
+    o2 = offer(monthly="6200", term="12", fee=None)
+    assert _confirmed(o2, CP16, CP18)  # before S1-SYS-115: term "none" after
+
+
+def test_money_keeps_its_negation_reach() -> None:
+    """The stop is for months only (no money line in M3/v2 has the shape):
+    "we don't charge $55 a month" still denies the price."""
+    assert said("we don't charge 55.00 a month", "monthly_price") == {"none"}
+    assert said("no activation fee of $20", "fee:activation") == {"none"}
+
+
+D893DB_CP12 = "Those terms have no expiry date at the end of the term."
+
+
+def test_a_void_expiry_denial_abstains() -> None:
+    """d893db cp-12: the denial is void (an untargeted phrase follows), so it
+    says nothing; it neither contradicts nor confirms expires=none. Kills:
+    reading a void hit as an undated expiry (#324)."""
+    assert said(D893DB_CP12, "expires") == set()
+    assert _confirmed(offer(), READBACK, D893DB_CP12)  # stays confirmed (seq 416)
+    assert not _confirmed(offer(), D893DB_CP12)  # and confirms nothing alone
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "The offer has no expiry date, unless you wait past Friday.",
+        "The offer has no expiry date, except Friday.",
+        "The offer has no expiry date, once the promotion closes.",
+        "The offer has no expiry date, if you accept on this call.",
+        "The offer has no expiry date, it runs out at the end of the quarter.",
+        "There's no expiry on the offer once the promotion closes.",  # one clause
+        "Unless you wait past Friday, the offer has no expiry date.",  # before it
+    ],
+)
+def test_a_qualified_expiry_denial_still_contradicts(line: str) -> None:
+    """Tier C round 1: a condition, restriction, time word anywhere in the
+    sentence, or a further clause, makes "no expiry" say the offer can expire
+    ("date?"), so a clean "no expiry" elsewhere does not confirm. Kills:
+    abstaining on it, or reading the qualifier in the denial's clause only."""
+    assert said(line, "expires") == {"date?"}
+    assert not _confirmed(offer(), READBACK, line)
+
+
+def test_an_expiry_with_a_time_or_a_day_still_speaks() -> None:
+    """A void denial bounded by a time or a day says the offer expires; a
+    plain mention with no date is undated. Kills: abstaining on every void."""
+    assert said("It won't expire until May 3.", "expires") == {"05-03"}
+    assert said("The offer expires.", "expires") == {"date?"}
+    assert said("the offer doesn't expire until Friday", "expires") == {"date?"}
+    assert said("That rate won't expire for 12 months.", "expires") == {"date?"}
+    assert said("that rate won't expire after the term ends", "expires") == {"date?"}
+    assert not _confirmed(offer(), READBACK, "It doesn't expire until Friday.")
