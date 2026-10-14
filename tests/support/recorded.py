@@ -177,7 +177,7 @@ def write_fast_bundle(
     bus = Bus(run_dir / EVENTS, RUN_ID, clock)
     started = {
         "cfg_hash": config_hash(cfg),
-        "task_ref": "cp-direct-discount@1",
+        "task_ref": "cp-direct-discount@2",
         "instance_hash": "i1",
         "split": "train",
         "models": {r: m.model_dump(mode="json") for r, m in models.items()},
@@ -199,7 +199,7 @@ def write_fast_bundle(
         contract_version=CONTRACT_VERSION,
         cfg=cfg,
         cfg_hash=config_hash(cfg),
-        task_ref="cp-direct-discount@1",
+        task_ref="cp-direct-discount@2",
         instance_hash="i1",
         split="train",
         fingerprints={"pl_cp_v2": fingerprint("pl_cp_v2")},

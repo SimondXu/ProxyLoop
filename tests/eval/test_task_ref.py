@@ -14,8 +14,8 @@ from proxyloop.eval.benchmark import build, load_spec
 from proxyloop.eval.matrix import Cell, cell_dir
 from proxyloop.eval.metrics import metrics
 
-MODED = ("cp-direct-discount@1:full", "cp-direct-discount@1#3")
-REFS = (*MODED, "cp-direct-discount@1:full#3")
+MODED = ("cp-direct-discount@2:full", "cp-direct-discount@2#3")
+REFS = (*MODED, "cp-direct-discount@2:full#3")
 
 
 def _outcome(task_ref: str, instance: str) -> tuple[str, str | None]:
@@ -32,22 +32,22 @@ def test_a_moded_or_seeded_ref_resolves_to_its_own_instance(ref: str) -> None:
 
 @pytest.mark.parametrize("ref", REFS)
 def test_the_plain_family_hash_under_a_moded_ref_is_a_mismatch(ref: str) -> None:
-    result, why = _outcome(ref, INSTANCE)  # the hash of cp-direct-discount@1
+    result, why = _outcome(ref, INSTANCE)  # the hash of cp-direct-discount@2
     assert result == "infra_error" and why is not None and "hash mismatch" in why
 
 
 def test_another_instance_hash_under_the_plain_ref_is_a_mismatch() -> None:
-    result, why = _outcome("cp-direct-discount@1", instance_hash(resolve(MODED[1])))
+    result, why = _outcome("cp-direct-discount@2", instance_hash(resolve(MODED[1])))
     assert result == "infra_error" and why is not None and "hash mismatch" in why
 
 
 @pytest.mark.parametrize(
     ("ref", "reason"),
     [
-        ("cp-direct-discount@1#0", "bad task_ref"),  # #0 is never written
-        ("cp-direct-discount@1:info_only", "not canonical"),  # the default mode
-        ("cp-direct-discount@1:nope", "has no 'nope' mode"),
-        ("cp-direct-discount@2", "is version 1"),
+        ("cp-direct-discount@2#0", "bad task_ref"),  # #0 is never written
+        ("cp-direct-discount@2:info_only", "not canonical"),  # the default mode
+        ("cp-direct-discount@2:nope", "has no 'nope' mode"),
+        ("cp-direct-discount@3", "is version 2"),
         ("cp-direct-discount", "bad task_ref"),
         ("no-such-family@1", "No such file"),
     ],

@@ -4,7 +4,7 @@
 # profile, counterparty and principal are world-side hidden data.
 id: cp-hidden-fee-readback
 family: cp-hidden-fee-readback
-version: 1
+version: 2
 stratum: cp_hazard
 mode: full
 channels: [user, cp]
@@ -58,11 +58,9 @@ counterparty:
     - offer_ref: promo-1
       terms: {monthly_price: "55.00", term_months: "12"}
       hidden: {"fee:installation": "99.00", changes_none: "true", expires: none}
-      ttl_s: 180
     - offer_ref: promo-2
       terms: {monthly_price: "62.00", term_months: "12"}
       hidden: {fees_none: "true", changes_none: "true", expires: none}
-      ttl_s: 180
   patience: {silence_s: 6, hold_s: 30, strikes: 3}
   ledger: honest
 

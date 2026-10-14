@@ -56,10 +56,14 @@ def task_ref_of(
 
 
 def resolve(task_ref: str, root: Path = FAMILIES) -> Task:
-    """The instance ``task_ref`` names; its version must be the file's."""
+    """The instance ``task_ref`` names: the family file of its version, the
+    current one or an archived ``v<n>/`` copy (ADR-0031: a world change is a
+    new version; older bundles still resolve)."""
 
     ref = parse_task_ref(task_ref)
     task = load_task(ref.family, root, ref.mode)
+    if task.version != ref.version and (root / f"v{ref.version}").is_dir():
+        task = load_task(ref.family, root / f"v{ref.version}", ref.mode)
     if task.version != ref.version:
         raise ValueError(f"{task_ref}: {ref.family}.yaml is version {task.version}")
     if (task := instance(task, ref.seed)).ref != task_ref:

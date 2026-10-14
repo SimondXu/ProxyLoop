@@ -71,7 +71,7 @@ async function start(page: Page, rep: "sim" | "human"): Promise<string> {
   for (const title of ["Chat voice (Fast-U)", "Phone voice (Fast-C)", "Planner (Slow)"]) {
     await expect(page.getByRole("combobox", { name: title }).locator("option")).toHaveText([/^stub · test_fake · \S+-fake · /]);
   }
-  await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(["x-out-of-envelope-approval@1"]);
+  await expect(page.getByRole("radiogroup", { name: "Task" }).locator("code")).toHaveText(["x-out-of-envelope-approval@2"]);
   await yourRole(page.getByRole("region", { name: "Your role" }));
   await page.getByRole("radio", { name: rep === "sim" ? "Simulated rep" : "A person" }).check();
   const [res] = await Promise.all([page.waitForResponse(isPost(/^\/api\/cases$/)), page.getByRole("button", { name: "Start" }).click()]);

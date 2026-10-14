@@ -116,7 +116,7 @@ class Decision:
 @dataclass(slots=True)
 class _Offer:
     spec: OfferSpec
-    expires_ms: int
+    expires_ms: int | None  # None: open for the call (ADR-0031)
     status: Literal["open", "expired", "accepted"] = "open"
 
 
@@ -269,7 +269,9 @@ class Policy:
         self._levers.add(lever)
         self.rung += 1
         spec = ladder[self.rung]
-        self.offers[spec.offer_ref] = _Offer(spec, t_ms + int(1000 * spec.ttl_s))
+        ttl = spec.ttl_s
+        until = None if ttl is None else t_ms + int(1000 * ttl)
+        self.offers[spec.offer_ref] = _Offer(spec, until)
         self.state, self._pending = self._offer_state(), None
         kind = "final_offer" if self.state == "FINAL" else "offer"
         return PublicIntent(
@@ -343,7 +345,8 @@ class Policy:
     def _expire(self, t_ms: int) -> list[Decision]:
         out: list[Decision] = []
         for ref, offer in self.offers.items():
-            if offer.status == "open" and t_ms >= offer.expires_ms:
+            until = offer.expires_ms
+            if offer.status == "open" and until is not None and t_ms >= until:
                 offer.status = "expired"
                 intent = PublicIntent(kind="offer_expired", offer_ref=ref)
                 out.append(Decision(self.state, self.state, intent, self._rung()))

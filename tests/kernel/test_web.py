@@ -48,7 +48,7 @@ from proxyloop.serve.bundles import find_run
 from proxyloop.serve.cases import LaneKey, NotOpen, StartRefused
 from proxyloop.serve.start import OPTION_ID, REASONS, TASK_REF, broken
 
-REF = "cp-direct-discount@1"
+REF = "cp-direct-discount@2"
 CALLED_MS = 1000 * calls.INTAKE_S + 5_000  # the intake ran out; the disclosure said
 USER_QWEN = "fast_user:vllm:Qwen3.5-9B"
 SLOW_ID = "slow:anthropic:claude-sonnet-5-5"
@@ -191,7 +191,7 @@ BASELINE = Offer("fast_cp", None, "fsm", "FSM", kind=AdapterKind.BASELINE)
 REFUSALS: dict[str, tuple[str, Mapping[str, str], str]] = {
     "not a task_ref": ("cp-direct-discount", {}, "unknown_task"),
     "another version": ("cp-direct-discount@9", {}, "unknown_task"),
-    "no such mode": ("cp-direct-discount@1:nope", {}, "unknown_task"),
+    "no such mode": ("cp-direct-discount@2:nope", {}, "unknown_task"),
     "not a training family": ("x-held-out-family@1", {}, "unknown_task"),
     "unknown model": (REF, {"fast_user": "fast_user:vllm:gpt-2"}, "unknown_model"),
     "another lane's model": (REF, {"fast_user": SLOW_ID}, "wrong_lane"),
@@ -561,7 +561,7 @@ def test_a_role_card_of_a_held_out_family_is_refused_unopened(
 
 
 @pytest.mark.parametrize(
-    "task_ref", ["cp-direct-discount", "cp-direct-discount@9", "cp-direct-discount@1:x"]
+    "task_ref", ["cp-direct-discount", "cp-direct-discount@9", "cp-direct-discount@2:x"]
 )
 def test_a_role_card_of_a_bad_ref_is_unknown_task(
     tmp_path: Path, task_ref: str

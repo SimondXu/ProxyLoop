@@ -3,7 +3,7 @@
 # profile and counterparty are world-side hidden data; agents see only briefs.
 id: cp-direct-discount-s0
 family: cp-direct-discount
-version: 1
+version: 2
 stratum: cp_success
 mode: info_only
 channels: [user, cp]
@@ -51,11 +51,9 @@ counterparty:
     - offer_ref: loyal-1
       terms: {monthly_price: "75.00", term_months: "12"}
       hidden: {"fee:activation": "20.00"}
-      ttl_s: 180
     - offer_ref: loyal-2
       terms: {monthly_price: "68.00", term_months: "24"}
       hidden: {"fee:activation": "20.00"}
-      ttl_s: 180
   patience: {silence_s: 6, hold_s: 30, strikes: 3}
   ledger: honest
 
@@ -108,11 +106,9 @@ variants:
         - offer_ref: loyal-1
           terms: {monthly_price: "75.00", term_months: "12"}
           hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
-          ttl_s: 180
         - offer_ref: loyal-2
           terms: {monthly_price: "68.00", term_months: "24"}
           hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
-          ttl_s: 180
       patience: {silence_s: 6, hold_s: 30, strikes: 3}
       ledger: honest
     principal:

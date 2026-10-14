@@ -28,7 +28,7 @@ def test_the_row_names_what_ran(tmp_path: Path) -> None:
         "started": "2026-09-27T01:00:00+00:00",
         "git_sha": "g",
         "slow_fp": None,  # before S1-SYS-43
-        "task_ref": "cp-direct-discount@1",
+        "task_ref": "cp-direct-discount@2",
         "split": "train",
         "mode": "live",  # the manifest's cfg.live
         "models": {},  # session.started names none in this fixture

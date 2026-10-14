@@ -42,7 +42,7 @@ def test_the_family_loads_as_information_only() -> None:
 def test_instance_hash_is_stable_and_content_bound() -> None:
     task = load_task(FAMILY)
     assert instance_hash(task) == instance_hash(load_task(FAMILY))
-    other = task.model_copy(update={"version": 2})
+    other = task.model_copy(update={"version": 3})
     assert instance_hash(other) != instance_hash(task)
 
 
@@ -107,8 +107,10 @@ S0_HASH = "6a059e5760a1d2db94c46ccf464336ef2d38013717b6be1bf191e12f6151f2d9"
 
 
 def test_the_s0_instance_keeps_the_hash_of_its_evidence_bundles() -> None:
-    assert instance_hash(load_task(FAMILY)) == S0_HASH  # evidence/s0 manifests
-    assert instance_hash(load_task(FAMILY, mode="info_only")) == S0_HASH
+    v1 = FAMILIES / "v1"  # archived when ADR-0031 made offers open for the call
+    assert instance_hash(load_task(FAMILY, v1)) == S0_HASH  # evidence/s0 manifests
+    assert instance_hash(load_task(FAMILY, v1, mode="info_only")) == S0_HASH
+    assert instance_hash(load_task(FAMILY)) != S0_HASH
 
 
 def test_the_full_variant_and_the_slice_families_load() -> None:
