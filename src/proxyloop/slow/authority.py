@@ -41,10 +41,10 @@ TENURE_NEEDS = (  # S1-SYS-94 (reverses n6): FastC never states a tenure it lack
     "long the user has been a customer, then record_fact it citing the user's reply"
 )
 UNCONFIRMED_ACCEPT = (  # S1-SYS-113 (ADR-0033): COMMITTED's exit, restrict-only
-    "the accept line was said (COMMITTED): when the rep confirms it, "
-    "check_account the confirmation id they said; if the rep refuses it or does "
-    "not confirm it, tell_user that the accept was said but not confirmed, then "
-    "finish(escalate, summary)"
+    "the accept line was said (COMMITTED): wait for the rep's answer; when the "
+    "rep confirms it, check_account the confirmation id they said; if the rep "
+    "answers without confirming it (a refusal), tell_user that the accept was "
+    "said but not confirmed, then finish(escalate, summary)"
 )
 TENURE_PRIVATE = (  # D2: the user's words did not publish it; asking again loops
     "tenure_years is recorded private and cannot go public: the lever is "
@@ -161,27 +161,35 @@ def accept_offer(
     return Result(True, text, effects, causes=(grant,) if grant else ())
 
 
-def confirmed_since_accept(events: Sequence[Event]) -> str | None:
-    """The utt id of the first rep line since the accept was heard (the
-    delivery that moved the case to COMMITTED) that ``says_confirmation``;
-    None if none does."""
+def rep_since_accept(events: Sequence[Event]) -> list[Event]:
+    """The rep's cp lines since the accept was heard (the delivery that moved
+    the case to COMMITTED); [] before COMMITTED or while the rep is silent."""
     moves = [e for e in events if e.type == "status.changed"
              and e.payload.get("status") == CaseStatus.COMMITTED]  # fmt: skip
     if not moves:
-        return None
+        return []
     causes = set(moves[-1].cause_ids)
     heard = [e.seq for e in events if e.event_id in causes] or [moves[-1].seq]
+    return [
+        e
+        for e in events
+        if e.type == "utt.final" and e.seq > min(heard)
+        and e.payload.get("lane") == "cp"
+        and e.payload.get("speaker") == "partner"
+    ]  # fmt: skip
+
+
+def confirmed_since_accept(events: Sequence[Event]) -> str | None:
+    """The utt id of the first rep line since the accept that
+    ``says_confirmation``; None if none does."""
     return next(
         (
             str(e.payload["utt_id"])
-            for e in events
-            if e.type == "utt.final" and e.seq > min(heard)
-            and e.payload.get("lane") == "cp"
-            and e.payload.get("speaker") == "partner"
-            and says_confirmation(str(e.payload.get("text", "")))
+            for e in rep_since_accept(events)
+            if says_confirmation(str(e.payload.get("text", "")))
         ),
         None,
-    )  # fmt: skip
+    )
 
 
 def _grant_event(
@@ -405,10 +413,17 @@ def finish(
 ) -> Result:
     """``completed`` and ``no_deal`` go through the verifiers; only their
     ``completion.decided(ok)`` reaches a VERIFIED status (§9.5). ``escalate``
-    while COMMITTED is refused once a rep line since the accept carries a
-    confirmation id (``events``: the bus; S1-SYS-113): check_account it."""
+    while COMMITTED is refused until the rep has answered the accept, and once
+    a rep line since it carries a confirmation id (``events``: the bus;
+    S1-SYS-113, S1-SYS-116): check_account it."""
     now = bb.public.status
     committed = outcome == "escalate" and now is CaseStatus.COMMITTED
+    if committed and not rep_since_accept(events):  # 4e6338: still composing
+        return no(
+            "finish(escalate) is refused: the rep has not answered the accept "
+            "yet; wait for its reply (a confirmation id: check_account it; a "
+            "refusal: tell_user, then finish(escalate))"
+        )
     if committed and (said := confirmed_since_accept(events)):
         return no(
             f"finish(escalate) is refused: the rep's line {said} since the "
