@@ -20,6 +20,7 @@ from tests.slow.test_close_levers import _declined as declined  # pyright: ignor
 from tests.slow.test_close_levers import _refused as refused  # pyright: ignore
 
 from proxyloop.contract.config import SlowViewMode
+from proxyloop.contract.events import Event
 from proxyloop.contract.state import CaseStatus
 from proxyloop.contract.views import view_slow
 from proxyloop.guard.readback import readback_status
@@ -98,6 +99,15 @@ REFUSED = "I'm sorry, but that offer is no longer available."  # 0a6cf0
 def _refused_accept(tmp_path: Path) -> Host:
     """The accept released and heard (COMMITTED); the rep refuses it, and
     no ledger entry or confirmation follows."""
+    h = _accept_heard(tmp_path)
+    h.rep("cp-3", REFUSED)
+    assert h.bb.public.status is CaseStatus.COMMITTED
+    return h
+
+
+def _accept_heard(tmp_path: Path) -> Host:
+    """The accept released and heard (COMMITTED); the rep has said nothing
+    since."""
     h = accepted(tmp_path)
     (line,) = [e for e in h.of("speak.verbatim") if e.payload["kind"] == "accept"]
     released = h.emit(
@@ -108,8 +118,6 @@ def _refused_accept(tmp_path: Path) -> Host:
     said |= {"text_heard": line.payload["text"], "interrupted": False}
     h.delivered = h.emit("utt.delivered", "kernel", said, [released.event_id])
     committed(h)
-    h.rep("cp-3", REFUSED)
-    assert h.bb.public.status is CaseStatus.COMMITTED
     return h
 
 
@@ -155,6 +163,50 @@ def test_a_confirmed_accept_cannot_escalate(tmp_path: Path) -> None:
     account, done = h.act(check, DONE)
     assert "binds the accepted terms" in account
     assert done == "finish: verified complete"
+
+
+def test_committed_waits_for_the_reps_answer(tmp_path: Path) -> None:
+    """4e6338: the rep confirmed (ledger 339848) but its Mouth was still
+    composing the line 35 s later; Slow escalated and told the user "not
+    confirmed". Until the rep has answered the accept, escalate is refused."""
+    h = _accept_heard(tmp_path)
+    (wait,) = h.act(ESCALATE)
+    assert wait.startswith("finish: ") and "has not answered" in wait, wait
+    assert not h.ended and h.bb.public.status is CaseStatus.COMMITTED
+    h.rep("cp-3", REFUSED)
+    (done,) = h.act(ESCALATE)
+    assert done == "finish: case closed" and h.ended == ["escalate"]
+
+
+def _move(h: Host, a: str, b: str, cause: str) -> Event:
+    return h.emit("status.changed", "guard", {"previous": a, "status": b}, [cause])
+
+
+def test_a_second_commit_waits_for_its_own_answer(tmp_path: Path) -> None:
+    """Review rev-337: the anchor is the latest COMMITTED. The rep answered
+    the first accept; after a replan the second accept is said and the rep
+    is still composing: escalate is refused again (``moves[-1]``)."""
+    h = _accept_heard(tmp_path)
+    r = h.rep("cp-3", REFUSED)
+    e = _move(h, "COMMITTED", "EVIDENCE_PENDING", r.event_id)
+    e = _move(h, "EVIDENCE_PENDING", "NEEDS_REPLAN", e.event_id)
+    e = _move(h, "NEEDS_REPLAN", "IN_CALL", e.event_id)
+    e = _move(h, "IN_CALL", "COMMIT_AUTHORIZED", e.event_id)
+    said = {"lane": "cp", "utt_id": "a-2", "text_generated": "x", "text_heard": "x"}
+    d = h.emit("utt.delivered", "kernel", said | {"interrupted": False}, [e.event_id])
+    _move(h, "COMMIT_AUTHORIZED", "COMMITTED", d.event_id)
+    assert h.bb.public.status is CaseStatus.COMMITTED
+    (wait,) = h.act(ESCALATE)
+    assert "has not answered" in wait and not h.ended, wait
+
+
+def test_only_a_rep_line_answers_the_accept(tmp_path: Path) -> None:
+    h = _accept_heard(tmp_path)
+    agent = {"speaker": "agent", "utt_id": "cp_agent-9", "lane": "cp", "text": "hi"}
+    assert h.delivered is not None
+    h.emit("utt.final", "kernel", agent, [h.delivered.event_id])
+    (wait,) = h.act(ESCALATE)
+    assert "has not answered" in wait and not h.ended, wait
 
 
 def test_a_number_before_the_accept_does_not_block_escalation(
