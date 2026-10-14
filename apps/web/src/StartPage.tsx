@@ -28,10 +28,16 @@ const REP_MODES = [
   { mode: "human", title: "A person", hint: "(opens a rep page)" },
 ] as const;
 
+const USER_MODES = [
+  { mode: "human", title: "You", hint: "(chat in the browser)" },
+  { mode: "sim", title: "Simulated customer", hint: "(watch)" },
+] as const;
+
 export function StartPage() {
   const [offer, setOffer] = useState<Offer | string | null>(null);
   const [task, setTask] = useState("");
   const [rep, setRep] = useState<"sim" | "human">("sim");
+  const [user, setUser] = useState<"human" | "sim">("human");
   const [models, setModels] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,7 +63,7 @@ export function StartPage() {
     claimed.current = true;
     setBusy(true);
     setError("");
-    void startCase({ task_ref: task, models, rep }).then((r) => {
+    void startCase({ task_ref: task, models, rep, ...(user === "sim" && { user }) }).then((r) => {
       if (!r.ok && maybeStarted(r)) {
         // Start stays disabled: a second click could start a second paid session.
         setError(`${startError(r)}. The session may have started: open the live page or reload`);
@@ -144,6 +150,17 @@ export function StartPage() {
               </div>
             )}
             <div className="pl-start-setup">
+              <div className="pl-card">
+                <h2 id="pl-user-title">Who plays the customer?</h2>
+                <div className="pl-seg" role="radiogroup" aria-labelledby="pl-user-title">
+                  {USER_MODES.map(({ mode, title, hint }) => (
+                    <label key={mode}>
+                      <input type="radio" name="user" value={mode} checked={user === mode} onChange={() => setUser(mode)} />
+                      {title} {hint && <small>{hint}</small>}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div className="pl-card">
                 <h2 id="pl-rep-title">Who plays the company's rep?</h2>
                 <div className="pl-seg" role="radiogroup" aria-labelledby="pl-rep-title">

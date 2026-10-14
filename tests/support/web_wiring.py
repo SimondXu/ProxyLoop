@@ -223,6 +223,7 @@ class WiringStarter:
         task_ref: str,
         models: Mapping[LaneKey, str],
         rep: Literal["sim", "human"] = "sim",
+        user: Literal["human", "sim"] = "human",
     ) -> Case:
         self.calls.append((task_ref, dict(models), rep))
         if task_ref == DEAD:
