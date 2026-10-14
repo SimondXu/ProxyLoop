@@ -187,8 +187,9 @@ def test_a_second_hold_then_a_revoke_leaves_fastc_free_to_speak(
 ) -> None:
     """Review of #308: the rep speaks again while the accept holds FastC off the
     floor, so the line takes the floor and holds a second time; a revoke then
-    ends it. Every hold is given back: FastC's held turn is said, and nothing
-    stays queued (a leaked count would silence FastC for the rest of the call)."""
+    ends it. Every hold is given back: FastC speaks again (its held turn,
+    older than the rep's line, is re-run on the new basis: S1-SYS-123), and
+    nothing stays queued (a leaked count would silence FastC for the call)."""
 
     async def case() -> None:
         rep = HearingRep()
@@ -207,7 +208,9 @@ def test_a_second_hold_then_a_revoke_leaves_fastc_free_to_speak(
         speaker = sim.k.speakers["cp"]
         assert speaker._queued == 0  # pyright: ignore[reportPrivateUsage]
         await sim.vt.run_for(FAST_MS + 15_000)
-        said = sim.of("utt.delivered", utt_id=held.payload["utt_id"])
+        (cancel,) = sim.of("fast.cancelled", gen_id=held.payload["gen_id"])
+        assert cancel.payload["reason"] == "partner"
+        said = [e for e in sim.of("utt.delivered", lane="cp") if e.seq > end.seq]
         assert said, "FastC never spoke again"
         await sim.stop()
 
@@ -221,7 +224,9 @@ def test_relay_only_an_unbound_fence_lets_fastc_s_held_turn_speak(
     request saw the rep's line. FastC's turn requested before the reply is
     held behind the accept: were FastC kept off the floor, no later turn could
     bind the fence (the lane is sequential) and the accept would expire. It
-    is said, FastC's answer binds the fence, and the accept is released."""
+    is not said (older than the rep's reply, S1-SYS-123): its re-run, which saw
+    the reply, voices the guide again, binds the fence, and the accept is
+    released."""
 
     async def case() -> None:
         rep, fast_cp = HearingRep(), Valve()
@@ -244,8 +249,11 @@ def test_relay_only_an_unbound_fence_lets_fastc_s_held_turn_speak(
         assert line_ends(sim) == []
         fast_cp.open.set()
         await sim.vt.run_for(40_000)
-        guide = sim.of("fast.sentence", gen_id=early.payload["gen_id"])
-        assert guide and all(delivery(sim, e).seq > said.seq for e in guide)
+        (cancel,) = sim.of("fast.cancelled", gen_id=early.payload["gen_id"])
+        assert cancel.payload["reason"] == "partner"
+        rerun = [e for e in sim.of("fast.request", lane="cp") if e.seq > cancel.seq]
+        assert rerun and int(str(rerun[0].payload["basis_seq"])) >= said.seq
+        assert [e for e in sim.of("utt.delivered", lane="cp") if e.seq > said.seq]
         (end,) = line_ends(sim)
         assert end.type == "speak.released", end.payload
         bound = [t for t in sim.of("fast.turn", lane="cp") if t.seq > said.seq]
