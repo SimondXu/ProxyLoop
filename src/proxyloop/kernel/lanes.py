@@ -4,12 +4,16 @@ only from the contract renderer; relays are ``f2s.msg`` with ``msg_id == event_i
 Generations (§9.4): one whose authority epoch moved while it streamed is stale:
 ``fast.cancelled`` before its first sentence (no turn, relay or speech), and its
 trigger runs again on the new basis (an unacknowledged APPROVAL_NOTICE once).
-The stream is not aborted. On the cp lane a turn whose request predates the
-rep's newest line is stale on the floor (S1-SYS-123, as TalkAct answers the
-caller's last turn): it keeps its turn and relays (#144 credits them to its own
-view) but is not said (``fast.cancelled{partner}``), and its trigger runs again
-on the new basis, which answers that line; a re-run is never dropped this way,
-so a rep who keeps talking cannot starve FastC.
+The stream is not aborted. On the cp lane a reply to the rep (a ``rep_spoke``
+turn) whose request predates the rep's newest line is stale on the floor
+(S1-SYS-123, as TalkAct answers the caller's last turn): it keeps its turn and
+relays (#144 credits them to its own view) but is not said
+(``fast.cancelled{partner}``), and its trigger runs again on the new basis,
+which answers that line; a re-run is never dropped this way, so a rep who keeps
+talking cannot starve FastC. A turn for Slow's guidance, a Slow message or a
+card is said whatever the rep said since (S1-SYS-124: the rep's filler lines
+dropped every read-back ask in demo run 7ef929), as TalkAct voices the slow
+agent's messages before the caller's next turn.
 A turn whose request predates this lane's last verbatim line heard (the
 ``utt.delivered`` of a ``speak.released``: the line enters the transcript there,
 not at its release; S1-SYS-56 held the turn for the floor) is stale too
@@ -252,7 +256,8 @@ class FastLane:
         if not lines:
             self._hold(held, turn)
             return
-        fresh = self._fresh(int(str(asked["basis_seq"])), held, turn, ask.again)
+        reply = ask.trigger.kind == "rep_spoke" and not ask.again
+        fresh = self._fresh(int(str(asked["basis_seq"])), held, turn, reply)
         if not await k.speakers[lane].speak(lines, fresh=fresh):
             said = self._stale  # what the floor found heard since the request
             assert said is not None
@@ -263,10 +268,10 @@ class FastLane:
             self._again(ask)
 
     def _fresh(
-        self, basis: int, held: str | None, turn: str, again: bool
+        self, basis: int, held: str | None, turn: str, reply: bool
     ) -> Callable[[], bool]:
-        def fresh() -> bool:  # no verbatim or (first try) rep line since the board
-            newer = [self._heard] + ([] if again else [self._partner])
+        def fresh() -> bool:  # no verbatim line (nor, for a reply, rep line) since
+            newer = [self._heard] + ([self._partner] if reply else [])
             self._stale = next((e for e in newer if e and e.seq > basis), None)
             if self._stale is not None:
                 return False
