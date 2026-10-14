@@ -3,13 +3,14 @@ Slow's GUIDE queues a ``guidance`` trigger; a rep line queues ``rep_spoke``,
 which is served first (URGENT) and voices the GUIDE. The guidance trigger
 must not run afterwards: its view still renders the GUIDE as new guidance, so
 FastC asked again for a read-back after COMMITTED (fc41ec 252.7 s, aebf80
-234.7 s; 27 of 256 guidance requests in runs/b3-41313c3)."""
+234.7 s; 23 of 256 guidance requests in runs/b3-41313c3)."""
 
 from __future__ import annotations
 
 import asyncio
 from pathlib import Path
 
+import pytest
 from tests.concurrency.harness import LONG, Sim
 from tests.concurrency.test_cases import Valve, arun
 
@@ -94,15 +95,17 @@ def test_a_guide_voiced_by_a_reply_never_said_keeps_its_trigger(
     arun(case())
 
 
+@pytest.mark.parametrize("reply", [LONG, "Sure. " + LONG, LONG + ". Okay."])
 def test_a_guide_voiced_by_a_reply_cut_by_a_barge_in_keeps_its_trigger(
-    tmp_path: Path,
+    tmp_path: Path, reply: str
 ) -> None:
-    """The reply that voiced the GUIDE is said but cut by a barge-in: the rep
-    did not hear it whole (``slow/heard.py``: dead), so the trigger runs."""
+    """The reply that voiced the GUIDE is said but cut by a barge-in (on its
+    only, second or first line): the rep did not hear it whole
+    (``slow/heard.py``: dead), so the trigger runs."""
 
     async def case() -> None:
         fast_cp = Valve()
-        sim = Sim(tmp_path, {"fast_cp": [LONG]}, gates={"fast_cp": fast_cp})
+        sim = Sim(tmp_path, {"fast_cp": [reply]}, gates={"fast_cp": fast_cp})
         await sim.start()
         await sim.vt.run_for(15_000)  # the opening line finishes
         fast_cp.open.clear()
