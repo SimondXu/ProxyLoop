@@ -269,13 +269,33 @@ def test_d893db_the_first_offers_price_before_the_ask_is_its_own() -> None:
 
 
 def test_247b62_the_first_offers_fee_before_the_ask_is_its_own() -> None:
-    """247b62 seq 496: cp-11 read o1 back with its $99 fee (o1's implied
-    fees_none is false) before the o2 ask. The same price isolates the flag.
-    Kills: dropping the implied flags from the rival's values."""
-    o1 = offer("o1", monthly="6200", term="12", fee="9900")
-    lines = [rep("c1", O1_READBACK.replace("$55", "$62")), ASK, rep("c2", O2_READBACK)]
+    """247b62 seq 496: cp-11 read o1 back ($55, its $99 fee: o1's implied
+    fees_none is false) before the o2 ask. Kills: dropping the implied flags
+    from the rival's values."""
+    o1 = offer("o1", monthly="5500", term="12", fee="9900")
+    lines = [rep("c1", O1_READBACK), ASK, rep("c2", O2_READBACK)]
     assert not _confirmed(_o2(), lines, (Ask(2, O2_R1),))
     assert _confirmed(_o2(), lines, (Ask(2, O2_R1),), rivals=(o1,))
+
+
+@pytest.mark.parametrize(
+    "before",
+    [
+        "The $62 a month plan for 12 months comes with a $99 activation fee.",
+        "I can also do $62 a month for 12 months. "
+        "That one also has the $99 activation fee.",
+    ],
+)
+def test_the_other_offers_fee_said_of_this_offer_blocks(before: str) -> None:
+    """Tier C round 1: a fee equal to o1's, said of o2 before the ask, is o2's
+    hidden fee. The implied flag is o1's only if its sentence also states o1's
+    price or term that o2 does not hold. Kills: crediting it on the fee alone."""
+    o1 = offer("o1", monthly="5500", term="12", fee="9900")
+    after = (
+        "Sure: $62 a month for 12 months, no other fees, no other changes, no expiry."
+    )
+    lines = [rep("c1", O1_READBACK), rep("c2", before), ASK, rep("c3", after)]
+    assert not _confirmed(_o2(), lines, (Ask(3, O2_R1),), rivals=(o1,))
 
 
 def test_a_fee_the_other_offer_does_not_hold_still_blocks() -> None:

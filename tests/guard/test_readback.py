@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from tests.guard.build import READBACK, agent, offer, rep, slot
@@ -297,6 +298,21 @@ def test_a_negation_never_reaches_the_term_across_another_fields_noun() -> None:
     assert said("12 months is not required", "term_months") == {"none"}
     # a noun before the cue does not stop it: only one between cue and value
     assert said("the change is not a 12-month term", "term_months") == {"none"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "no fees or 12-month contract",
+        "there's no fee or 12-month contract",
+        "no expiry or 24-month contract",
+        "without fees or a 12 month contract",
+    ],
+)
+def test_a_negated_list_still_reaches_the_term(text: str) -> None:
+    """Tier C round 1: "or"/"nor" after the other field's noun lists the term
+    under the same "no". Kills: stopping at a listed noun."""
+    assert said(text, "term_months") == {"none"}
     first = CP18.split("!")[0] + "!"
     assert said(first, "fees_none") <= {"true"}  # true or silent, never false
     o2 = offer(monthly="6200", term="12", fee=None)
@@ -320,6 +336,27 @@ def test_a_void_expiry_denial_abstains() -> None:
     assert said(D893DB_CP12, "expires") == set()
     assert _confirmed(offer(), READBACK, D893DB_CP12)  # stays confirmed (seq 416)
     assert not _confirmed(offer(), D893DB_CP12)  # and confirms nothing alone
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "The offer has no expiry date, unless you wait past Friday.",
+        "The offer has no expiry date, except Friday.",
+        "The offer has no expiry date, once the promotion closes.",
+        "The offer has no expiry date, if you accept on this call.",
+        "The offer has no expiry date, it runs out at the end of the quarter.",
+        "There's no expiry on the offer once the promotion closes.",  # one clause
+        "Unless you wait past Friday, the offer has no expiry date.",  # before it
+    ],
+)
+def test_a_qualified_expiry_denial_still_contradicts(line: str) -> None:
+    """Tier C round 1: a condition, restriction, time word anywhere in the
+    sentence, or a further clause, makes "no expiry" say the offer can expire
+    ("date?"), so a clean "no expiry" elsewhere does not confirm. Kills:
+    abstaining on it, or reading the qualifier in the denial's clause only."""
+    assert said(line, "expires") == {"date?"}
+    assert not _confirmed(offer(), READBACK, line)
 
 
 def test_an_expiry_with_a_time_or_a_day_still_speaks() -> None:

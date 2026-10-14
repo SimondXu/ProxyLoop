@@ -21,14 +21,8 @@ from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from proxyloop.contract.state import Line, OfferPublic, ReadbackSlot
-from proxyloop.guard.negation import (
-    BOUNDS,
-    ROLE_WORDS,
-    TIMES,
-    continues,
-    denied,
-    scan,
-)
+from proxyloop.guard import negation as neg
+from proxyloop.guard.negation import continues, denied, scan
 from proxyloop.guard.terms import offer_terms_hash
 
 Status = Literal["unknown", "heard", "confirmed"]
@@ -180,17 +174,30 @@ def _clauses(text: str) -> list[tuple[int, int, str]]:
     return [*out, (start, len(text), text[start:])]
 
 
-_NOUNS = frozenset[str]().union(*ROLE_WORDS.values())  # the "none" fields' role nouns
+_NOUNS = frozenset[str]().union(
+    *neg.ROLE_WORDS.values()
+)  # the "none" fields' role nouns
+_LISTS = frozenset({"or", "nor"})  # a noun before them heads a list item, not a stop
+
+
+def _stops(words: Sequence[str]) -> bool:
+    """Another field's role noun with no "or"/"nor" after it in ``words``."""
+    return any(
+        w in _NOUNS and not _LISTS & {*words[j + 1 :]} for j, w in enumerate(words)
+    )
 
 
 def _negated(clause: str, start: int, end: int, months: bool = False) -> bool:
     """A negation cue within 4 tokens of the value. A months value is out of
     the reach of a cue before it when another field's role noun stands
-    between them ("no fees for a 12-month term", S1-SYS-115)."""
+    between them ("no fees for a 12-month term", S1-SYS-115), unless a list
+    goes on to it ("no fees or 12-month contract")."""
     before, after = _WORD.findall(clause[:start])[-4:], _WORD.findall(clause[end:])[:4]
     no = set(LEXICON["negation"])
-    stop = _NOUNS if months else frozenset[str]()
-    reach = (w in no and not stop & {*before[k + 1 :]} for k, w in enumerate(before))
+    reach = (
+        w in no and not (months and _stops(before[k + 1 :]))
+        for k, w in enumerate(before)
+    )
     return any(reach) or bool(set(after) & no)
 
 
@@ -249,16 +256,23 @@ def _flags(none_said: bool, contradicted: bool) -> set[str]:
     return {v for v, on in (("true", none_said), ("false", contradicted)) if on}
 
 
+_QUALIFIED_BY = neg.TIMES | neg.BOUNDS | neg.CONDITIONS | neg.RESTRICTIONS
+
+
 def _expires(sentence: str) -> set[str]:
     """A sentence's expiry: "none" if it denies one; the day of each clause
     that speaks of one (an expiry cue, a role word it states plainly, or a
-    void denial bounded by a time: "won't expire until Friday"). Any other
-    void denial says nothing (S1-SYS-115), as void fees and changes do."""
+    void denial that may still end: "won't expire until Friday"). A void
+    denial says nothing (S1-SYS-115), as void fees and changes do, only when
+    the sentence has no time, bound, condition or restriction word and no
+    clause after the denial's ("no expiry date at the end of the term")."""
     hits = scan(sentence, "expires")
     out = {"none"} if denied(sentence, "expires") else set[str]()
+    qualified = bool({*_WORD.findall(sentence.lower())} & _QUALIFIED_BY)
     for start, end, clause in _clauses(sentence):
         mine = {h.state for h in hits if start <= h.start < end}
-        timed = "void" in mine and bool({*_WORD.findall(clause)} & (TIMES | BOUNDS))
+        rest = _WORD.findall(sentence[end:])  # the clauses after this one
+        timed = "void" in mine and (qualified or bool(rest))
         if _DATE.search(clause) and (mine or has_cue(clause, "expiry")):
             out.add(_date(clause))
         elif "plain" in mine or timed or (has_cue(clause, "expiry") and not mine):
@@ -392,24 +406,45 @@ def _kin(offer: OfferPublic, slot: ReadbackSlot) -> dict[str, str]:
     return {s.field: s.value for s in same if s.field != slot.field}
 
 
+_BASICS = ("monthly_price", "term_months")  # what tells two offers apart
+
+
+def _states(unit: str, o: OfferPublic, slots: Sequence[ReadbackSlot]) -> bool:
+    """A clause of ``unit`` states one of ``slots`` (of ``o``) with its value."""
+    return any(
+        said(c, s.field, _kin(o, s)) == {_key(s)}
+        for s in slots
+        for *_, c in _clauses(unit)
+    )
+
+
 def _theirs(
-    field: str, values: set[str], unit: str, rivals: Sequence[OfferPublic]
+    field: str,
+    values: set[str],
+    unit: str,
+    offer: OfferPublic,
+    rivals: Sequence[OfferPublic],
 ) -> bool:
-    """A statement about another offer (S1-SYS-115): its one value is a
-    rival's for ``field``, as a slot, or as an implied flag when ``unit`` also
-    states that rival's fee or applied change (its own, not a hidden one)."""
+    """A statement about another offer than ``offer`` (S1-SYS-115): its one
+    value is a rival's for ``field``, as a slot, or as an implied flag when
+    ``unit`` also states that rival's fee or applied change and its price or
+    term that ``offer`` does not hold (else the fee may be ``offer``'s)."""
     if len(values) != 1:
         return False
     (value,) = values
+    held = {(s.field, s.value) for s in offer.slots}
     for o in rivals:
         if any(s.field == field and _key(s) == value for s in o.slots):
             return True
         kind = _FLAGS.get(field)
         own = [s for s in o.slots if s.field.partition(":")[0] == kind]
-        if _implied(o).get(field) == value and any(
-            said(c, s.field, _kin(o, s)) == {_key(s)}
-            for s in own
-            for *_, c in _clauses(unit)
+        apart = [
+            s for s in o.slots if s.field in _BASICS and (s.field, s.value) not in held
+        ]
+        if (
+            _implied(o).get(field) == value
+            and _states(unit, o, own)
+            and _states(unit, o, apart)
         ):
             return True
     return False
@@ -433,13 +468,14 @@ def _mine(
     stated: Stated,
     lines: Sequence[Line],
     field: str,
+    offer: OfferPublic,
     rivals: Sequence[OfferPublic],
 ) -> Stated:
     """``stated`` without the statements about another offer (W2 only)."""
     out = list[tuple[int, str, int, int, set[str]]]()
     for i, utt, start, end, values in stated:
         unit = lines[i].text[start:end]
-        if values == {want} or not _theirs(field, values, unit, rivals):
+        if values == {want} or not _theirs(field, values, unit, offer, rivals):
             out.append((i, utt, start, end, values))
     return out
 
@@ -491,7 +527,7 @@ def slot_statuses(
     stated = [_stated(s.field, lines, _kin(offer, s)) for s in offer.slots]
     roles = all(ROLE_OF.get(s.field.partition(":")[0]) == s.role for s in offer.slots)
     slots = [
-        (_key(s), x, _mine(_key(s), x, lines, s.field, rivals))
+        (_key(s), x, _mine(_key(s), x, lines, s.field, offer, rivals))
         for s, x in zip(offer.slots, stated, strict=True)
     ]
     implied = [(v, _stated(f, lines)) for f, v in _implied(offer).items()]
