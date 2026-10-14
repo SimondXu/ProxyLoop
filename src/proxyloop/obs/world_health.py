@@ -76,7 +76,7 @@ from proxyloop.obs.detectors import DETECTORS, Inputs, as_dict
 from proxyloop.obs.progress import LABEL, family
 
 ROLES = ("ear", "mouth", "simuser")
-FLAGGED = frozenset({"F", "F-infra", "E", "X"})
+FLAGGED = frozenset({"F", "F-infra", "E", "W", "X"})
 AGENT = frozenset({"slow", "fast.user", "fast.cp"})
 TURNS = ("fast.request", "slow.step.started")
 _RESULTS = {"rep.ear": "ear", "rep.mouth": "mouth", "user.sim": "simuser"}
