@@ -112,6 +112,39 @@ def _repeats(x: Inputs) -> Value:
     return {"count": len(d.repeats), "seqs": list(d.repeats)}
 
 
+MOVE_OF = {"ask_discount": "ask_discount", "tenure": "mention_tenure"}  # its GUIDE
+
+
+@detector("lever_voiced_not_heard")
+def _misheard(x: Inputs) -> Value:
+    """The reachable levers never pulled whose cp GUIDE (``MOVE_OF``) FastC
+    voiced with at least one sentence delivered: the agent said it and the
+    world's Ear never heard it as that lever (W, ADR-0023 addendum, user
+    decision 2026-10-13). ``levers`` sorted; None: no rep.policy or no
+    session.ended yet."""
+    if (d := _read(x)) is None or not x.of("session.ended"):
+        return None
+    moves = {
+        str(e.payload["msg_id"]): as_dict(e.payload.get("guide")).get("move")
+        for e in x.of("s2f.msg")
+        if e.payload.get("lane") == "cp"
+    }
+    delivered = {str(e.payload.get("utt_id")) for e in x.of("utt.delivered")}
+    spoken = {
+        str(e.payload.get("gen_id"))
+        for e in x.of("fast.sentence")
+        if str(e.payload.get("utt_id")) in delivered
+    }
+    voiced = {
+        moves.get(str(e.payload.get("msg_id")))
+        for e in x.of("s2f.voiced")
+        if str(e.payload.get("gen_id")) in spoken
+    }
+    unused = REACHABLE - d.pulled if d.identified else frozenset[str]()
+    levers = sorted(lever for lever in unused if MOVE_OF.get(lever) in voiced)
+    return {"count": len(levers), "levers": levers}
+
+
 @detector("no_deal_ladder_unfinished")
 def _unfinished(x: Inputs) -> Value:
     """1 when the session ended (any reason) past identity with no
