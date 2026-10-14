@@ -88,12 +88,55 @@ def test_required_fields() -> None:
     )
     assert missing_required(no_fee) == ("fee:*|fees_none",)
     assert readback_status(no_fee.model_copy(update={"slots": ()})) == "unconfirmed"
+    assert missing_required(no_fee.model_copy(update={"slots": ()})) == (
+        "monthly_price",
+        "term_months",
+        "fee:*|fees_none",
+        "applied_change:*|changes_none",
+    )  # S1-SYS-113: no expires (ADR-0031, ADR-0033)
+
+
+def _undated(o: OfferPublic) -> OfferPublic:
+    return o.model_copy(
+        update={"slots": tuple(s for s in o.slots if s.field != "expires")}
+    )
+
+
+def test_a_revision_without_an_expiry_is_complete() -> None:
+    """S1-SYS-113 (ADR-0033): an offer stays open for the call, so ``expires``
+    is not required: price, term, fees and changes confirmed is confirmed, and
+    its terms hash as "no expiry" (the ledger binds ``expires: none``)."""
+    o = _undated(offer())
+    assert missing_required(o) == ()
+    done = _fold(o, [ASK, rep("c2", READBACK)], asked_at=1)
+    assert {s.status for s in done.slots} == {"confirmed"}
+    assert readback_status(done) == "confirmed"
+    terms = offer_terms(o)
+    assert terms is not None and terms.expires_at == NO_EXPIRY
+    assert offer_terms_hash(o) == offer_terms_hash(offer()) is not None
+    plain = "It is $68 a month on a 24-month term, with a $20 activation fee."
+    assert readback_status(_fold(o, [ASK, rep("c2", plain + " No other changes.")],
+                                 asked_at=1)) == "confirmed"  # fmt: skip
+    half = _fold(o, [ASK, rep("c2", plain)], asked_at=1)  # changes not stated
+    assert readback_status(half) == "unconfirmed"
+
+
+def test_a_recorded_expiry_still_needs_its_confirmation() -> None:
+    plain = "It is $68 a month on a 24-month term, with a $20 activation fee."
+    said = rep("c2", plain + " No other changes.")
+    got = _fold(offer(), [ASK, said], asked_at=1)
+    assert {s.field for s in got.slots if s.status != "confirmed"} == {"expires"}
+    assert readback_status(got) == "unconfirmed"
+    dated = offer(expires="2026-10-01T00:00:00Z")
+    on_day = READBACK.replace("the offer does not expire", "it expires on October 1")
+    assert readback_status(_fold(dated, [ASK, rep("c2", on_day)], 1)) == "confirmed"
+    assert readback_status(_fold(dated, [ASK, said], 1)) == "unconfirmed"
 
 
 def test_lexicons_are_one_data_table() -> None:
     kinds = {"recurring", "one_time", "fee", "credit", "negation"}
     kinds |= {"change", "generic_fee", "expiry"}  # the "none" fields: guard.negation
-    kinds |= {"closing", "unsure", "wh", "unless"}
+    kinds |= {"closing", "unsure", "wh", "unless", "reopen"}
     assert set(LEXICON) == kinds
     assert all(isinstance(cue, str) for cues in LEXICON.values() for cue in cues)
 
@@ -141,14 +184,13 @@ def test_a_negated_fee_never_confirms(m: int, f: int, cue: str) -> None:
     assert not _confirmed(o, line + ", and it does not expire.")
 
 
-@given(_DOLLARS, st.sampled_from(["fee", "changes", "expires", "term"]))
+@given(_DOLLARS, st.sampled_from(["fee", "changes", "term"]))
 def test_an_omitted_required_field_never_confirms(m: int, omit: str) -> None:
-    drop = {
-        "fee": "fee:activation",
-        "changes": "changes_none",
-        "expires": "expires",
-        "term": "term_months",
-    }[omit]
+    """``expires`` is no longer required (S1-SYS-113): see
+    test_a_revision_without_an_expiry_is_complete."""
+    drop = {"fee": "fee:activation", "changes": "changes_none", "term": "term_months"}[
+        omit
+    ]
     o = offer(monthly=f"{m}00")
     o = o.model_copy(update={"slots": tuple(s for s in o.slots if s.field != drop)})
     line = f"It is ${m} a month on a 24-month term, with a $20 activation fee"

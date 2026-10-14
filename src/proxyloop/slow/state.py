@@ -1,7 +1,7 @@
 """The status bar's ``close:``, ``levers:`` and ``identify:`` lines and the
 read-back ask count (ADR-0018 V3-V5, S1-SYS-46, S1-SYS-74). Read-only views of
 the board and of Slow's own asks: each calls Guard's own predicates
-(``verify_no_deal``, ``has_cue``, the status machine) and the lever check
+(``verify_no_deal``, ``closing_at``, the status machine) and the lever check
 ``_guide`` runs, never a partial copy (the #166
 ``approval_hint`` pattern). Rep text reaches the close line only through Guard's
 closing-cue list, and only as an utt id. The levers line's sent levers are
@@ -34,9 +34,10 @@ from proxyloop.contract.state import (
 from proxyloop.contract.views import SlowView
 from proxyloop.guard.capability import released_accept
 from proxyloop.guard.declass import numbers, spoken
-from proxyloop.guard.readback import has_cue, missing_required, slot_statuses
+from proxyloop.guard.readback import missing_required, slot_statuses
 from proxyloop.guard.status import status_change
-from proxyloop.guard.verify import verify_no_deal
+from proxyloop.guard.verify import closing_at, verify_no_deal
+from proxyloop.slow import authority
 from proxyloop.slow.authority import TENURE_NEEDS, TENURE_PRIVATE, lever_denial
 from proxyloop.slow.tools import SlowTools
 
@@ -123,6 +124,8 @@ class Close:
                 f"close: {asked}; the user stopped the case (stop line): "
                 f"finish({self.outcome}) does not apply"
             )
+        if "case_is:COMMITTED" in self.reasons:  # S1-SYS-113: its one exit
+            return f"close: {authority.UNCONFIRMED_ACCEPT}"
         said = f"the rep's closing reply {self.reply}" if self.reply else ""
         if not self.reasons and self.kind == "full" and earlier:  # S1-SYS-94
             said_at = ", ".join(f"{utt}'s {' and '.join(a)}" for utt, a in earlier)
@@ -157,19 +160,17 @@ def close(
     told_at: int | None = None,
     pending: bool = False,
 ) -> Close:
-    """The rep's last line since the last ask_final_offer is a closing reply
-    iff Guard's cue list says so (none before an ask: verify_no_deal's
-    window, M1); the user counts as told once
+    """The rep's closing reply is Guard's ``closing_at``: a closing line since
+    the last ask_final_offer that no later rep line reopens (none before an
+    ask: verify_no_deal's window, M1; S1-SYS-113); the user counts as told once
     a tell_user went out after it (``told_at``: the cp length then). ``full``
     dry-runs ``authority.finish(no_deal)``: its status check, then
     ``verify_no_deal`` with the same ``asked_final``. ``pending``: the newest
     ask_final_offer is sent but not heard yet (``SlowTools.final_pending``)."""
     lines = bb.channels.get("cp", ChannelState()).lines
-    since = () if asked_final is None else range(asked_final, len(lines))
-    rep = [n for n in since if lines[n].speaker == "partner"]
-    last = lines[rep[-1]] if rep else None
-    reply = last.utt_id if last and has_cue(last.text, "closing") else None
-    told = reply is not None and told_at is not None and told_at > rep[-1]
+    at = closing_at(bb, asked_final)
+    reply = None if at is None else lines[at].utt_id
+    told = at is not None and told_at is not None and told_at > at
     trigger = "info_only" if kind == "info_only" else "no_deal_verified"
     if status_change(bb, trigger) is None:
         reasons: tuple[str, ...] = (f"case_is:{bb.public.status.value}",)

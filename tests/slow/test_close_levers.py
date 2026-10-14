@@ -474,11 +474,13 @@ def test_g1_a_heard_ask_and_a_closing_reply_after_it_verify(tmp_path: Path) -> N
     h.act(FINAL)
     h.voice()
     h.rep("cp-10", BEST)
-    h.rep("cp-11", RESTATED)  # 45d7ed: the rep's last line does not close
+    h.rep("cp-11", RESTATED)  # 45d7ed: restates a recorded offer (S1-SYS-113)
+    assert (_close(h).reply, _close(h).reasons) == ("cp-10", ())
+    h.rep("cp-12", "Actually, I could do 75.00 a month.")  # reopens the close
     _refused(h, NO_REPLY)
-    h.rep("cp-12", BEST)
+    h.rep("cp-13", BEST)
     c = _agrees(h)
-    assert (c.reply, c.reasons) == ("cp-12", ()) and h.ended == ["no_deal"]
+    assert (c.reply, c.reasons) == ("cp-13", ()) and h.ended == ["no_deal"]
 
 
 def test_g2_a_later_heard_ask_moves_the_window_forward(tmp_path: Path) -> None:

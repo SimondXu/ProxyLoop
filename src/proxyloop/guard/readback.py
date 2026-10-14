@@ -66,6 +66,19 @@ LEXICON: dict[str, tuple[str, ...]] = {
                "however", "if", "might", "may", "maybe", "check", "though",
                "although", "supervisor", "manager", "escalate", "approval"),
     "wh": ("what", "which"),  # right before a cue: "what's the best offer"
+    "reopen": (  # regex sources, S1-SYS-113: after the closing reply, a rep line
+        # that makes or names an offer ("I can waive", "a loyalty promotion")
+        r"(?:i|we)(?: can| could|'d| would| will|'ll)(?: also| still| actually)?"
+        r" (?:do|offer|give|waive|drop|lower|reduce|apply|add|include|match|try"
+        r"|extend|throw)",
+        r"waiv(?:e|ed|ing)", r"discounts?", r"promo(?:tion)?s?", r"rebates?",
+        r"(?:another|new|better|lower|special|different|loyalty|one more) "
+        r"(?:offer|deal|option|plan|price|rate)",
+        r"how about", r"what about", r"what if", r"instead",
+        # or takes the close back ("actually", "let me check")
+        r"actually", r"let me (?:check|see|look|ask|talk|speak|find)",
+        r"hold on", r"on second thought", r"reconsider",
+    ),
 }  # fmt: skip
 ROLE_OF = {  # the role a slot of each field kind must carry
     "monthly_price": "recurring",
@@ -101,10 +114,11 @@ _MONTHS = re.compile(r"(\d+)\s*-?\s*months?\b", re.I)
 _WORD = re.compile(r"[a-z'-]+")
 
 
+_RAW = ("closing", "reopen")  # their cues are regex sources
 _CUES = {
     kind: re.compile(
         "|".join(
-            rf"(?<![a-z])(?:{c if kind == 'closing' else re.escape(c)})(?![a-z])"
+            rf"(?<![a-z])(?:{c if kind in _RAW else re.escape(c)})(?![a-z])"
             for c in cues
         )
     )
@@ -123,7 +137,7 @@ def _tokens(text: str) -> set[str]:
 def has_cue(text: str, kind: str) -> bool:
     if kind == "closing":
         return _closing(text)
-    return _CUES[kind].search(text.lower()) is not None
+    return _CUES[kind].search(text.lower().replace("\u2019", "'")) is not None
 
 
 def _closing(text: str) -> bool:
@@ -432,9 +446,12 @@ def readback_update(
 
 
 def missing_required(offer: OfferPublic) -> tuple[str, ...]:
+    """The fields a revision must record to be complete. ``expires`` is not
+    one (S1-SYS-113, ADR-0033): an offer stays open for the call (ADR-0031);
+    an ``expires`` slot that is recorded must still be confirmed."""
     fields = {s.field for s in offer.slots}
     kinds = {f.partition(":")[0] for f in fields}
-    out = [f for f in ("monthly_price", "term_months", "expires") if f not in fields]
+    out = [f for f in ("monthly_price", "term_months") if f not in fields]
     if "fee" not in kinds and "fees_none" not in fields:
         out.append("fee:*|fees_none")
     if "applied_change" not in kinds and "changes_none" not in fields:
@@ -444,7 +461,7 @@ def missing_required(offer: OfferPublic) -> tuple[str, ...]:
 
 def readback_status(offer: OfferPublic) -> Literal["confirmed", "unconfirmed"]:
     """Confirmed iff the required fields exist, none repeats, and every slot is
-    confirmed."""
+    confirmed (a recorded ``expires`` too)."""
     done = all(s.status == "confirmed" for s in offer.slots)
     unique = len({s.field for s in offer.slots}) == len(offer.slots)
     ok = done and unique and not missing_required(offer)

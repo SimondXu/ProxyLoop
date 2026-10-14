@@ -99,7 +99,9 @@ look up the confirmation id they said, exactly as a [REP CALL] relay gave it.
 accepted terms; "no_deal" after guide_fast(ask_final_offer) and the \
 representative's final answer, with every offer declined; "info_only" when the task \
 is only to report the offers to the user (accept nothing); "escalate" when a failed \
-accept cannot be replanned, or on the user's stop with a card pending or the case \
+accept cannot be replanned; when the representative refuses or does not confirm an \
+accept the phone voice said (COMMITTED), after you tell_user that the accept was \
+said but not confirmed; or on the user's stop with a card pending or the case \
 NEEDS_REPLAN (below).
 Calls run in order, so a guide_fast may cite a fact recorded earlier in the same act.
 The user's stop: when the user says stop or withdraws while a card is pending \

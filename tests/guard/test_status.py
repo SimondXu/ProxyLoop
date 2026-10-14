@@ -102,6 +102,33 @@ def test_a_pending_card_leaves_only_by_a_decision_staleness_or_a_hang_up() -> No
     }
 
 
+def test_committed_exits_only_to_evidence_or_escalation() -> None:
+    """S1-SYS-113 (ADR-0033): a rep that refuses the voiced accept left the
+    case COMMITTED until the session cap (b48f0f, 0a6cf0, 08f079). Escalation
+    hands the case to the user (restrict-only); nothing moves it back toward a
+    commit, and only evidence leads on to a verified status."""
+    out = {t: to for (was, t), to in TRANSITIONS.items() if was is S.COMMITTED}
+    assert out == {"evidence_recorded": S.EVIDENCE_PENDING, "escalate": S.ESCALATED}
+    path = ["call_opened", "accept_authorized", "accept_heard", "escalate"]
+    status = S.INTAKE
+    for trigger in path:
+        nxt = next_status(status, trigger)
+        assert nxt is not None, (status, trigger)
+        status = nxt
+    assert status is S.ESCALATED
+    for trigger in ("replan", "accept_authorized", "completion_ok", "call_opened"):
+        assert next_status(S.COMMITTED, trigger) is None, trigger
+    toward = {S.COMMIT_AUTHORIZED, S.IN_CALL, S.COMMITTED}
+    assert not {to for (was, _), to in TRANSITIONS.items() if was is S.COMMITTED} & (
+        toward
+    )
+    bb = board(status=S.COMMITTED)
+    assert status_change(bb, "escalate") == {
+        "previous": "COMMITTED",
+        "status": "ESCALATED",
+    }
+
+
 def test_status_change_payload() -> None:
     bb = board(status=CaseStatus.INTAKE)
     assert status_change(bb, "call_opened") == {

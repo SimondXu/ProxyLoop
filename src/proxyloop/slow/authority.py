@@ -17,6 +17,7 @@ from proxyloop.contract.messages import FastToSlow, Guide, GuideMove, SlowToFast
 from proxyloop.contract.state import (
     Blackboard,
     Capability,
+    CaseStatus,
     ChannelState,
     OfferPublic,
     ReadbackSlot,
@@ -28,12 +29,22 @@ from proxyloop.guard.mandate import proposal
 from proxyloop.guard.readback import ROLE_OF
 from proxyloop.guard.status import status_change
 from proxyloop.guard.terms import offer_terms_hash
-from proxyloop.guard.verify import verify_completion, verify_no_deal
+from proxyloop.guard.verify import (
+    says_confirmation,
+    verify_completion,
+    verify_no_deal,
+)
 from proxyloop.slow.result import Effect, Result, no
 
 TENURE_NEEDS = (  # S1-SYS-94 (reverses n6): FastC never states a tenure it lacks
     "needs fact:tenure_years public: ask_user (keys [tenure_years]) for how "
     "long the user has been a customer, then record_fact it citing the user's reply"
+)
+UNCONFIRMED_ACCEPT = (  # S1-SYS-113 (ADR-0033): COMMITTED's exit, restrict-only
+    "the accept line was said (COMMITTED): when the rep confirms it, "
+    "check_account the confirmation id they said; if the rep refuses it or does "
+    "not confirm it, tell_user that the accept was said but not confirmed, then "
+    "finish(escalate, summary)"
 )
 TENURE_PRIVATE = (  # D2: the user's words did not publish it; asking again loops
     "tenure_years is recorded private and cannot go public: the lever is "
@@ -148,6 +159,29 @@ def accept_offer(
     )
     effects = (*got, *moved(bb, "accept_authorized"))
     return Result(True, text, effects, causes=(grant,) if grant else ())
+
+
+def confirmed_since_accept(events: Sequence[Event]) -> str | None:
+    """The utt id of the first rep line since the accept was heard (the
+    delivery that moved the case to COMMITTED) that ``says_confirmation``;
+    None if none does."""
+    moves = [e for e in events if e.type == "status.changed"
+             and e.payload.get("status") == CaseStatus.COMMITTED]  # fmt: skip
+    if not moves:
+        return None
+    causes = set(moves[-1].cause_ids)
+    heard = [e.seq for e in events if e.event_id in causes] or [moves[-1].seq]
+    return next(
+        (
+            str(e.payload["utt_id"])
+            for e in events
+            if e.type == "utt.final" and e.seq > min(heard)
+            and e.payload.get("lane") == "cp"
+            and e.payload.get("speaker") == "partner"
+            and says_confirmation(str(e.payload.get("text", "")))
+        ),
+        None,
+    )  # fmt: skip
 
 
 def _grant_event(
@@ -363,10 +397,24 @@ def _minor(dollars: str) -> str:
     return str(int(cents))
 
 
-def finish(bb: Blackboard, outcome: str, asked_final_at: int | None) -> Result:
+def finish(
+    bb: Blackboard,
+    outcome: str,
+    asked_final_at: int | None,
+    events: Sequence[Event] = (),
+) -> Result:
     """``completed`` and ``no_deal`` go through the verifiers; only their
-    ``completion.decided(ok)`` reaches a VERIFIED status (§9.5)."""
+    ``completion.decided(ok)`` reaches a VERIFIED status (§9.5). ``escalate``
+    while COMMITTED is refused once a rep line since the accept carries a
+    confirmation id (``events``: the bus; S1-SYS-113): check_account it."""
     now = bb.public.status
+    committed = outcome == "escalate" and now is CaseStatus.COMMITTED
+    if committed and (said := confirmed_since_accept(events)):
+        return no(
+            f"finish(escalate) is refused: the rep's line {said} since the "
+            "accept carries a confirmation id; check_account it (citing that "
+            "line), then finish(completed) once it binds the accepted terms"
+        )
     if outcome == "completed":
         if (fail := status_change(bb, "completion_fail")) is None:
             return no(f"finish(completed) needs EVIDENCE_PENDING; the case is {now}")

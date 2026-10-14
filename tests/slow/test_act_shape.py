@@ -195,8 +195,9 @@ def test_e6ada1_the_bar_names_required_slots_not_recorded(tmp_path: Path) -> Non
     h.tools.readback()
     bar = _bar(h)
     assert NOT_RECORDED in bar, bar
-    for field in ("expires", "fees_none", "changes_none"):
+    for field in ("fees_none", "changes_none"):
         assert field in bar.split(NOT_RECORDED)[1], bar
+    assert "expires" not in bar.split(NOT_RECORDED)[1]  # S1-SYS-113: optional
     assert h.bb.public.offers["offer-1"].terms_hash is None
     rest = [
         {"field": "fees_none", "value": "true", "utt_ref": "cp-13"},
