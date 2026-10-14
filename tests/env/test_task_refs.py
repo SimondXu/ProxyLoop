@@ -21,12 +21,12 @@ S0 = sorted(Path(__file__).resolve().parents[2].glob("evidence/s0/*/manifest.jso
 @pytest.mark.parametrize(
     ("args", "ref"),
     [
-        (("cp-direct-discount", 1, None, 0), "cp-direct-discount@1"),
-        (("cp-direct-discount", 1, "info_only", 0), "cp-direct-discount@1"),
-        (("cp-direct-discount", 1, "full", 7), "cp-direct-discount@1:full#7"),
-        (("cp-direct-discount", 1, "full", 0), "cp-direct-discount@1:full"),
-        (("cp-hidden-fee-readback", 1, None, 12), "cp-hidden-fee-readback@1#12"),
-        (("cp-hidden-fee-readback", 1, "full", 12), "cp-hidden-fee-readback@1#12"),
+        (("cp-direct-discount", 2, None, 0), "cp-direct-discount@2"),
+        (("cp-direct-discount", 2, "info_only", 0), "cp-direct-discount@2"),
+        (("cp-direct-discount", 2, "full", 7), "cp-direct-discount@2:full#7"),
+        (("cp-direct-discount", 2, "full", 0), "cp-direct-discount@2:full"),
+        (("cp-hidden-fee-readback", 2, None, 12), "cp-hidden-fee-readback@2#12"),
+        (("cp-hidden-fee-readback", 2, "full", 12), "cp-hidden-fee-readback@2#12"),
     ],
 )
 def test_the_canonical_ref_leaves_out_the_default_mode_and_seed_0(
@@ -58,23 +58,23 @@ def test_each_s0_bundle_resolves_to_its_instance(path: Path) -> None:
 
 def test_the_ref_is_not_part_of_the_instance_hash() -> None:
     task = load_task("cp-direct-discount", mode="full")
-    other = task.model_copy(update={"ref": "cp-direct-discount@1:full#3"})
+    other = task.model_copy(update={"ref": "cp-direct-discount@2:full#3"})
     assert instance_hash(other) == instance_hash(task)
-    assert instance_hash(resolve("cp-direct-discount@1:full#3")) != instance_hash(task)
+    assert instance_hash(resolve("cp-direct-discount@2:full#3")) != instance_hash(task)
 
 
 @pytest.mark.parametrize(
     ("ref", "why"),
     [
-        ("cp-direct-discount@1:portal", "no 'portal' mode"),
-        ("cp-direct-discount@2", "is version 1"),
-        ("cp-direct-discount@1#-1", "bad task_ref"),
-        ("cp-direct-discount@1#0", "bad task_ref"),
+        ("cp-direct-discount@2:portal", "no 'portal' mode"),
+        ("cp-direct-discount@3", "is version 2"),
+        ("cp-direct-discount@2#-1", "bad task_ref"),
+        ("cp-direct-discount@2#0", "bad task_ref"),
         ("cp-direct-discount@0", "bad task_ref"),
         ("cp-direct-discount", "bad task_ref"),
-        ("../secrets@1", "bad task_ref"),
-        ("cp-direct-discount@1:info_only", "not canonical: write cp-direct-discount@1"),
-        ("cp-hidden-fee-readback@1:full#2", "not canonical"),
+        ("../secrets@2", "bad task_ref"),
+        ("cp-direct-discount@2:info_only", "not canonical: write cp-direct-discount@2"),
+        ("cp-hidden-fee-readback@2:full#2", "not canonical"),
     ],
 )
 def test_a_bad_ref_raises(ref: str, why: str) -> None:
@@ -84,7 +84,7 @@ def test_a_bad_ref_raises(ref: str, why: str) -> None:
 
 def test_a_negative_seed_or_an_instance_of_an_instance_raises() -> None:
     with pytest.raises(ValueError, match="< 0"):
-        task_ref_of("cp-direct-discount", 1, None, -1)
+        task_ref_of("cp-direct-discount", 2, None, -1)
     task = load_task("cp-hidden-fee-readback")
     with pytest.raises(ValueError, match="< 0"):
         instance(task, -1)
@@ -95,11 +95,11 @@ def test_a_negative_seed_or_an_instance_of_an_instance_raises() -> None:
 def test_a_task_without_a_ref_is_its_file_and_a_wrong_ref_is_rejected() -> None:
     data = load_task("cp-direct-discount").model_dump(mode="json")
     data.pop("ref")
-    assert Task.model_validate(data).ref == "cp-direct-discount@1"
+    assert Task.model_validate(data).ref == "cp-direct-discount@2"
     for wrong in (
-        "cp-hidden-fee-readback@1",
-        "cp-direct-discount@2",
-        "cp-direct-discount@1:full",
+        "cp-hidden-fee-readback@2",
+        "cp-direct-discount@3",
+        "cp-direct-discount@2:full",
     ):
         with pytest.raises(ValidationError):
             Task.model_validate(data | {"ref": wrong})
@@ -110,8 +110,8 @@ def test_the_cli_picks_the_mode_and_the_instance() -> None:
         args = cli.build_parser().parse_args(["session", *argv])
         return cli.task_of(args)
 
-    assert task("--family", "cp-direct-discount").ref == "cp-direct-discount@1"
+    assert task("--family", "cp-direct-discount").ref == "cp-direct-discount@2"
     seeded = task("--family", "cp-direct-discount", "--mode", "full", "--instance", "7")
-    assert seeded == resolve("cp-direct-discount@1:full#7")
+    assert seeded == resolve("cp-direct-discount@2:full#7")
     with pytest.raises(SystemExit):
         cli.main(["session", "--family", "cp-direct-discount", "--instance", "-1"])

@@ -48,7 +48,7 @@ from proxyloop.serve.cases import StartRefused
 from proxyloop.serve.start import broken
 
 SPEED = 10.0  # session seconds per real second
-TASK = f"{FAMILY}@1"
+TASK = f"{FAMILY}@2"
 TASK_SAID = "Please lower my Crestline Wireless bill."
 IDENTITY = "My name is Marcus Bell and my account ends in 5190."
 STOP = "actually, stop"
@@ -153,7 +153,7 @@ def test_the_options_are_stub_test_fake_and_serve_takes_them(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     ("task_ref", "models", "reason"),
     [
-        ("cp-direct-discount@1", {}, "unknown_task"),
+        ("cp-direct-discount@2", {}, "unknown_task"),
         (TASK, {"slow": "stub:nope"}, "unknown_model"),
         (TASK, {"slow": "stub:fast_cp"}, "wrong_lane"),
     ],

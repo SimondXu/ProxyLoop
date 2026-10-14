@@ -10,9 +10,11 @@ from typing import Any
 
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Decision, Policy
-from proxyloop.env.tasks.loader import load_task
+from proxyloop.env.tasks.loader import FAMILIES, load_task
 
-TASK = load_task("cp-direct-discount")
+# v1: the timed ladder (ttl 180 s) these offer-lapse tests need; v2 offers stay
+# open for the call (ADR-0031)
+TASK = load_task("cp-direct-discount", FAMILIES / "v1")
 CP = TASK.counterparty
 NAME, LAST4 = "account.holder_name", "account.last4"
 THIRD = CP.ladder[1].model_copy(
@@ -129,7 +131,9 @@ def test_without_a_listing_no_price_names_an_offer() -> None:
 
 
 def test_a_lapsed_offers_price_is_not_a_candidate() -> None:
-    ttl = int(CP.ladder[0].ttl_s * 1000)
+    ttl_s = CP.ladder[0].ttl_s
+    assert ttl_s is not None
+    ttl = int(ttl_s * 1000)
     p = _offers(1)
     later = ttl + 1_000  # loyal-1 lapsed
     _step(p, "cancel_intent", later)  # loyal-2 made after it

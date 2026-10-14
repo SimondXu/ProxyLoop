@@ -19,7 +19,7 @@ from proxyloop.contract.llm import TextRequest, ToolRequest
 from proxyloop.env.counterparty.ear import Lever
 from proxyloop.env.counterparty.policy import State
 from proxyloop.env.counterparty.simrep import SimRep
-from proxyloop.env.tasks.loader import load_task
+from proxyloop.env.tasks.loader import FAMILIES, load_task
 from proxyloop.obs import detectors, ladder
 
 NAMES = (
@@ -317,7 +317,7 @@ def test_the_detectors_read_the_real_simrep(tmp_path: Path) -> None:
     (an uncaused offer_expired first), then a new lever past the last rung.
     Rungs, taken levers, identity and exhaustion read back from its events
     equal the policy's own state."""
-    task = load_task("cp-direct-discount")
+    task = load_task("cp-direct-discount", FAMILIES / "v1")  # timed (ADR-0031)
     identify, discount, cancel, compete = LINES
     sink = BusSink(tmp_path)
     script = [ears(ID), ears(LINES[discount], LINES[discount]),
@@ -325,7 +325,9 @@ def test_the_detectors_read_the_real_simrep(tmp_path: Path) -> None:
     ear = Gated(fake_ref(), script, on_record=sink.world.record)
     rep = SimRep(task, ear, Echo(fake_ref(), [], on_record=sink.world.record),
                  sink.world)  # fmt: skip
-    ttl = int(1000 * task.counterparty.ladder[0].ttl_s)
+    ttl_s = task.counterparty.ladder[0].ttl_s
+    assert ttl_s is not None
+    ttl = int(1000 * ttl_s)
 
     async def play() -> None:
         await _hear(sink, rep, [identify, discount, discount], 0, ear)

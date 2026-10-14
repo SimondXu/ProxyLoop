@@ -27,10 +27,12 @@ from proxyloop.contract.llm import (
 from proxyloop.env.counterparty import ear
 from proxyloop.env.counterparty.ear import Ear, Heard
 from proxyloop.env.counterparty.simrep import RepTurn, SimRep
-from proxyloop.env.tasks.loader import load_task
+from proxyloop.env.tasks.loader import FAMILIES, load_task
 from proxyloop.kernel.channels import Incoming, SimRepChannel
 
-TASK = load_task("cp-direct-discount")
+# v1: the timed ladder (ttl 180 s) these offer-lapse tests need; v2 offers stay
+# open for the call (ADR-0031)
+TASK = load_task("cp-direct-discount", FAMILIES / "v1")
 NAME, LAST4 = "account.holder_name", "account.last4"
 Line = tuple[str, dict[str, Any]]  # what the agent said, and the Ear's act for it
 

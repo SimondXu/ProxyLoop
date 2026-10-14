@@ -9,9 +9,11 @@ import pytest
 from proxyloop.env.counterparty.ear import EarAct
 from proxyloop.env.counterparty.policy import Decision, Policy
 from proxyloop.env.ledger import LedgerMode
-from proxyloop.env.tasks.loader import load_task
+from proxyloop.env.tasks.loader import FAMILIES, load_task
 
-TASK = load_task("cp-direct-discount")
+# v1: the timed ladder (ttl 180 s) these offer-lapse tests need; v2 offers stay
+# open for the call (ADR-0031)
+TASK = load_task("cp-direct-discount", FAMILIES / "v1")
 CP = TASK.counterparty
 NAME, LAST4 = "account.holder_name", "account.last4"
 
@@ -142,7 +144,9 @@ def test_a_hidden_term_is_said_only_on_a_read_back() -> None:
 def test_an_offer_expires_after_its_ttl() -> None:
     p = _verified()
     _say(p, "ask_discount", 1_000)
-    ttl_ms = int(CP.ladder[0].ttl_s * 1000)
+    ttl_s = CP.ladder[0].ttl_s
+    assert ttl_s is not None
+    ttl_ms = int(ttl_s * 1000)
     assert (
         p.step(EarAct(act="smalltalk"), "u8", "", ttl_ms)[-1].intent.kind == "clarify"
     )
@@ -407,3 +411,16 @@ def test_three_silences_hang_up_after_identity_strikes() -> None:
     kinds = [_silence(p, t).intent.kind for t in (100_000, 200_000, 300_000)]
     assert kinds == ["check_in", "check_in", "hang_up"]
     assert (p.state, p.identity_strikes, p.timer_strikes) == ("ENDED", 2, 3)
+
+
+def test_a_v2_offer_stays_open_for_the_call() -> None:
+    """ADR-0031: no hidden clock; an offer dies only with the call or a
+    withdrawal (the read-back's "no expiry" is the truth)."""
+    v2 = load_task("cp-direct-discount")
+    assert all(o.ttl_s is None for o in v2.counterparty.ladder)
+    p = Policy(v2.counterparty, {k: v2.profile.facts[k] for k in CP.identity})
+    _say(p, "provide_fact", 0, facts={NAME: "Dana Reyes", LAST4: "4821"})
+    assert _say(p, "ask_discount", 1_000).intent.kind == "offer"
+    hour = 3_600_000
+    assert _say(p, "smalltalk", hour).intent.kind == "clarify"
+    assert p.offers["loyal-1"].status == "open"

@@ -121,7 +121,7 @@ def test_a_test_split_bundle_is_refused_before_any_task_load(tmp_path: Path) -> 
 def test_the_unseal_opt_in_lets_a_test_bundle_through() -> None:
     calls: list[str] = []
     out = metrics(Stream(split="test").end(), _no_load(calls), allow_test=True)
-    assert calls == ["cp-direct-discount@1"] and out["outcome"] == "infra_error"
+    assert calls == ["cp-direct-discount@2"] and out["outcome"] == "infra_error"
 
 
 def test_an_unreadable_bundle_is_an_infra_error(tmp_path: Path) -> None:

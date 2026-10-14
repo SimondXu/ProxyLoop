@@ -39,7 +39,7 @@ class Log:
             "ops",
             {
                 "cfg_hash": "c",
-                "task_ref": "cp-direct-discount@1",
+                "task_ref": "cp-direct-discount@2",
                 "instance_hash": "i",
                 "split": split,
                 "models": {},
@@ -158,7 +158,7 @@ def manifest(
             "contract_version": CONTRACT_VERSION,
             "cfg": cfg,
             "cfg_hash": config_hash(SessionConfig.model_validate(cfg)),
-            "task_ref": "cp-direct-discount@1",
+            "task_ref": "cp-direct-discount@2",
             "instance_hash": "i",
             "split": split,
             "fingerprints": {},

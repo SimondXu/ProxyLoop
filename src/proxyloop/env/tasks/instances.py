@@ -90,7 +90,9 @@ def _draw(task: Task, seed: int, rng: random.Random) -> Task:
     ladder = tuple(
         o.model_copy(
             update={
-                "ttl_s": float(round(o.ttl_s * rng.uniform(0.75, 1.25))),
+                "ttl_s": None
+                if o.ttl_s is None
+                else float(round(o.ttl_s * rng.uniform(0.75, 1.25))),
                 "terms": terms(o.terms),
                 "hidden": terms(o.hidden),
             }

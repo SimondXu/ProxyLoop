@@ -34,7 +34,7 @@ from proxyloop.contract.views import FastView, Trigger
 from proxyloop.env.tasks.loader import instance_hash, load_task
 
 RUN = "run-s"
-TASK_REF = "cp-direct-discount@1"
+TASK_REF = load_task("cp-direct-discount").ref  # the current version (ADR-0031)
 INSTANCE = instance_hash(load_task("cp-direct-discount"))  # a piloted train family
 WALL = datetime(2026, 9, 26, tzinfo=UTC)
 _WORLD = {

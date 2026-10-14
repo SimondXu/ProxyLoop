@@ -15,7 +15,7 @@
   - authority-bearing lines are released only with an unconsumed capability, after an epoch, fence, TTL and terms revalidation;
   - Fast's own free speech is **measured**, not blocked;
   - models may restrict authority (revoke) but never grant it.
-- **I7 Lanes with the right clocks.** The user lane is async chat, with latency measured and no patience or strikes. The counterparty lane is real time: speech timing, silence strikes, hold limits and offer TTL. The teacher runs on the wall clock, with no dilation.
+- **I7 Lanes with the right clocks.** The user lane is async chat, with latency measured and no patience or strikes. The counterparty lane is real time: speech timing, silence strikes and hold limits; an offer stays open for the call and ends with the call or a withdrawal the rep states (no hidden clock; user decision 2026-10-13, ADR-0031). The teacher runs on the wall clock, with no dilation.
 - **I8 Real by default, with provenance.** Fakes live only under `tests/`, and live mode accepts only `real_http`. Every milestone claim rests on bundles that pass `make evidence-check`, which verifies the chain response → parse → state change → heard. With a model endpoint dead, the session fails loudly, and no fallback exists.
 - **I9 Never train on evaluation.** Piloted families are train-only. Held-out families are drawn by salt from families never piloted, and the test seeds stay sealed until one unseal. TalkAct, PrincipalBench and τ² are never trained on.
 - **I10 Numbers are generated.** README tables and résumé lines render from committed report JSON through `docs/claims.yaml`, and CI fails on drift. Failed attempts stay in every denominator.

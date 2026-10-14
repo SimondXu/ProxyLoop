@@ -23,6 +23,7 @@ from tests.support.sessions import clients, fake, fake_config, patient_task
 from proxyloop.contract.bundle import MANIFEST, Manifest, RoleModel
 from proxyloop.contract.config import SessionConfig
 from proxyloop.contract.llm import AdapterKind, ModelRef
+from proxyloop.env.tasks.loader import FAMILIES, load_task
 from proxyloop.env.tasks.schema import Task
 from proxyloop.eval.benchmark import (
     ADAPTER,
@@ -59,6 +60,10 @@ FAKE_A, FAKE_B = (
 )
 _FAST = ("fast_user", "fast_cp")
 LUNA_RUN = Path(__file__).resolve().parents[2] / "evidence/s0/20260927T011606Z-30d027"
+
+
+def _v1(family: str) -> Task:  # the S0 Luna bundle ran version 1 (ADR-0031)
+    return load_task(family, FAMILIES / "v1")
 
 
 def _spec(tmp_path: Path, split: str = "train", **extra: Any) -> Path:
@@ -352,7 +357,7 @@ def test_c1_with_an_offline_only_label_is_excluded(tmp_path: Path) -> None:
     run_dir = cell_dir(runs, 0, Cell("C1", INSTANCE, 0)) / LUNA_RUN.name
     shutil.copytree(LUNA_RUN, run_dir)
     _attest(run_dir, {"adapters/gpt-6-luna/a.safetensors": "ab"}, LUNA, _FAST)
-    tables = build(load_spec(spec), [runs], git_sha="g", resamples=50)["tables"]
+    tables = build(load_spec(spec, _v1), [runs], git_sha="g", resamples=50)["tables"]
     (row,) = tables["evidence"]["rows"].values()
     assert row["evidence"] == "offline"
     assert row["excluded"] == "evidence-check --claim fails (offline)"
@@ -414,7 +419,7 @@ def test_a_real_luna_bundle_is_kept_as_descriptive(tmp_path: Path) -> None:
     shutil.copytree(
         LUNA_RUN, cell_dir(runs, 0, Cell("C5", INSTANCE, 0)) / LUNA_RUN.name
     )
-    tables = build(load_spec(spec), [runs], git_sha="g", resamples=50)["tables"]
+    tables = build(load_spec(spec, _v1), [runs], git_sha="g", resamples=50)["tables"]
     (row,) = tables["evidence"]["rows"].values()
     assert row["evidence"] == "offline"
     assert any("gpt-6-luna-2026-09-22" in f for f in row["failures"])

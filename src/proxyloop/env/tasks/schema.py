@@ -71,7 +71,9 @@ class OfferSpec(Frozen):
     offer_ref: str = Field(pattern=rf"^{OFFER_REF}$")
     terms: dict[TermField, str] = Field(min_length=1)
     hidden: dict[TermField, str] = Field(default_factory=dict[str, str])
-    ttl_s: float = Field(gt=0)
+    # None: open for the whole call; it ends with the call or a withdrawal
+    # (ADR-0031). A number: a time window the rep states on the read-back.
+    ttl_s: float | None = Field(default=None, gt=0)
 
     @property
     def all_terms(self) -> dict[str, str]:

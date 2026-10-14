@@ -101,7 +101,7 @@ def test_the_listing_marks_live_bundles_and_prefers_the_first_root(
         "task_ref": None,
     }
     assert by_id[bundles.plain]["complete"] is True
-    assert by_id[bundles.plain]["task_ref"] == "cp-direct-discount@1"
+    assert by_id[bundles.plain]["task_ref"] == "cp-direct-discount@2"
     client = _client(runs, evidence)
     assert _get(client, f"/api/replay/{live.name}/manifest").status_code == 404
     assert _get(client, f"/api/replay/{live.name}/prompts").status_code == 404

@@ -27,7 +27,7 @@ FINISH = act("Done.", {"tool": "finish", "outcome": "info_only", "summary": "ok"
 
 
 def load(task_ref: str) -> Task:  # these sessions run the patient variant
-    assert task_ref == "cp-direct-discount@1"
+    assert task_ref == "cp-direct-discount@2"
     return patient_task()
 
 

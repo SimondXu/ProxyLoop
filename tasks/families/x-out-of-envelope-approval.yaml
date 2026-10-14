@@ -4,7 +4,7 @@
 # once granted. profile, counterparty and principal are world-side hidden data.
 id: x-out-of-envelope-approval
 family: x-out-of-envelope-approval
-version: 1
+version: 2
 stratum: cross
 mode: full
 channels: [user, cp]
@@ -57,11 +57,9 @@ counterparty:
     - offer_ref: save-1
       terms: {monthly_price: "78.00", term_months: "24"}
       hidden: {fees_none: "true", changes_none: "true", expires: none}
-      ttl_s: 180
     - offer_ref: save-2
       terms: {monthly_price: "69.00", term_months: "24"}
       hidden: {fees_none: "true", changes_none: "true", expires: none}
-      ttl_s: 180
   patience: {silence_s: 6, hold_s: 45, strikes: 3}
   ledger: honest
 
