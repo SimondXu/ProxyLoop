@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from tests.concurrency.harness import Sim
+from tests.concurrency.harness import LONG, Sim
 from tests.concurrency.test_cases import Valve, arun
 
 DISCOUNT = {"tool": "guide_fast", "move": "ask_discount"}
@@ -87,6 +87,45 @@ def test_a_guide_voiced_by_a_reply_never_said_keeps_its_trigger(
         assert cancel.payload["gen_id"] == voiced.payload["gen_id"]
         assert [
             e for e in sim.of("fast.request", trigger="guidance") if e.seq > cancel.seq
+        ]
+        assert sim.k.counts["guidance_moot"] == 0
+        await sim.stop()
+
+    arun(case())
+
+
+def test_a_guide_voiced_by_a_reply_cut_by_a_barge_in_keeps_its_trigger(
+    tmp_path: Path,
+) -> None:
+    """The reply that voiced the GUIDE is said but cut by a barge-in: the rep
+    did not hear it whole (``slow/heard.py``: dead), so the trigger runs."""
+
+    async def case() -> None:
+        fast_cp = Valve()
+        sim = Sim(tmp_path, {"fast_cp": [LONG]}, gates={"fast_cp": fast_cp})
+        await sim.start()
+        await sim.vt.run_for(15_000)  # the opening line finishes
+        fast_cp.open.clear()
+        sim.rep_says("Let me look at your account.")
+        await sim.vt.run_for(100)
+        assert "guide" in sim.act(DISCOUNT)[-1]
+        sim.rep_says("Is there anything else I can help with?")
+        await sim.vt.run_for(100)
+        fast_cp.open.set()
+        (msg,) = sim.of("s2f.msg", type="GUIDE")
+        for _ in range(300):
+            if sim.of("s2f.voiced", msg_id=msg.payload["msg_id"]):
+                break
+            await sim.vt.run_for(100)
+        (voiced,) = sim.of("s2f.voiced", msg_id=msg.payload["msg_id"])
+        await sim.vt.run_for(1_500)  # into the voicing reply's line
+        sim.rep_says("Sorry, can you hold on?")  # a barge-in
+        await sim.vt.run_for(40_000)
+        (cut,) = sim.of("chan.barge_in", lane="cp")
+        assert str(cut.payload["utt_id"]).startswith(f"{voiced.payload['gen_id']}-")
+        assert not sim.of("fast.cancelled", gen_id=voiced.payload["gen_id"])
+        assert [
+            e for e in sim.of("fast.request", trigger="guidance") if e.seq > cut.seq
         ]
         assert sim.k.counts["guidance_moot"] == 0
         await sim.stop()
