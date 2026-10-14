@@ -24,7 +24,9 @@ cancelled turn leaves no hold the rep never heard. A turn voices only the GUIDE
 its view rendered, the lane's newest (S1-SYS-67): an older pending one is
 superseded, never voiced. The GUIDE it voiced (its ``s2f.voiced`` came before
 its speech) is voiced again by the re-run, if the re-run acts and it is still
-the lane's newest GUIDE: the rep heard it there.
+the lane's newest GUIDE: the rep heard it there. A ``guidance`` trigger whose
+GUIDE a turn the rep heard voiced first (``rep_spoke`` is served before it) is
+moot and does not run (S1-SYS-126: it asked for a read-back again after COMMITTED).
 Condition R (``teacher_repair_*``): a generation at a decision point goes to the
 teacher, as a ``fast_*`` call with the teacher's model (E1), ``resamples`` noted."""
 
@@ -114,6 +116,7 @@ class FastLane:
         self._wake = asyncio.Event()
         self._n = 0
         self._retried: set[str] = set()  # GUIDEs re-triggered after an empty turn
+        self._said: set[str] = set()  # GUIDEs voiced by a turn the rep heard
         self._released: str | None = None  # this lane's last verbatim line released
         self._heard: Event | None = None  # and its delivery: the line in the transcript
         self._guide: str | None = None  # the msg id of this lane's newest GUIDE
@@ -184,12 +187,15 @@ class FastLane:
         if trigger.kind == "approval_card" and k.bb.private.pending_approval is None:
             k.counts["notice_moot"] += 1  # decided before FastU could voice it
             return
-        self._n += 1
-        gen_id = f"{lane}-g{self._n}"
-        gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
         pending = {m.msg_id for m in k.bb.s2f_pending.get(lane, ()) if m.guide}
         g = self._guide  # the only GUIDE the view renders (``guidance_cp``)
         guides = [g] if g is not None and (g in pending or g in ask.guides) else []
+        if trigger.kind == "guidance" and g in self._said and not guides:
+            k.counts["guidance_moot"] += 1  # a reply said it first (S1-SYS-126)
+            return
+        self._n += 1
+        gen_id = f"{lane}-g{self._n}"
+        gen: dict[str, object] = {"lane": lane, "gen_id": gen_id}
         view, epoch = self.view(trigger), k.bb.epoch
         repair = k.teacher is not None and substitutes(view, k.cfg.ablations)
         client: LLMClient = k.teacher if repair and k.teacher else self.client
@@ -266,6 +272,8 @@ class FastLane:
             k.emit("fast.cancelled", self._actor, cancel, [turn, said.event_id])
             ask.guides = tuple(guides)  # voiced, but never heard: voiced again
             self._again(ask)
+        else:
+            self._said |= set(guides)
 
     def _fresh(
         self, basis: int, held: str | None, turn: str, reply: bool
