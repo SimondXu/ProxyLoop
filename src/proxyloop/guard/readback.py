@@ -395,7 +395,7 @@ def _kin(offer: OfferPublic, slot: ReadbackSlot) -> dict[str, str]:
 def _theirs(
     field: str, values: set[str], unit: str, rivals: Sequence[OfferPublic]
 ) -> bool:
-    """A statement about another open offer (S1-SYS-115): its one value is a
+    """A statement about another offer (S1-SYS-115): its one value is a
     rival's for ``field``, as a slot, or as an implied flag when ``unit`` also
     states that rival's fee or applied change (its own, not a hidden one)."""
     if len(values) != 1:
@@ -435,7 +435,7 @@ def _mine(
     field: str,
     rivals: Sequence[OfferPublic],
 ) -> Stated:
-    """``stated`` without the statements about another open offer (W1, W2)."""
+    """``stated`` without the statements about another offer (W2 only)."""
     out = list[tuple[int, str, int, int, set[str]]]()
     for i, utt, start, end, values in stated:
         unit = lines[i].text[start:end]
@@ -445,15 +445,19 @@ def _mine(
 
 
 def _anchors(
-    ask: int, slots: Sequence[tuple[str, Stated]], implied: Sequence[tuple[str, Stated]]
+    ask: int,
+    slots: Sequence[tuple[str, Stated, Stated]],
+    implied: Sequence[tuple[str, Stated]],
 ) -> bool:
-    """W1-W4 for one ask (ADR-0020); ``slots``/``implied``: (value, stated)."""
-    after = [[(i, v) for i, *_, v in s if i >= ask] for _, s in slots]
+    """W1-W4 for one ask (ADR-0020); ``slots``: (value, stated, stated without
+    the statements about another offer); ``implied``: (value, stated). Only W2
+    ignores another offer's statements: after the ask every one counts."""
+    after = [[(i, v) for i, *_, v in s if i >= ask] for _, s, _ in slots]
     if not after or not all(after):  # W3: every slot restated since the ask
         return False
     top = max(xs[0][0] for xs in after)  # the last slot first stated since
-    for (want, stated), xs in zip(slots, after, strict=True):
-        before = [v for i, *_, v in stated if i < ask]
+    for (want, _, mine), xs in zip(slots, after, strict=True):
+        before = [v for i, *_, v in mine if i < ask]
         if any(v != {want} for _, v in xs):  # W1: stable since the ask
             return False
         if before and before[-1] != {want}:  # W2: no change across the ask
@@ -475,8 +479,8 @@ def slot_statuses(
     """Each slot's status: today's rule from this revision's ``asked_at``, or
     confirmed with all others by one ask in ``asks`` (every read-back request
     for any revision of the offer in this call) for which W1-W4 and W2' hold,
-    if no required field is missing (ADR-0020). ``rivals``: the call's other
-    open offers; the window ignores statements about them (S1-SYS-115).
+    if no required field is missing (ADR-0020). ``rivals``: the other recorded
+    offers, any status; W2 ignores statements about them (S1-SYS-115).
     Recomputed from the transcript each time."""
 
     def status(slot: ReadbackSlot, stated: Stated) -> Status:
@@ -487,13 +491,10 @@ def slot_statuses(
     stated = [_stated(s.field, lines, _kin(offer, s)) for s in offer.slots]
     roles = all(ROLE_OF.get(s.field.partition(":")[0]) == s.role for s in offer.slots)
     slots = [
-        (_key(s), _mine(_key(s), x, lines, s.field, rivals))
+        (_key(s), x, _mine(_key(s), x, lines, s.field, rivals))
         for s, x in zip(offer.slots, stated, strict=True)
     ]
-    implied = [
-        (v, _mine(v, _stated(f, lines), lines, f, rivals))
-        for f, v in _implied(offer).items()
-    ]
+    implied = [(v, _stated(f, lines)) for f, v in _implied(offer).items()]
     window = (
         roles
         and not missing_required(offer)  # a partial revision never takes the window

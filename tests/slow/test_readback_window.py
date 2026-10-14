@@ -340,8 +340,8 @@ def _first_offer(h: Host) -> None:
 def test_a_second_offer_confirms_past_the_first_offers_read_back(
     tmp_path: Path,
 ) -> None:
-    """S1-SYS-115 (247b62): the other open offer's read-back before the ask
-    does not block save-2; readback() passes Guard the other open offers."""
+    """S1-SYS-115 (247b62): the other offer's read-back before the ask does
+    not block save-2; readback() passes Guard the other recorded offers."""
     h = Host(tmp_path)
     h.call()
     _opened(h)
@@ -350,9 +350,9 @@ def test_a_second_offer_confirms_past_the_first_offers_read_back(
     assert _statuses(h) == {"confirmed"}
 
 
-def test_a_declined_offer_is_no_rival(tmp_path: Path) -> None:
-    """Only an open offer's values are ascribed: with save-1 declined, its fee
-    line before the ask still blocks save-2 (fail closed)."""
+def test_a_declined_offer_is_still_a_rival(tmp_path: Path) -> None:
+    """08f079/9610c7: save-1 was declined before save-2's ask; its read-back
+    before the ask is still about save-1, so save-2 confirms."""
     h = Host(tmp_path)
     h.call()
     _opened(h)
@@ -362,4 +362,4 @@ def test_a_declined_offer_is_no_rival(tmp_path: Path) -> None:
     assert got.startswith("decline_offer: "), got
     assert h.bb.public.offers["save-1"].status != "open"
     _read_back_r2(h, _ask("save-2"))
-    assert "confirmed" not in _statuses(h)
+    assert _statuses(h) == {"confirmed"}
