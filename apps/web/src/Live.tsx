@@ -25,6 +25,7 @@ import { HonestyBand } from "./shell/HonestyBand";
 import { taskName } from "./start";
 import { termRows, whole } from "./terms";
 import { Icon } from "./ui/Icon";
+import { SoundToggle, useVoice } from "./SoundToggle";
 import { useEventStream } from "./useEventStream";
 import { useRoleCard, YourRole } from "./YourRole";
 
@@ -43,6 +44,7 @@ export function Live({ runId }: { runId: string }) {
   const [posts, setPosts] = useState<ReadonlyMap<string, Posting>>(new Map());
   const [mandatePosts, setMandatePosts] = useState<ReadonlyMap<string, Posting>>(new Map());
   const [sent, setSent] = useState<Sent[]>([]);
+  const voice = useVoice(events);
 
   const cards = useMemo(() => approvalCards(events, posts), [events, posts]);
   const mandates = useMemo(() => mandateCards(events, mandatePosts), [events, mandatePosts]);
@@ -134,6 +136,7 @@ export function Live({ runId }: { runId: string }) {
               {run}
               {alert}
               {link}
+              <SoundToggle voice={voice} />
               <label>
                 <input type="checkbox" checked={god} onChange={(e) => setGod(e.target.checked)} /> God-view
               </label>
@@ -150,6 +153,9 @@ export function Live({ runId }: { runId: string }) {
         <div className="pl-live">
           <div className="pl-sticky">
             <HonestyBand h={h} />
+          </div>
+          <div className="pl-sound">
+            <SoundToggle voice={voice} />
           </div>
           <Panes
             events={events}
