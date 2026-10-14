@@ -50,10 +50,10 @@ counterparty:
   ladder:
     - offer_ref: loyal-1
       terms: {monthly_price: "75.00", term_months: "12"}
-      hidden: {"fee:activation": "20.00"}
+      hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
     - offer_ref: loyal-2
       terms: {monthly_price: "68.00", term_months: "24"}
-      hidden: {"fee:activation": "20.00"}
+      hidden: {"fee:activation": "20.00", changes_none: "true", expires: none}
   patience: {silence_s: 6, hold_s: 30, strikes: 3}
   ledger: honest
 

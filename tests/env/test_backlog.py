@@ -461,7 +461,8 @@ def test_d2_an_accept_in_the_block_that_makes_the_first_offer_is_clarified(
 ) -> None:
     """ADR-0021 (D2, no offer made before the block): ``accept`` is not in
     the Ear's enum, so an accept is invalid (a counted regeneration); the
-    utterance is heard as something else, and the rep asks what they mean."""
+    utterance is heard as something else. The block made an offer, so the
+    rep's decision is an ``ack``, unvoiced beside the offer (ADR-0032)."""
     lines = [ID, OTHER, DISCOUNT, ACCEPT75]
     script = [ears(ID[1]), ears(OTHER[1]), ears(DISCOUNT[1], ACCEPT75[1])]
     script.append(ears(DISCOUNT[1], OTHER[1]))
@@ -473,10 +474,10 @@ def test_d2_an_accept_in_the_block_that_makes_the_first_offer_is_clarified(
     *_, lever, heard = play.of("rep.ear")
     assert (heard.payload["act"], heard.payload["attempts"]) == ("other", 2)
     assert lever.payload["attempts"] == 2
-    assert _intents(play, "rep.policy")[-2:] == ["offer", "clarify"]
-    assert _intents(play, "rep.mouth")[-2:] == ["offer", "clarify"]
+    assert _intents(play, "rep.policy")[-2:] == ["offer", "ack"]
+    assert _intents(play, "rep.mouth")[-1:] == ["offer"]
     assert not play.of("rep.commit_heard") and play.rep.policy.state == "OFFER"
-    assert turns[2].end == "" and len(turns[2].lines) == 2
+    assert turns[2].end == "" and len(turns[2].lines) == 1
 
 
 def test_d1_an_accept_of_a_lapsed_offer_is_heard_and_told_it_is_unavailable(
@@ -510,7 +511,7 @@ def test_t6_equal_decisions_in_a_row_are_voiced_once(tmp_path: Path) -> None:
     play = Play(tmp_path, lines, alone=3)
     turns = play.run()
     assert _intents(play, "rep.policy")[-5:] == ["no_better"] * 5
-    assert _intents(play, "rep.mouth")[-2:] == ["clarify", "no_better"]
+    assert _intents(play, "rep.mouth")[-2:] == ["ack", "no_better"]
     assert len(turns[4].lines) == 1
     last = play.of("rep.policy")[-1]  # the line answers the last of the run
     assert play.of("rep.mouth")[-1].cause_ids[0] == last.event_id
@@ -552,9 +553,9 @@ def test_t8_a_compound_ask_labelled_read_back_gets_the_terms(tmp_path: Path) -> 
     assert (
         "If one utterance does several things, its act is the first of them in "
         "this order: accept (only of an offer you made), "
-        "decline, ask_readback, then cite_competitor, cancel_intent, "
+        "decline, then cite_competitor, cancel_intent, "
         "tenure (only if the utterance says how long they have been a customer), "
-        "ask_discount, then provide_fact, then the rest."  # S1-SYS-95: verified
+        "then ask_readback, ask_discount, then provide_fact, then the rest."
     ) in system
     assert system == ear.SYSTEM.format(
         company=TASK.counterparty.company, order=ear.ORDER_VERIFIED

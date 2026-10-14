@@ -230,8 +230,8 @@ def test_a_timer_strike_cites_its_first_line_as_before(tmp_path: Path) -> None:
     [
         pytest.param(
             [HOLD, REFUSE, REFUSE, ID, SUPERVISOR],
-            ["rep.policy", "rep.mouth"],
-            id="two strikes, the first voiced with the second",
+            ["rep.policy", "rep.policy"],
+            id="two strikes, unvoiced: the block passes identity",
         ),
         pytest.param(
             [HOLD, REFUSE, REFUSE, REFUSE],
@@ -244,8 +244,9 @@ def test_each_strike_of_a_block_cites_its_own_decision(
     tmp_path: Path, lines: list[Line], voiced: list[str]
 ) -> None:
     """The i-th ``chan.strike`` cites the i-th struck decision: its voiced
-    line's ``rep.mouth``, or its ``rep.policy`` when its line was voiced once
-    for it and the next equal intent (ADR-0021 D4)."""
+    line's ``rep.mouth``, or its ``rep.policy`` when its line was not voiced:
+    voiced once for it and a later equal intent, or an ``ask_identity`` in a
+    block that passes identity (ADR-0032)."""
     _, events = _call(tmp_path, lines, block=True)
     by_id = {e.event_id: e for e in events}
     refused = {

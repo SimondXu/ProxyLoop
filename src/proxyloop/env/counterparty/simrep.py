@@ -9,8 +9,13 @@ decision ``rep.policy`` [its utterance's ``rep.ear``], on a commit
 ``rep.mouth`` [``rep.policy``]. The policy steps every utterance's act, in
 order, exactly as it would one turn at a time. The kernel emits the returned
 lines as ``utt.final``, one ``chan.strike`` per strike (each citing its own
-decision's ``rep.mouth``, or its ``rep.policy`` when a run of equal intents
-was voiced once), and the end.
+decision's ``rep.mouth``, or its ``rep.policy`` when it was not voiced), and
+the end.
+
+One reply per caller turn (ADR-0032, amending ADR-0021 D4): every decision is
+emitted, but a block voices each intent once (at its last), drops an
+``ask_identity`` when the block passes identity, and drops a ``clarify`` or
+``ack`` when the block has another reply; the kept lines are composed at once.
 """
 
 from __future__ import annotations
@@ -29,6 +34,27 @@ from proxyloop.env.tasks.schema import Task
 
 # A decision, the heard text it answers, and (utt_id, its rep.ear) if heard.
 Step = tuple[Decision, str, tuple[str, str] | None]
+FILLERS: frozenset[str] = frozenset({"clarify", "ack"})  # no reply of their own
+
+
+def voiced(decisions: Sequence[Decision]) -> list[int]:
+    """Which of one turn's decisions the rep says, in order (ADR-0032): a
+    commit always; ``offer_expired`` never; an intent equal to a later one's
+    only there; ``ask_identity`` not when the turn passes identity; a filler
+    not beside another reply (of fillers alone, the last)."""
+
+    passes = any(d.intent.kind == "how_can_help" for d in decisions)
+    keep: list[int] = []
+    for i, d in enumerate(decisions):
+        kind = d.intent.kind
+        if d.commit is not None:
+            keep.append(i)
+        elif kind == "offer_expired" or (kind == "ask_identity" and passes):
+            continue
+        elif all(e.intent != d.intent for e in decisions[i + 1 :]):
+            keep.append(i)
+    replies = [i for i in keep if decisions[i].intent.kind not in FILLERS]
+    return replies or keep[-1:]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,17 +129,17 @@ class SimRep:
         self.policy.floor(free, t_ms)
 
     async def _run(self, steps: list[Step]) -> RepTurn:
-        """Emit each decision; voice them in order, but a run of equal intents
-        without a commit once, at its last (ADR-0021 D4)."""
+        """Emit each decision, then voice the ones ``voiced`` keeps, their
+        Mouth calls at once and their lines in order."""
 
-        lines: list[tuple[str, str]] = []
-        struck: list[str] = []
-        for i, (d, heard, ear) in enumerate(steps):
+        events: list[str] = []
+        for d, _, ear in steps:
             payload: dict[str, object] = {"from": d.from_, "to": d.to, "rung": d.rung}
             payload["intent"] = d.intent.model_dump(mode="json")
             reacted = ear is not None and d.intent.kind != "offer_expired"
             causes = [ear[1]] if ear is not None and reacted else []
             ev = self._world.emit("rep.policy", "world.policy", payload, causes)
+            events.append(ev)
             if d.commit is not None and ear is not None:
                 heard_ev = self._world.emit(
                     "rep.commit_heard",
@@ -128,14 +154,15 @@ class SimRep:
                         "binding": binding,
                     }
                     self._world.emit("ledger.write", "world.ledger", write, [heard_ev])
-            again = i + 1 < len(steps) and steps[i + 1][0].intent == d.intent
-            said = d.intent.kind != "offer_expired" and (
-                d.commit is not None or not again
-            )
-            if said:
-                lines.append(await self.mouth.say(d.intent, heard, ev))
-            if d.strike:  # its line, or its decision when the next one voices both
-                struck.append(lines[-1][1] if said else ev)
+        said = voiced([d for d, _, _ in steps])
+        lines = await self.mouth.say_all(
+            [(steps[i][0].intent, steps[i][1], events[i]) for i in said]
+        )
+        mouth_ev = {i: line[1] for i, line in zip(said, lines, strict=True)}
+        # each strike: its line's rep.mouth, else its own rep.policy
+        struck = [
+            mouth_ev.get(i, events[i]) for i, (d, _, _) in enumerate(steps) if d.strike
+        ]
         if not steps or not self.policy.done:
             return RepTurn(tuple(lines), tuple(struck), "")
         hung_up = steps[-1][0].intent.kind == "hang_up"  # the decision that ended it

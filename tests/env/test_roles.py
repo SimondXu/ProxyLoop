@@ -223,7 +223,12 @@ def test_simrep_commits_heard_and_binds_the_ledger(tmp_path: Path) -> None:
         "offer_ref": "loyal-1",
         "revision": 1,
         "term_months": 12,
-        "terms": {"fee:activation": "20.00", "monthly_price": "75.00"},
+        "terms": {  # every hidden term too (ADR-0032 added the last two)
+            "changes_none": "true",
+            "expires": "none",
+            "fee:activation": "20.00",
+            "monthly_price": "75.00",
+        },
     }
     assert (
         policy.cause_ids == (rep_ear.event_id,) and policy.payload["to"] == "CONFIRMED"
