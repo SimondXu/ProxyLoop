@@ -83,6 +83,8 @@ class Authority:
         self._moved = asyncio.Event()  # set (and replaced) as a fence moves
         self.user_fences = 0  # user fences raised so far
         self._asked: dict[str, str] = {}  # card or mandate id -> the asking event
+        # A chat-only SimUser's open subjects, by (post.subject, id): the UI decides.
+        self._ui: dict[tuple[str, str], ApprovalCard | Mandate] = {}
         self._replan: int | None = None  # the NEEDS_REPLAN status.changed seq
 
     def on_event(self, e: Event) -> None:
@@ -252,6 +254,10 @@ class Authority:
         posted = k.emit("approval.post", by, body, cause).event_id
         kind, payload = got
         decided = k.emit(kind, "kernel", payload, [posted]).event_id
+        user = k.channels.get("user")
+        subject = self._ui.pop((post.subject, post.subject_id), None)
+        if by == "ui" and isinstance(user, SimUserChannel) and subject is not None:
+            user.decided(subject, post)  # ADR-0028: its chat knows the answer
         if kind == "approval.decided":
             self.move("approval_decided", decided)
             return
@@ -272,6 +278,9 @@ class Authority:
     # The sim approver and the SimUser's triggers (#143).
     def _sim(self, e: Event) -> None:
         k, user = self._k, self._k.channels.get("user")
+        if isinstance(user, SimUserChannel) and not user.approves:  # S1-SYS-127
+            self._chat_only(user, e)
+            return
         if not isinstance(user, SimUserChannel) or (approver := user.approver) is None:
             return
         if e.type == "mandate.proposed":
@@ -285,6 +294,21 @@ class Authority:
         user.decided(card, post.post)  # then the chat knows it, before the trigger
         stop = user.trigger("after_card", e.event_id, e.t_ms)
         k.spawn(self._later(post, e.t_ms, stop, card.expires_ms))
+
+    def _chat_only(self, user: SimUserChannel, e: Event) -> None:
+        """A SimUser that only chats: the web UI decides its card or limits, so
+        nothing is posted here; its ``after_card`` trigger still runs, and the
+        person's decision reaches its chat in ``decide`` (ADR-0028)."""
+        if e.type == "mandate.proposed":
+            mandate = Mandate.model_validate(e.payload)
+            self._ui["mandate", mandate.mandate_id] = mandate
+            return
+        card = ApprovalCard.model_validate(e.payload)
+        self._ui["approval", card.approval_id] = card
+        self._k.spawn(self._after_card(user, e))
+
+    async def _after_card(self, user: SimUserChannel, card: Event) -> None:
+        await user.trigger("after_card", card.event_id, card.t_ms)  # a stop queues
 
     async def _later(
         self, post: Post, t_ms: int, stop: Stop | None, until: int | None = None

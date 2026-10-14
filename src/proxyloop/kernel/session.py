@@ -124,7 +124,8 @@ def _roles(specs: Mapping[str, ChannelSpec]) -> list[llm.LLMRole]:
     rep = specs.get("cp") == "sim"
     used: dict[llm.LLMRole, bool] = {"slow": "cp_agent" not in specs}
     used |= {"fast_user": "user" in specs}
-    used |= {"simuser": specs.get("user") == "sim", "fast_cp": "cp_agent" not in specs}
+    sim_user = specs.get("user") in ("sim", "sim_chat")
+    used |= {"simuser": sim_user, "fast_cp": "cp_agent" not in specs}
     used |= {"ear": rep, "mouth": rep}
     return [role for role, yes in used.items() if yes]
 

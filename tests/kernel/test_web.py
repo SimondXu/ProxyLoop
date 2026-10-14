@@ -38,7 +38,7 @@ from proxyloop.core.bus import Bus
 from proxyloop.env.tasks.loader import load_task, resolve, task_ref_of
 from proxyloop.env.tasks.schema import Task
 from proxyloop.kernel import calls, session, web
-from proxyloop.kernel.channels import HumanWebChannel, Incoming
+from proxyloop.kernel.channels import HumanWebChannel, Incoming, SimUserChannel
 from proxyloop.kernel.session import ClientFactory, Kernel, RunResult
 from proxyloop.kernel.web import CATALOG, LUNA, TRAINING, Offer, Starter, WebCase
 from proxyloop.llm.factory import make_client
@@ -414,7 +414,9 @@ def test_a_sim_rep_case_has_no_human_rep_ingress(tmp_path: Path) -> None:
     arun(case())
 
 
-def test_a_simulated_user_case_has_no_human_user_ingress(tmp_path: Path) -> None:
+def test_a_simulated_user_chats_alone_and_leaves_its_cards_to_the_web(
+    tmp_path: Path,
+) -> None:
     async def case() -> None:
         case = await starter(tmp_path, VirtualTime()).start_case(REF, {}, "sim", "sim")
         k = kernel(case)
@@ -423,15 +425,24 @@ def test_a_simulated_user_case_has_no_human_user_ingress(tmp_path: Path) -> None
         assert "simuser" in cast(Mapping[str, object], start.payload["models"])
         with pytest.raises(UserSimulated):  # the watcher never speaks for it
             case.user_message("Hi.")
-        post = ApprovalPost(
-            subject="approval",
-            subject_id="apr-1",
-            decision="granted",
-            subject_hash="0" * 64,
-            authority_epoch=0,
-        )
-        with pytest.raises(UserSimulated):  # nor approves for it
-            case.post_approval(post)
+        user = k.channels["user"]  # but decides its cards (S1-SYS-127)
+        assert isinstance(user, SimUserChannel) and user.approver is None
+        await stop(case)
+
+    arun(case())
+
+
+def test_a_watched_full_task_never_runs_the_sim_approver(tmp_path: Path) -> None:
+    """Review of S1-SYS-127: on a task with a principal the SimUser has an
+    approval button, and the web case must hide it (rule 10: one approver)."""
+
+    async def case() -> None:
+        ref = "x-out-of-envelope-approval@2"
+        case = await starter(tmp_path, VirtualTime()).start_case(ref, {}, "sim", "sim")
+        user = kernel(case).channels["user"]
+        assert isinstance(user, SimUserChannel) and not user.approves
+        assert user._user.approver is not None  # pyright: ignore[reportPrivateUsage]
+        assert user.approver is None
         await stop(case)
 
     arun(case())
