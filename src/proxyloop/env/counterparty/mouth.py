@@ -7,11 +7,17 @@ verbatim), and no other number. Code-word fidelity (S1-SYS-88): each word of a
 ``record_offer`` needs it to name the term. At most 2
 regenerations, then the template itself, flagged ``fidelity_fallback``
 (``rep.mouth.fidelity_ok = false``).
+
+One rep turn's lines are composed concurrently and emitted in order
+(``say_all``, ADR-0032): the turn waits for its slowest line, not their sum.
 """
 
 from __future__ import annotations
 
+import asyncio
 import re
+from collections.abc import Awaitable, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 
 from proxyloop.contract.llm import ChatMessage, LLMClient, TextRequest
@@ -37,6 +43,7 @@ LINES: dict[IntentKind, str] = {
     "transfer": "Let me transfer you to a supervisor.",
     "hang_up": "I cannot hear you, so I am ending the call. Goodbye.",
     "clarify": "Sorry, how can I help with your account?",
+    "ack": "Sure, take your time.",
 }
 IDENTITY_HANG_UP = (  # a ``hang_up`` for an identity strike-out, not a timer one
     "I'm unable to verify the account, so I'll have to end the call. Goodbye."
@@ -103,6 +110,28 @@ def fidelity_ok(text: str, intent: PublicIntent) -> bool:
     return required <= world.numbers(text) <= required | allowed
 
 
+@dataclass(frozen=True, slots=True)
+class _Composed:
+    text: str
+    attempts: int
+    ok: bool
+    call_ids: tuple[str, ...]
+
+
+async def _all[T](jobs: Sequence[Awaitable[T]]) -> list[T]:
+    """Every job at once, results in order; the first failure cancels the
+    others (and is raised as itself, not as a group)."""
+
+    tasks = [asyncio.ensure_future(j) for j in jobs]
+    try:
+        return list(await asyncio.gather(*tasks))
+    except BaseException:
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 class Mouth:
     def __init__(
         self, client: LLMClient, writer: world.World, spec: CounterpartySpec
@@ -135,12 +164,27 @@ class Mouth:
     ) -> tuple[str, str]:
         """Voice ``intent``; its calls, then ``rep.mouth``."""
 
+        (line,) = await self.say_all([(intent, heard, cause)])
+        return line
+
+    async def say_all(
+        self, lines: Sequence[tuple[PublicIntent, str, str]]
+    ) -> list[tuple[str, str]]:
+        """Voice each (intent, heard, cause): every line's calls at once, then
+        each line's ``rep.mouth``, in the order given."""
+
+        done = await _all([self._compose(*line) for line in lines])
+        return [
+            self._emit(intent, c, cause)
+            for (intent, _, cause), c in zip(lines, done, strict=True)
+        ]
+
+    async def _compose(self, intent: PublicIntent, heard: str, cause: str) -> _Composed:
         line = template(intent, self._company)
         requests = [
             self.request(intent, heard, cause, n)
             for n in range(world.MAX_REGENERATIONS + 1)
         ]
-        call_ids = [r.call_id for r in requests]
 
         async def attempt(n: int) -> str:
             return (await self._world.text(self._client, requests[n], cause)).strip()
@@ -157,7 +201,10 @@ class Mouth:
             timeout_s=self.timeout_s,
             exhausted=lambda: line,
         )
-        payload = {"intent": intent.model_dump(mode="json"), "text": text}
-        payload |= {"fidelity_ok": ok, "attempts": attempts}
-        causes = [cause, *self._world.calls(call_ids[:attempts])]
-        return text, self._world.emit("rep.mouth", "world.mouth", payload, causes)
+        return _Composed(text, attempts, ok, tuple(r.call_id for r in requests))
+
+    def _emit(self, intent: PublicIntent, c: _Composed, cause: str) -> tuple[str, str]:
+        payload = {"intent": intent.model_dump(mode="json"), "text": c.text}
+        payload |= {"fidelity_ok": c.ok, "attempts": c.attempts}
+        causes = [cause, *self._world.calls(c.call_ids[: c.attempts])]
+        return c.text, self._world.emit("rep.mouth", "world.mouth", payload, causes)

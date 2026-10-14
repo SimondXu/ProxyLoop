@@ -18,7 +18,10 @@ Ear's order DEPARTS from codebook v1: the levers (cite_competitor,
 cancel_intent, tenure, then ask_discount) rank before provide_fact, so a
 discount ask that names the account holder is heard as the lever, and a line
 that says how long the caller has been a customer and asks for a lower price
-is heard as tenure. The codebook is not edited. The flag is fixed when a block
+is heard as tenure. The specific levers also rank before ask_readback
+(ADR-0032: 12 of 171 tenure cues were heard as a read-back ask or a decline);
+accept and decline stay first, and ask_discount stays after ask_readback. The
+codebook is not edited. The flag is fixed when a block
 is classified: a block whose first utterances verify the caller is still heard
 as not yet verified (residual, ADR-0021 block grouping).
 """
@@ -80,9 +83,9 @@ ORDER_UNVERIFIED = (
     "then ask_discount, cite_competitor, cancel_intent, tenure, then the rest."
 )
 ORDER_VERIFIED = (
-    "accept (only of an offer you made), decline, ask_readback, then "
-    "cite_competitor, cancel_intent, tenure (only if the utterance says how long "
-    "they have been a customer), ask_discount, then provide_fact, then the rest."
+    "accept (only of an offer you made), decline, then cite_competitor, "
+    "cancel_intent, tenure (only if the utterance says how long they have been a "
+    "customer), then ask_readback, ask_discount, then provide_fact, then the rest."
 )
 CALLER_VERIFIED = "The caller is verified."
 CALLER_NOT_VERIFIED = "The caller is not yet verified."

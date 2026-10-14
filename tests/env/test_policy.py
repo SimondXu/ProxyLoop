@@ -147,9 +147,7 @@ def test_an_offer_expires_after_its_ttl() -> None:
     ttl_s = CP.ladder[0].ttl_s
     assert ttl_s is not None
     ttl_ms = int(ttl_s * 1000)
-    assert (
-        p.step(EarAct(act="smalltalk"), "u8", "", ttl_ms)[-1].intent.kind == "clarify"
-    )
+    assert p.step(EarAct(act="smalltalk"), "u8", "", ttl_ms)[-1].intent.kind == "ack"
     assert p.offers["loyal-1"].status == "open"
     expired = p.step(
         EarAct(act="accept", offer_ref="loyal-1"), "u9", "", 1_000 + ttl_ms
@@ -422,5 +420,5 @@ def test_a_v2_offer_stays_open_for_the_call() -> None:
     _say(p, "provide_fact", 0, facts={NAME: "Dana Reyes", LAST4: "4821"})
     assert _say(p, "ask_discount", 1_000).intent.kind == "offer"
     hour = 3_600_000
-    assert _say(p, "smalltalk", hour).intent.kind == "clarify"
+    assert _say(p, "smalltalk", hour).intent.kind == "ack"  # ADR-0032
     assert p.offers["loyal-1"].status == "open"
