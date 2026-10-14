@@ -50,7 +50,10 @@ One tier per run, first match wins:
   it is below the current price, or the current price is unknown (then the
   savings are None). **E** (a miss, whatever was offered): a better offer
   ``within_mandate_not_taken``, or the ladder flag (``ladder.py``
-  ``no_deal_ladder_unfinished``) ``unfinished`` or ``no_ladder``. **C**: a
+  ``no_deal_ladder_unfinished``) ``unfinished`` or ``no_ladder``. **W** (a
+  world miss, reported apart like F-infra; user decision 2026-10-13): the
+  flag is ``unfinished`` but FastC voiced every unused lever and the Ear
+  never heard it (``lever_voiced_not_heard``). **C**: a
   better offer beyond the agent's authority (``no_mandate``,
   ``above_mandate``, ``mandate_stale``, ``mandate_expired``,
   ``approval_denied``). A mandate pre-approves only while guard's
@@ -432,6 +435,11 @@ def _no_deal(x: Inputs, v: Mapping[str, object]) -> Grade:
     better = isinstance(best, int) and (not isinstance(current, int) or best < current)
     if better and isinstance(best, int) and within_mandate_not_taken(x, best):
         return "E", "within_mandate_not_taken", extra
+    raw = as_dict(DETECTORS["lever_voiced_not_heard"](x)).get("levers")
+    levers = cast(list[object], raw) if isinstance(raw, list) else []
+    misheard = [str(v) for v in levers]
+    if reason == "unfinished" and misheard and misheard == flag.get("unused"):
+        return "W", "lever_voiced_not_heard", extra | {"misheard": misheard}
     if reason in ("unfinished", "no_ladder"):
         return "E", str(reason), extra
     if better and isinstance(best, int):

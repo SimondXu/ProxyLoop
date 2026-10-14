@@ -284,6 +284,41 @@ def test_a_miss_outranks_a_better_offer() -> None:
     assert (t["savings_monthly"], t["gap_to_target"]) == (1200, 1300)
 
 
+def _voice_tenure(log: Log, *, deliver: bool = True) -> None:
+    """Slow's mention_tenure GUIDE, voiced by a FastC turn (e5802a's shape:
+    "eight years; could you read back every term" heard as ask_readback)."""
+    c = (log.start,)
+    guide: P = {"msg_id": "s2f-9", "lane": "cp", "type": "GUIDE", "text": ""}
+    guide["guide"] = {"move": "mention_tenure"}
+    log.add("s2f.msg", "slow", "agent", guide, c)
+    voiced: P = {"msg_id": "s2f-9", "gen_id": "cp-g9"}
+    log.add("s2f.voiced", "fast.cp", "agent", voiced, c)
+    said: P = {"lane": "cp", "gen_id": "cp-g9", "utt_id": "cp-g9-u0", "text": "8 yrs"}
+    log.add("fast.sentence", "fast.cp", "agent", said, c)
+    if deliver:
+        heard: P = {"lane": "cp", "utt_id": "cp-g9-u0", "interrupted": False}
+        heard |= {"text_generated": "8 yrs", "text_heard": "8 yrs"}
+        log.add("utt.delivered", "kernel", "agent", heard, c)
+
+
+@pytest.mark.parametrize(("deliver", "want"), [(True, "W"), (False, "E")])
+def test_a_lever_voiced_but_never_heard_is_a_world_miss(
+    deliver: bool, want: str
+) -> None:
+    """W (user decision 2026-10-13): the agent said the lever, the Ear heard
+    another act; reported apart, not the agent's E. Unvoiced stays E."""
+    log = Log("rW")
+    _current(log, "90")
+    _mandate(log, 6500)
+    _pull(log, "ask_discount", "offer", "78")
+    _voice_tenure(log, deliver=deliver)
+    _no_deal(log)
+    t = _tier(log)
+    assert t["tier"] == want, t
+    if want == "W":
+        assert (t["reason"], t["misheard"]) == ("lever_voiced_not_heard", ["tenure"])
+
+
 def test_all_pulled_is_c_with_a_better_offer_and_d_without_one() -> None:
     better = Log("rAp1")
     _current(better, "85")
