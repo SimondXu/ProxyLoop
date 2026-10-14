@@ -2,6 +2,8 @@
 @layer components {
   /* the page fills the viewport below the top bar (56px) and above the main's bottom padding */
   .pl-live { display: flex; flex-direction: column; height: calc(100dvh - 56px - var(--s5)); }
+  /* the Sound switch (S1-SYS-122), between the honesty band and the case */
+  .pl-sound { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s1) 0; font-size: 13px; }
   .pl-runid { font-family: var(--font-mono); }
   .pl-case { position: relative; flex: 1; min-height: 0; display: grid; column-gap: var(--s6); grid-template: "head details" auto "chat details" minmax(0, 1fr) / minmax(0, 1fr) minmax(330px, 356px); }
   .pl-casehead, .pl-chat { width: 100%; max-width: 760px; justify-self: center; }

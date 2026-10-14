@@ -115,6 +115,7 @@ def test_every_detector_equals_the_hand_count(tmp_path: Path) -> None:
             "count": 1, "reason": "unfinished", "end_reason": "abandoned",
             "unused": ["ask_discount", "tenure"],
         },
+        "lever_voiced_not_heard": {"count": 0, "levers": []},  # no lever GUIDE
         # the tier (test_tiers has its own logs): no status.changed, ended
         # "abandoned": F; the declass.denied (29) is counted, never X
         "tier": {

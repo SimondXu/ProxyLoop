@@ -71,17 +71,18 @@ def test_a_the_request_differs_only_by_the_verified_line_and_the_order(
 
 def test_a_after_verification_the_levers_rank_before_provide_fact() -> None:
     order = ear.ORDER_VERIFIED
-    ranked = [
-        "ask_readback",
+    ranked = [  # ADR-0032: the specific levers before ask_readback
+        "decline",
         "cite_competitor",
         "cancel_intent",
         "tenure",
+        "ask_readback",
         "ask_discount",
         "provide_fact",
     ]
     assert [order.index(a) for a in ranked] == sorted(order.index(a) for a in ranked)
     assert "tenure (only if the utterance says how long" in order
-    assert order.startswith("accept (only of an offer you made), decline, ask_readback")
+    assert order.startswith("accept (only of an offer you made), decline, then")
     unverified = ear.ORDER_UNVERIFIED  # unchanged: the codebook v1 order
     assert unverified.index("provide_fact") < unverified.index("ask_discount")
 

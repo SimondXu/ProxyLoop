@@ -6,13 +6,17 @@ clock (no agent state). Each distinct lever unlocks the next ladder rung;
 hidden terms are said only on a read-back; offers expire after their TTL;
 silence over ``silence_s`` while the floor is free (``floor``), or a hold over
 ``hold_s``, is a timer strike; any act but ``provide_fact`` while identifying
-(hold and supervisor requests aside) is an identity strike. A repeated hold
+(hold and supervisor requests aside) is an identity strike. Silence strikes
+count only in a row: any heard act starts the count again, as a real rep hangs
+up after unanswered check-ins in a row, not after three over a long call
+(ADR-0032); hold strikes and identity strikes never start again. A repeated hold
 request resumes the hold clock of the first one since the last progress, in
 every state (S1-SYS-20, S1-SYS-28): while identifying, progress is a newly
 verified fact (asking to hold again, or giving a wrong value, never resets
 it); in any other state, any heard act but a hold request. Each kind has
 its own counter, neither adds to the other, and either reaching
-``patience.strikes`` hangs up. Identity strikes count what was heard, not
+``patience.strikes`` hangs up (the timer counter: the silences in a row plus
+the hold strikes). Identity strikes count what was heard, not
 time, so they apply in rep-chat too, where only the timer patience is
 suspended.
 
@@ -72,6 +76,7 @@ IntentKind = Literal[
     "transfer",
     "hang_up",
     "clarify",
+    "ack",  # smalltalk or other once an offer exists (ADR-0032)
 ]
 LEVERS: frozenset[str] = frozenset(get_args(Lever))
 TERMINAL: frozenset[State] = frozenset({"CONFIRMED", "TRANSFER", "ENDED"})
@@ -127,6 +132,9 @@ class Policy:
         self.spec, self.identity = spec, dict(identity)
         self.state: State = "GREET"
         self.rung, self.identity_strikes, self.timer_strikes = -1, 0, 0
+        # what of ``timer_strikes`` counts toward the hang-up: the silence
+        # strikes since the last heard act, and every hold strike (ADR-0032)
+        self._silences, self._hold_strikes = 0, 0
         self.offers: dict[str, _Offer] = {}
         self.ledger: Ledger[BoundTerms] = Ledger(spec.ledger)
         self._verified: set[str] = set()
@@ -180,6 +188,7 @@ class Policy:
             return []
         out = self._expire(t_ms)
         self._free_since, self._hold_since = None, None
+        self._silences = 0  # heard: the check-ins were answered (ADR-0032)
         before, strikes = self.state, self.strikes
         intent, commit = self._react(act, utt_id, heard, t_ms, listed)
         struck = self.strikes > strikes
@@ -203,11 +212,16 @@ class Policy:
         if since is None or t_ms - since < 1000 * limit:
             return out
         self.timer_strikes += 1  # the rep speaks up: it takes the floor
+        if hold is None:
+            self._silences += 1
+        else:
+            self._hold_strikes += 1
         self._free_since, self._hold_since = None, None if hold is None else t_ms
         if hold is not None and self._hold_clock is not None:
             self._hold_clock = t_ms  # the next strike after one more hold_s
         before = self.state
-        self.state = "ENDED" if self.timer_strikes >= p.strikes else self.state
+        out_of_patience = self._silences + self._hold_strikes >= p.strikes
+        self.state = "ENDED" if out_of_patience else self.state
         intent = PublicIntent(kind="hang_up" if self.done else "check_in")
         return [*out, Decision(before, self.state, intent, self._rung(), strike=True)]
 
@@ -260,6 +274,8 @@ class Policy:
             if self.state == "CONFIRM":
                 self.state, self._pending = self._offer_state(), None
             return PublicIntent(kind="ack_decline"), None
+        if self.offers and a in ("smalltalk", "other"):  # "take your time"
+            return PublicIntent(kind="ack"), None
         return PublicIntent(kind="clarify"), None
 
     def _lever(self, lever: str, t_ms: int) -> PublicIntent:

@@ -94,7 +94,8 @@ def test_a_user_line_landing_mid_generation_is_not_credited(tmp_path: Path) -> N
 
 
 def test_a_rep_line_landing_mid_generation_is_not_credited(tmp_path: Path) -> None:
-    user, rep = Channel(), Partner(DISCLOSURE, replies=2)  # r1 after the disclosure
+    # r1 after the disclosure; the turn r2 overtook is not said (S1-SYS-123)
+    user, rep = Channel(), Partner(DISCLOSURE, replies=1)
     scripts = SCRIPTS | {"fast_cp": [RELAYING], "slow": WAIT}
     result = run(
         tmp_path,
