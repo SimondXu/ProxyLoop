@@ -33,7 +33,11 @@ let model: Promise<Tts> | null = null;
 /** The model, loaded once (the browser caches its files). A failed load is forgotten, so turning sound on again retries. */
 function load(): Promise<Tts> {
   model ??= import("kokoro-js")
-    .then(({ KokoroTTS }) => KokoroTTS.from_pretrained(MODEL, { dtype: "q8", device: "gpu" in navigator ? "webgpu" : "wasm" }))
+    .then(({ KokoroTTS }) => {
+      // kokoro-js README: with webgpu use fp32 (q8 there garbles the speech); q8 on wasm.
+      const gpu = "gpu" in navigator;
+      return KokoroTTS.from_pretrained(MODEL, { dtype: gpu ? "fp32" : "q8", device: gpu ? "webgpu" : "wasm" });
+    })
     .catch((e: unknown) => {
       model = null;
       throw e;

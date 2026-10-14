@@ -103,6 +103,7 @@ class StartBody(BaseModel):
     task_ref: str = Field(pattern=TASK_REF)
     models: dict[LaneKey, Annotated[str, Field(pattern=OPTION_ID)]]
     rep: Literal["sim", "human"] = "sim"
+    user: Literal["human", "sim"] = "human"  # "sim": watch mode (S1-SYS-125)
 
 
 def broken(options: Sequence[object], tasks: object) -> str | None:
@@ -167,7 +168,9 @@ async def _begin(kernel: Starter, body: StartBody, timeout_s: float) -> Case:
     cancelled, given at most ``min(CANCEL_GRACE_S, timeout_s)`` more, and then
     abandoned (503 either way, never registered; the kernel answers "busy"
     while its own cleanup runs)."""
-    task = asyncio.create_task(kernel.start_case(body.task_ref, body.models, body.rep))
+    task = asyncio.create_task(
+        kernel.start_case(body.task_ref, body.models, body.rep, body.user)
+    )
     try:
         done, _ = await asyncio.wait({task}, timeout=timeout_s)
     except asyncio.CancelledError:  # the client left: so does the start
