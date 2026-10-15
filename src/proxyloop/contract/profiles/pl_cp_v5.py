@@ -1,9 +1,9 @@
 """``pl_cp_v5``: ``pl_cp_v4`` with ADR-0029's decision table in the system text
 (what CASE STATUS means, the hold rules H4, H5 and H7, ``@wait`` only when asked
-to wait) and one move text (``ask_readback``). A semantic rewrite, no grammar
-change: sections, labels, triggers, closing and ``pause_ends_speech`` are
-``pl_cp_v4``'s. ADR-0014's ``defer_callback`` is not in it. A candidate, not
-the live cp profile; ``pl_cp_v4`` stays frozen.
+to wait). A semantic rewrite, no grammar change: sections, labels, triggers,
+moves, closing and ``pause_ends_speech`` are ``pl_cp_v4``'s. ADR-0014's
+``defer_callback`` is not in it. A candidate, not the live cp profile; ``pl_cp_v4``
+stays frozen.
 """
 
 from __future__ import annotations
@@ -52,7 +52,8 @@ want); if the guidance names one, use it. No hold when you ask them something, \
 answer them, or give details you were given: they speak next. Stalling words always \
 come with an `@hold` line, and an `@hold` line always with stalling words.
 - While HOLD STATUS shows a hold: when the representative speaks or you have kept \
-them waiting, answer briefly and end with the same `@hold` line; when new guidance \
+them waiting, answer briefly, say you are still checking with your customer, and end \
+with the same `@hold` line; when new guidance \
 that is not a hold arrives, do it without `@hold`. A turn without `@hold` ends the \
 hold.
 - `@end_call`: the last line, only when the guidance says to close the call.
@@ -73,11 +74,5 @@ PROFILE = replace(
     pl_cp_v4.PROFILE,
     name="pl_cp_v5",
     system=SYSTEM,
-    moves={
-        **pl_cp_v4.PROFILE.moves,
-        "ask_readback": "Ask them now to read back every term of the offer: monthly "
-        "price, term, fees, changes and expiry. Ask it as a question, even if they "
-        "stated some terms already.",
-    },
     p2_ids_sha256="",
 )
