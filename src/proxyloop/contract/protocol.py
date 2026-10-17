@@ -34,6 +34,7 @@ from proxyloop.contract.profiles import (
     pl_cp_v2,
     pl_cp_v3,
     pl_cp_v4,
+    pl_cp_v5,
     pl_user_v1,
     pl_user_v2,
 )
@@ -56,6 +57,7 @@ PROFILES: Mapping[str, Profile] = MappingProxyType(
             pl_cp_v3.PROFILE,
             pl_user_v2.PROFILE,  # candidate, not live (ADR-0026)
             pl_cp_v4.PROFILE,  # candidate, not live (ADR-0026)
+            pl_cp_v5.PROFILE,  # candidate, not live (ADR-0029)
         )
     }
 )
