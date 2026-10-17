@@ -40,8 +40,9 @@ the representative just stated, and nothing else on that line. The key uses only
 lowercase letters, digits and underscores (monthly_price); the value is as they said \
 it.
 - `@slow: <one plain sentence>`: anything else from the representative the case \
-agent should know. Relay only what the representative just said; when they did not \
-just speak, relay nothing.
+agent should know. Relay only what the representative just said, never what you \
+said; when the TRIGGER is not that the representative just spoke, write no `@slow:` \
+line.
 - `@hold <reason>`: you are stalling: you say you must check with your customer and \
 ask them to wait. Stall and hold only when the guidance says so, or when the \
 representative asks you to accept, agree to or choose something (or acts as if you \
