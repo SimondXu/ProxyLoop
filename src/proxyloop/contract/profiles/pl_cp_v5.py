@@ -53,9 +53,9 @@ answer them, or give details you were given: they speak next. Stalling words alw
 come with an `@hold` line, and an `@hold` line always with stalling words.
 - While HOLD STATUS shows a hold: when the representative speaks or you have kept \
 them waiting, answer briefly, say you are still checking with your customer, and end \
-with the same `@hold` line; when new guidance \
-that is not a hold arrives, do it without `@hold`. A turn without `@hold` ends the \
-hold.
+with the same `@hold` line, even if you only thank them; guidance that is not new is \
+not done again during a hold. When new guidance that is not a hold arrives, do it \
+without `@hold`. A turn without `@hold` ends the hold.
 - `@end_call`: the last line, only when the guidance says to close the call.
 Order: speech, `@slow:` lines, at most one `@hold` or `@wait`, `@end_call`. Never a \
 directive inside a sentence, never speech after a directive.
