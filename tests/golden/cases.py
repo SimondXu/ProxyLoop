@@ -59,6 +59,7 @@ CP_BRIEF = "You are calling Contoso Mobile to ask for a lower monthly price."
 V2 = "pl_cp_v2"
 V3 = "pl_cp_v3"
 V4, USER_V2 = "pl_cp_v4", "pl_user_v2"  # candidates (ADR-0026)
+V5 = "pl_cp_v5"  # candidate (ADR-0029)
 
 
 def _slot(field: str, value: str, unit: str, role: str, status: str) -> ReadbackSlot:
@@ -338,5 +339,38 @@ CASES = (
         ),
         Trigger(kind="approval_card"),
         USER_V2,
+    ),
+    # pl_cp_v5 (ADR-0029, candidate): the decision table's system text; a committed
+    # case, a standing hold with persisted guidance, the worst case
+    _cp("c16_v5_empty", Blackboard(), Trigger(kind="call_connected"), profile=V5),
+    _cp(
+        "c17_v5_committed",
+        _bb(public=_public(offers={"o1": CONFIRMED}, status=CaseStatus.COMMITTED)),
+        Trigger(kind="rep_spoke"),
+        profile=V5,
+    ),
+    _cp(
+        "c18_v5_hold_persisted",
+        _bb(
+            public=_public(
+                guidance_cp=GUIDES,
+                cp_hold=HoldState(reason="offer", since_ms=60_000),
+            )
+        ),
+        Trigger(kind="rep_spoke"),
+        profile=V5,
+    ),
+    _cp(
+        "c19_v5_over_budget",
+        _bb(
+            cp=_long("c", 300),
+            public=_public(
+                action_log=ACTIONS,
+                guidance_cp=GUIDES,
+                cp_hold=HoldState(reason="decision", since_ms=80_000),
+            ),
+        ),
+        Trigger(kind="hold_wait", wait_s=10),
+        profile=V5,
     ),
 )

@@ -1,6 +1,6 @@
 # ADR-0029: The cp decision table (the next Fast cp profile)
 
-- **Status:** proposed (the session, 2026-10-12; the user lifted the freeze for this prep). The profile text, its CON task and `make pull-through` come after the tuning rounds (PLAN Now/Next item 5).
+- **Status:** accepted (the user, 2026-10-17, after the tuning rounds and the hold-out check below; S1-CON-12). Proposed 2026-10-12 (the session; the user lifted the freeze for this prep). `pl_cp_v5` lands as a candidate; the live flip and `make pull-through` come with the training data.
 - **Date:** 2026-10-12
 - **Task:** S1-MOD-12
 - **Builds on:** ADR-0026 (hold semantics, relay scope). Supersedes its reservation of `pl_cp_v5` for ADR-0014's `defer_callback` (below).
@@ -45,3 +45,60 @@ Tuning on set A plus post-M1 states (runs 4b9901, afa368, 99c310, aebf80) and ne
 - **Contract:** none yet; the profile text lands with its own CON task after validation, then `make pull-through MODE=full`. The live profile stays `pl_cp_v3` through M2.
 - **Instruments:** `profile_check` gains H4, H5, H7, S1 and R2 counts; the reviewer brief is rewritten to quote this table.
 - **Data:** no SFT label is built before this profile is final.
+
+## Result (2026-10-15..17, S1-CON-12)
+`pl_cp_v5` (system sha256 `56de846c3973894aaed17fdf91ad5805ce10606012b8268afa8be445f8d8920c`, fingerprint `e6fcdfe95dadceea9388daf28f56564a519038907d7ec9ffefd64e2a50c2718e`) is `pl_cp_v4` with a new system text. Moves and grammar are v4's. The text adds:
+- what CASE STATUS means (S1, S2);
+- H4: answer briefly, say you are still checking, keep the same `@hold` even on a thank-you; under a hold, guidance that is not new is not done again;
+- H5 and H7;
+- `@wait` only when asked to wait (W1);
+- no `@slow` unless the trigger is `rep_spoke`, and never relay your own words (R2);
+- each sentence once, no directive names in speech.
+
+Sets: `cp_sets --seed 12` (tune 346 views + 20 constructed S1; hold-out 80 + 8) plus S1-MOD-10's set B and the pinned set C. `probe_same_state`, `--max-tokens 16384`. Scored by `cp_table` and by `profile_check check --allow-other-plan` (the tune or hold-out set as A). The PR body of S1-CON-12 has the per-round table. Bundles are local (`runs/cp-round0-1015`, `runs/cp-round1-1015`, `runs/cp-holdout-1017`).
+
+| DeepSeek medium | v4 (two runs) | v5 |
+|---|---|---|
+| tune S1 (post-commit) | 20/20, 20/20 | 20/20 |
+| tune H4 | 44/67, 40/67 | 56/67 |
+| tune H5 | 15/20, 14/20 | 20/20 |
+| tune H7 incoherent | 0, 0 | 0 |
+| tune non-partner relays | 23/112, 12/112 | 3/112 |
+| tune D5 relay recall | 53/78, 56/78 | 58/78 |
+| tune Qwen-token p90 | 88, 87 | 78 |
+| hold-out S1 (real / constructed) | — | 4/4, 8/8 |
+| set B named reason | 36/52 | 40/52 |
+| set C fit reason | 24/30 | 24/30 |
+
+Luna none (one run each), v4 → v5: tune S1 17 → 20/20; H4 26 → 40/67; D5 24 → 36/78; set C fit reason 19 → 14/30. Luna has no noise run.
+
+**Deviations from the bars (accepted by the user, 2026-10-17):**
+- **H4 is 56/67 (84 %), below the 95 % bar.** A row audit of the 11 misses on the tune set:
+  - 2 FastC misses: stalling words without `@hold`; and bdfcc0 turn 123, a `@hold fact_request` raised although the facts were already public (ADR-0034).
+  - 1 minor miss: the shown move redone under a hold.
+  - 3 debatable: the representative named a new offer during the hold, and FastC asked for its read-back.
+  - 5 are not FastC errors:
+    - 3 come from a stale HOLD STATUS: the verbatim decline was heard, or the fact was answered, but `cp_hold` still stood (it changed only through a Fast turn's `chan.hold`). ADR-0034 (S1-SYS-128, #343) now ends such holds in the kernel. Label sets built from earlier bundles drop the rows that `guard.holds.ended` flags;
+    - 1 changes the reason from `fact_request` to `decision` once the read-back is done;
+    - 1 is `close_call`.
+
+  Without the 5, H4 is 61/67 (91 %).
+- **Example parroting is 5 on set C (bar 0).** DeepSeek reused the format example's "I can't agree to that myself." when asked to accept. It is the correct refusal, in the situation the example shows. On the tune set the count is 0. The examples stay; `profile_check` pins the example list.
+- **GLM none was not run.** TeamRouter now refuses reasoning off for `glm-5.3-flash` (HTTP 400, "always thinks").
+- **T3 on set C was not judged** (no blind labels in this check).
+
+**The context budget (2026-10-18).** v5's system text is 3,600 characters; v4's is 2,625. With it, the maximal cp view in `tests/contract/test_budget.py` (every bounded field at its limit: 6 offers × 10 slots) overflowed `CONTEXT_BUDGET_CHARS` by 609 characters. Two shorter texts that fit did worse on the tune set (DeepSeek medium, one run each):
+- without the format examples: D5 relay recall 47/78 and required holds 8/10;
+- with short examples and compressed wording: H4 40/67 and D5 45/78.
+
+So the text stays, and `MAX_SLOTS` goes from 10 to 8 (`contract/base.py`; ADR-0004's bounds line is updated). The architect review of 2026-10-18:
+- **Data.** No recorded offer has more than 5 slots: 7 evidence bundles, 203 local bundles, 529 `record_offer` attempts and the goldens. Families need at most 5 today, and 8 leaves room for 4–5 itemised fees.
+- **Behaviour.** A 9th slot is refused cleanly (`record_offer` raises `ValidationError`; `SlowTools.act` returns `invalid_args`).
+- **Unchanged.** Goldens, P2 ids and every fingerprint, because the bounds are not hashed.
+- **Margin.** The worst move (`hold_for_fact`) leaves 195 characters, so v5's text must not grow.
+
+`MAX_OFFERS` 6 → 5 was rejected: it leaves a 76-character margin, and the count includes withdrawn and declined offers. `MAX_GUIDES` was rejected because it changes the goldens and the v1–v4 fingerprints. Raising the budget was rejected because the budget is hashed into every fingerprint.
+
+**Costs to watch:**
+- In 101 of 2,506 real cp views (4 %, long calls) v5 keeps 1–14 fewer of the oldest transcript lines than v4. Offers, facts, guidance and summaries are never trimmed. To check: H4 and G2 on long-call tune states, split by whether lines were trimmed.
+- When the slot cap binds, Slow may drop a second itemised fee, because `missing_required` is satisfied by one `fee:*`, and then reach a confirmed read-back on partial terms (ADR-0030's trap). This gap exists at 10 as well; 8 makes it slightly more reachable. A named refusal in `slow/offer_slots.py` would close it.

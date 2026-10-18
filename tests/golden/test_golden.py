@@ -57,6 +57,7 @@ def test_golden_set_covers_the_acceptance_cases() -> None:
         "pl_cp_v3",
         "pl_cp_v4",
         "pl_user_v2",
+        "pl_cp_v5",
     }
     user_text = {c.name: _golden(c)["messages"][1]["content"] for c in CASES}
     assert "PENDING APPROVAL: (none)" in user_text["u01_empty"]

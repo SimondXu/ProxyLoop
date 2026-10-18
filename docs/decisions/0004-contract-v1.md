@@ -16,7 +16,7 @@ Contract v1 (`CONTRACT_VERSION = "v1"`) is these modules, all pydantic models th
 
 Every S1 section is rendered from S0 on, with `(none)` when empty. `CONTEXT_BUDGET_CHARS = 12_000` covers the system and user text together. Over budget, the renderer drops the oldest transcript lines first, then the oldest actions; an overflow after that raises `ContextBudgetError`.
 
-**Render bounds** (`base.MAX_*`): brief 800, private summary 1,200, public summary and Slow's user text 400, read-back text 600, public fact value 120, slot value 24 and field 40, 6 offers of at most 10 slots, 3 guide slots of at most 80 characters, offer refs of at most 24. A view with every bounded field at its maximum fits the budget, and the transcript and action log absorb the rest (`tests/contract/test_budget.py`). So `ContextBudgetError` is unreachable for validated views.
+**Render bounds** (`base.MAX_*`): brief 800, private summary 1,200, public summary and Slow's user text 400, read-back text 600, public fact value 120, slot value 24 and field 40, 6 offers of at most 8 slots (10 until ADR-0029, 2026-10-18), 3 guide slots of at most 80 characters, offer refs of at most 24. A view with every bounded field at its maximum fits the budget, and the transcript and action log absorb the rest (`tests/contract/test_budget.py`). So `ContextBudgetError` is unreachable for validated views.
 
 Decisions beyond the ARCHITECTURE text:
 1. **`brief` is an argument** to `view_user`, `view_cp` and `view_slow`. The task's brief is task data, not blackboard state, so no state field was added.

@@ -42,6 +42,10 @@ EXPECTED: dict[str, DecisionPoint | None] = {
     "c13_v4_hold_for_decision": None,  # guidance: not rep_spoke
     "c14_v4_persisted_moves": "offer",
     "c15_v4_over_budget": None,  # hold_wait
+    "c16_v5_empty": None,  # call_connected: not rep_spoke
+    "c17_v5_committed": "offer",  # rep_spoke with an offer; the status is not read
+    "c18_v5_hold_persisted": "offer",
+    "c19_v5_over_budget": None,  # hold_wait
     "u07_v2_empty": None,
     "u08_v2_user_msg": None,
     "u09_v2_over_budget": "approval",
