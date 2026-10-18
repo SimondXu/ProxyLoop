@@ -1,6 +1,6 @@
 # ADR-0029: The cp decision table (the next Fast cp profile)
 
-- **Status:** proposed (the session, 2026-10-12; the user lifted the freeze for this prep). The profile text, its CON task and `make pull-through` come after the tuning rounds (PLAN Now/Next item 5).
+- **Status:** accepted (the user, 2026-10-17, after the tuning rounds and the hold-out check below; S1-CON-12). Proposed 2026-10-12 (the session; the user lifted the freeze for this prep). `pl_cp_v5` lands as a candidate; the live flip and `make pull-through` come with the training data.
 - **Date:** 2026-10-12
 - **Task:** S1-MOD-12
 - **Builds on:** ADR-0026 (hold semantics, relay scope). Supersedes its reservation of `pl_cp_v5` for ADR-0014's `defer_callback` (below).
@@ -45,3 +45,44 @@ Tuning on set A plus post-M1 states (runs 4b9901, afa368, 99c310, aebf80) and ne
 - **Contract:** none yet; the profile text lands with its own CON task after validation, then `make pull-through MODE=full`. The live profile stays `pl_cp_v3` through M2.
 - **Instruments:** `profile_check` gains H4, H5, H7, S1 and R2 counts; the reviewer brief is rewritten to quote this table.
 - **Data:** no SFT label is built before this profile is final.
+
+## Result (2026-10-15..17, S1-CON-12)
+`pl_cp_v5` (system sha256 `56de846c3973894aaed17fdf91ad5805ce10606012b8268afa8be445f8d8920c`, fingerprint `e6fcdfe95dadceea9388daf28f56564a519038907d7ec9ffefd64e2a50c2718e`) is `pl_cp_v4` with a new system text. Moves and grammar are v4's. The text adds:
+- what CASE STATUS means (S1, S2);
+- H4: answer briefly, say you are still checking, keep the same `@hold` even on a thank-you; under a hold, guidance that is not new is not done again;
+- H5 and H7;
+- `@wait` only when asked to wait (W1);
+- no `@slow` unless the trigger is `rep_spoke`, and never relay your own words (R2);
+- each sentence once, no directive names in speech.
+
+Sets: `cp_sets --seed 12` (tune 346 views + 20 constructed S1; hold-out 80 + 8) plus S1-MOD-10's set B and the pinned set C. `probe_same_state`, `--max-tokens 16384`. Scored by `cp_table` and by `profile_check check --allow-other-plan` (the tune or hold-out set as A). The PR body of S1-CON-12 has the per-round table. Bundles are local (`runs/cp-round0-1015`, `runs/cp-round1-1015`, `runs/cp-holdout-1017`).
+
+| DeepSeek medium | v4 (two runs) | v5 |
+|---|---|---|
+| tune S1 (post-commit) | 20/20, 20/20 | 20/20 |
+| tune H4 | 44/67, 40/67 | 56/67 |
+| tune H5 | 15/20, 14/20 | 20/20 |
+| tune H7 incoherent | 0, 0 | 0 |
+| tune non-partner relays | 23/112, 12/112 | 3/112 |
+| tune D5 relay recall | 53/78, 56/78 | 58/78 |
+| tune Qwen-token p90 | 88, 87 | 78 |
+| hold-out S1 (real / constructed) | — | 4/4, 8/8 |
+| set B named reason | 36/52 | 40/52 |
+| set C fit reason | 24/30 | 24/30 |
+
+Luna none (one run each), v4 → v5: tune S1 17 → 20/20; H4 26 → 40/67; D5 24 → 36/78; set C fit reason 19 → 14/30. Luna has no noise run.
+
+**Deviations from the bars (accepted by the user, 2026-10-17):**
+- **H4 is 56/67 (84 %), below the 95 % bar.** A row audit of the 11 misses on the tune set:
+  - 1 real miss: stalling words without `@hold`.
+  - 1 minor miss: the shown move redone under a hold.
+  - 3 debatable: the representative named a new offer during the hold, and FastC asked for its read-back.
+  - 6 are not FastC errors:
+    - 4 come from a stale HOLD STATUS: the verbatim decline was said, or the fact was answered, but `cp_hold` still stands (it changes only through a Fast turn's `chan.hold`);
+    - 1 changes the reason from `fact_request` to `decision` once the read-back is done;
+    - 1 is `close_call`.
+
+  Without the 6, H4 is 62/67 (93 %). The stale hold is a kernel and hold-semantics question, handled as its own task.
+- **Example parroting is 5 on set C (bar 0).** DeepSeek reused the format example's "I can't agree to that myself." when asked to accept. It is the correct refusal, in the situation the example shows. On the tune set the count is 0. The examples stay; `profile_check` pins the example list.
+- **GLM none was not run.** TeamRouter now refuses reasoning off for `glm-5.3-flash` (HTTP 400, "always thinks").
+- **T3 on set C was not judged** (no blind labels in this check).
