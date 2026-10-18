@@ -1,6 +1,6 @@
 # ADR-0034: A cp hold ends when its answer arrives
 
-- **Status:** proposed (the session, 2026-10-17; no contract change)
+- **Status:** accepted (the session 训练线第一步, 2026-10-18)
 - **Date:** 2026-10-17
 - **Task:** S1-SYS-128
 - **Amends:** ADR-0026 "Hold semantics" (its last sentence). Carries out ADR-0029 "Kernel, not text" for the hold.
