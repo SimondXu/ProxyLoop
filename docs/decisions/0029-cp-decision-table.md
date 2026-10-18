@@ -74,15 +74,31 @@ Luna none (one run each), v4 → v5: tune S1 17 → 20/20; H4 26 → 40/67; D5 2
 
 **Deviations from the bars (accepted by the user, 2026-10-17):**
 - **H4 is 56/67 (84 %), below the 95 % bar.** A row audit of the 11 misses on the tune set:
-  - 1 real miss: stalling words without `@hold`.
+  - 2 FastC misses: stalling words without `@hold`; and bdfcc0 turn 123, a `@hold fact_request` raised although the facts were already public (ADR-0034).
   - 1 minor miss: the shown move redone under a hold.
   - 3 debatable: the representative named a new offer during the hold, and FastC asked for its read-back.
-  - 6 are not FastC errors:
-    - 4 come from a stale HOLD STATUS: the verbatim decline was said, or the fact was answered, but `cp_hold` still stands (it changes only through a Fast turn's `chan.hold`);
+  - 5 are not FastC errors:
+    - 3 come from a stale HOLD STATUS: the verbatim decline was heard, or the fact was answered, but `cp_hold` still stood (it changed only through a Fast turn's `chan.hold`). ADR-0034 (S1-SYS-128, #343) now ends such holds in the kernel. Label sets built from earlier bundles drop the rows that `guard.holds.ended` flags;
     - 1 changes the reason from `fact_request` to `decision` once the read-back is done;
     - 1 is `close_call`.
 
-  Without the 6, H4 is 62/67 (93 %). The stale hold is a kernel and hold-semantics question, handled as its own task.
+  Without the 5, H4 is 61/67 (91 %).
 - **Example parroting is 5 on set C (bar 0).** DeepSeek reused the format example's "I can't agree to that myself." when asked to accept. It is the correct refusal, in the situation the example shows. On the tune set the count is 0. The examples stay; `profile_check` pins the example list.
 - **GLM none was not run.** TeamRouter now refuses reasoning off for `glm-5.3-flash` (HTTP 400, "always thinks").
 - **T3 on set C was not judged** (no blind labels in this check).
+
+**The context budget (2026-10-18).** v5's system text is 3,600 characters; v4's is 2,625. With it, the maximal cp view in `tests/contract/test_budget.py` (every bounded field at its limit: 6 offers × 10 slots) overflowed `CONTEXT_BUDGET_CHARS` by 609 characters. Two shorter texts that fit did worse on the tune set (DeepSeek medium, one run each):
+- without the format examples: D5 relay recall 47/78 and required holds 8/10;
+- with short examples and compressed wording: H4 40/67 and D5 45/78.
+
+So the text stays, and `MAX_SLOTS` goes from 10 to 8 (`contract/base.py`; ADR-0004's bounds line is updated). The architect review of 2026-10-18:
+- **Data.** No recorded offer has more than 5 slots: 7 evidence bundles, 203 local bundles, 529 `record_offer` attempts and the goldens. Families need at most 5 today, and 8 leaves room for 4–5 itemised fees.
+- **Behaviour.** A 9th slot is refused cleanly (`record_offer` raises `ValidationError`; `SlowTools.act` returns `invalid_args`).
+- **Unchanged.** Goldens, P2 ids and every fingerprint, because the bounds are not hashed.
+- **Margin.** The worst move (`hold_for_fact`) leaves 195 characters, so v5's text must not grow.
+
+`MAX_OFFERS` 6 → 5 was rejected: it leaves a 76-character margin, and the count includes withdrawn and declined offers. `MAX_GUIDES` was rejected because it changes the goldens and the v1–v4 fingerprints. Raising the budget was rejected because the budget is hashed into every fingerprint.
+
+**Costs to watch:**
+- In 101 of 2,506 real cp views (4 %, long calls) v5 keeps 1–14 fewer of the oldest transcript lines than v4. Offers, facts, guidance and summaries are never trimmed. To check: H4 and G2 on long-call tune states, split by whether lines were trimmed.
+- When the slot cap binds, Slow may drop a second itemised fee, because `missing_required` is satisfied by one `fee:*`, and then reach a confirmed read-back on partial terms (ADR-0030's trap). This gap exists at 10 as well; 8 makes it slightly more reachable. A named refusal in `slow/offer_slots.py` would close it.
