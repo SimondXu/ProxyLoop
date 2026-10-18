@@ -9,10 +9,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from tests.concurrency import harness
 from tests.concurrency.harness import Sim
 from tests.concurrency.test_cases import arun
 
 from proxyloop.contract.events import Event
+from proxyloop.env.tasks.schema import Task
+from proxyloop.guard.readiness import IDENTITY
+from proxyloop.kernel.calls import INTAKE_S
 
 ASKED = "Shall I put that through for you?"
 HOLD_OFFER = "One moment, let me check with my customer.\n@hold offer"
@@ -84,6 +89,44 @@ def test_the_users_facts_end_a_fact_hold_once_no_asked_key_waits(
         assert cleared.cause_ids == (answer.event_id,)
         assert cleared.payload["ended"] == "answered"
         assert sim.bb.public.cp_hold is None
+        await sim.stop()
+
+    arun(case())
+
+
+def test_a_fact_hold_waits_for_every_missing_readiness_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identity keys shareable (no ``called``): the call opens at the intake
+    deadline with both missing. The first identity fact leaves the other
+    missing, so the hold stands; the second ends it (review round 1)."""
+
+    async def case() -> None:
+        def shareable(task: Task) -> Task:  # identity keys stay shareable
+            return task
+
+        monkeypatch.setattr(harness, "called", shareable)
+        sim = Sim(tmp_path, until={"fast_cp": (ASKED, HOLD_FACT)})
+        await sim.start()
+        await sim.vt.run_for(1000 * INTAKE_S)
+        (opened,) = sim.of("chan.opened", lane="cp")
+        assert opened.payload["reason"] == "intake_deadline"
+        sim.rep_says(ASKED)
+        await sim.vt.run_for(10_000)
+        hold = sim.bb.public.cp_hold
+        assert hold is not None and hold.reason == "fact_request", hold
+        sim.user_says("Dana Reyes, and the last four are 4821.")
+        await sim.vt.run_for(5_000)
+        (msg,) = sim.of("user.msg")
+        cite = {"tool": "record_fact", "utt_ref": msg.event_id}
+        name, last4 = sorted(IDENTITY)
+        assert "public" in sim.act(cite | {"key": name, "value": "Dana Reyes"})[0]
+        assert not _cleared(sim) and sim.bb.public.cp_hold is not None
+        assert "public" in sim.act(cite | {"key": last4, "value": "4821"})[0]
+        (cleared,) = _cleared(sim)
+        (answer,) = sim.of("fact.recorded", key=last4)
+        assert cleared.cause_ids == (answer.event_id,)
+        assert cleared.payload["ended"] == "answered"
         await sim.stop()
 
     arun(case())
