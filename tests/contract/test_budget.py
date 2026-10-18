@@ -129,7 +129,9 @@ def test_maximal_view_fits_with_the_transcript_absorbing_the_rest(
 
 @pytest.mark.parametrize("profile", ["pl_cp_v4", "pl_cp_v5"])  # v5 keeps v4's moves
 @pytest.mark.parametrize("move", sorted(pl_cp_v4.PROFILE.moves))
-def test_pl_cp_v4_maximal_view_fits_for_every_move_text(move: str, profile: str) -> None:
+def test_pl_cp_v4_maximal_view_fits_for_every_move_text(
+    move: str, profile: str
+) -> None:
     guides = tuple(
         Guide(move=GuideMove(move), slots=tuple(f"fact:{k}" for k in KEYS[i::3]))
         for i in range(base.MAX_GUIDES)

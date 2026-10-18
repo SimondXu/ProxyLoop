@@ -38,7 +38,9 @@ def prompt_lines() -> set[str]:
             pieces += re.split(r"\{\w+\}", template)
         for piece in pieces:
             lines |= _sentences(piece)
-    lines = {line for line in lines if len(line) >= MIN_LEN}
+    # a one-word piece is a name, not prose: pl_cp_v5 splits at "COMMIT_AUTHORIZED:",
+    # a CaseStatus the web shows
+    lines = {line for line in lines if len(line) >= MIN_LEN and " " in line}
     for text in OTHERS:
         for piece in re.split(r"\{\w+\}|\n", text):
             lines |= {s for s in _sentences(piece) if len(s.split()) >= MIN_WORDS}
