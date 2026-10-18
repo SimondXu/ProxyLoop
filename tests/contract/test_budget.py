@@ -113,6 +113,7 @@ CP_HOLD = {
         ("pl_user_v2", USER_CARD),  # ADR-0026 candidates: the longer system texts
         ("pl_user_v2", USER_SLOW),
         ("pl_cp_v4", CP_HOLD),
+        ("pl_cp_v5", CP_HOLD),  # ADR-0029 candidate
     ],
 )
 def test_maximal_view_fits_with_the_transcript_absorbing_the_rest(
@@ -126,14 +127,15 @@ def test_maximal_view_fits_with_the_transcript_absorbing_the_rest(
     assert user.content.count("(revision 999, withdrawn)") == base.MAX_OFFERS
 
 
+@pytest.mark.parametrize("profile", ["pl_cp_v4", "pl_cp_v5"])  # v5 keeps v4's moves
 @pytest.mark.parametrize("move", sorted(pl_cp_v4.PROFILE.moves))
-def test_pl_cp_v4_maximal_view_fits_for_every_move_text(move: str) -> None:
+def test_pl_cp_v4_maximal_view_fits_for_every_move_text(move: str, profile: str) -> None:
     guides = tuple(
         Guide(move=GuideMove(move), slots=tuple(f"fact:{k}" for k in KEYS[i::3]))
         for i in range(base.MAX_GUIDES)
     )
     view = FastView.model_validate(COMMON | CP_HOLD | {"guidance": guides})
-    system, user = render_messages(view, "pl_cp_v4")
+    system, user = render_messages(view, profile)
     assert len(system.content) + len(user.content) <= CONTEXT_BUDGET_CHARS
     assert OMITTED_LINES in user.content
     assert "s" * base.MAX_PUBLIC_TEXT in user.content  # bounded fields survive
