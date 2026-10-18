@@ -117,7 +117,8 @@ export type CallHead = { calls: number; open: boolean; holdSince: number | null 
 
 /**
  * The hold follows the kernel's fold (core/fold.py cp_hold): FastC's chan.hold
- * with a reason sets it, one with reason null clears it, and so does the call's
+ * with a reason sets it, one with reason null clears it (FastC's, or the
+ * kernel's once the hold's answer arrived: ADR-0034), and so does the call's
  * opening or end. The same turn's speech comes after its chan.hold, so a heard
  * line does not end a hold.
  */
@@ -128,7 +129,7 @@ export function callHead(events: Ev[]): CallHead {
     if (p.lane !== "cp") continue;
     if (from(e, "chan.opened", ["kernel"])) Object.assign(h, { calls: h.calls + 1, open: true, holdSince: null });
     else if (from(e, "chan.closed", ["kernel"])) Object.assign(h, { open: false, holdSince: null });
-    else if (from(e, "chan.hold", ["fast.cp"])) h.holdSince = p.reason == null ? null : e.t_ms;
+    else if (from(e, "chan.hold", ["fast.cp", "kernel"])) h.holdSince = p.reason == null ? null : e.t_ms;
   }
   return h;
 }

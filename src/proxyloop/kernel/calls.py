@@ -12,7 +12,9 @@ Opening is ``chan.opened{lane: cp, call, reason, missing, ready}`` (untyped
 payload keys), the ``call_opened`` status edge, the disclosure, the cp ingress
 and then FastC. The rep's clock starts only once the disclosure was said
 (``watchdog``), so intake time never becomes a rep strike (R2). ``Calls`` also
-holds the needs ledger, folded from every event, for Slow's status bar."""
+holds the needs ledger, folded from every event, for Slow's status bar, and
+ends a cp hold its answer made moot (``guard.holds``, ADR-0034): at once,
+inside the emit that answered it, so no FastC turn renders it after."""
 
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
 from proxyloop.contract.events import Event
-from proxyloop.guard import needs, readiness
+from proxyloop.guard import holds, needs, readiness
 from proxyloop.guard.status import status_change
 from proxyloop.kernel.channels import Channel
 
@@ -40,6 +42,7 @@ class Calls:
         self.required = readiness.required(k.task)
         self.intake = k.slow is not None and "user" in k.channels
         self.needs = needs.Ledger()
+        self.lines: frozenset[str] = frozenset()  # accept/decline lines (holds)
         self.opened: Event | None = None  # the chan.opened{cp}
         self.count = 0  # calls opened (ADR-0014 adds a second)
         self.deadline_ms: int | None = None  # while the intake runs
@@ -58,6 +61,11 @@ class Calls:
 
     def on_event(self, e: Event) -> None:
         self.needs = needs.step(self.needs, e)
+        self.lines = holds.lines(self.lines, e)
+        hold = self._k.bb.public.cp_hold
+        if why := holds.ended(hold, e, self.lines, self.needs, self.missing()):
+            out = {"lane": "cp", "reason": None, "ended": why}
+            self._k.emit("chan.hold", "kernel", out, [e.event_id])
         if self.opened is not None or self.deadline_ms is None:
             return
         p = e.payload

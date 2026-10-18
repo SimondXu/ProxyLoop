@@ -24,6 +24,7 @@ describe("the hold line (display only)", () => {
     expect(holdElapsed([])).toBeNull();
     expect(holdElapsed([opened(0), heard(5_000)])).toBeNull();
     expect(holdElapsed([opened(0), hold(1_000, "check_user"), hold(9_000, null)])).toBeNull();
+    expect(holdElapsed([opened(0), hold(1_000, "offer"), hold(9_000, null, "kernel")])).toBeNull(); // its answer arrived (ADR-0034)
     expect(holdElapsed([opened(0), hold(1_000, "check_user"), ev("chan.closed", "kernel", 2_000, { lane: "cp" })])).toBeNull();
     expect(holdElapsed([opened(0), hold(1_000, "check_user", "slow")])).toBeNull(); // only FastC holds the rep
   });
